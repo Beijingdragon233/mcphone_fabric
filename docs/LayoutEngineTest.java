@@ -75,6 +75,7 @@ public class LayoutEngineTest {
         lists();
         visibilityAndKeys();
         uiState();
+        edgeCases();
         randomTrees();
         report();
     }
@@ -516,6 +517,66 @@ public class LayoutEngineTest {
         LayoutNode dag = run(shared, "", 120, 176);
         check(allNodes(dag).size() <= LayoutEngine.MAX_LAYOUT_NODES, "同一个 Node 挂在多处的共享子树不会指数展开");
         check((System.nanoTime() - dagStart) / 1_000_000 < 1000, "共享子树的布局在 1 秒内结束");
+    }
+
+    // ============================================================
+    //  边角：每条都对着一种会改变坐标的错误写法
+    // ============================================================
+
+    static void edgeCases() {
+        LayoutNode tallBox = run(col("root", nd(BOX, "b", Map.of(), box("f"))), "#b{height:150;} #f{height:fill;}", 120, 100);
+        eq(List.of(child(tallBox, 0).h, child(child(tallBox, 0), 0).h), List.of(150, 150), "写死高超过可用高时，fill 的子节点填满写死的高");
+
+        LayoutNode capped = run(nd(ROW, "root", Map.of(), box("a"), box("b")), "#a{width:120;} #b{width:10;}", 100, 176);
+        eq(List.of(child(capped, 0).w, child(capped, 1).x, child(capped, 1).w), List.of(100, 100, 10), "row 里写死宽超过可用宽的子节点夹到可用宽");
+        eq(child(run(nd(ROW, "root", Map.of(), nd(BUTTON, "b", Map.of("text", ""))), "", 10, 176), 0).w, 10,
+                "可用宽小于最小可点宽时按可用宽");
+
+        LayoutNode spacerColumn = child(run(nd(STACK, "root", Map.of(), col("c", nd(SPACER, "s", Map.of("size", 30)), text("t", "ab"))), "", 120, 176), 0);
+        eq(spacerColumn.w, 12, "column 的宽不算定长 spacer");
+        eq(run(nd(STACK, "root", Map.of(), nd(SPACER, "s", Map.of("size", 30)), text("t", "ab")), "", 120, 176).measuredW(), 12,
+                "stack 的宽不算定长 spacer");
+        LayoutNode spacerList = run(nd(LIST, "root", Map.of(), nd(SPACER, "s", Map.of("size", 30))), "", 120, 176);
+        eq(List.of(child(spacerList, 0).w, child(spacerList, 0).h), List.of(0, 30), "不定高 list 里的定长 spacer 交叉轴为 0");
+        LayoutNode spacerFixedList = run(nd(LIST, "root", Map.of("item-height", 12), nd(SPACER, "s", Map.of("size", 30))), "", 120, 176);
+        LayoutEngine.layoutItem(spacerFixedList, 0, FAKE);
+        eq(child(spacerFixedList, 0).w, 0, "定高 list 里的定长 spacer 交叉轴为 0");
+
+        LayoutNode tallRow = run(nd(ROW, "root", Map.of(), text("t", "ab\ncd"), nd(DIVIDER, "d", Map.of("vertical", true))), "#root{align:end;}", 120, 176);
+        eq(List.of(tallRow.h, child(tallRow, 0).y, child(tallRow, 1).h), List.of(18, 0, 18), "竖分隔线不把 align:end 的行撑高");
+        eq(child(run(col("root", nd(DIVIDER, "d", Map.of("vertical", true))), "", 120, 100), 0).h, 0, "column 里的竖分隔线高为 0");
+        eq(child(run(nd(STACK, "root", Map.of(), nd(DIVIDER, "d", Map.of("vertical", true))), "#root{height:30;}", 120, 176), 0).h, 30,
+                "stack 里的竖分隔线取 stack 的高");
+
+        LayoutNode zeroGrid = run(nd(GRID, "root", Map.of("cols", 3), box("a"), box("b"), box("c"), nd(BADGE, "z", Map.of())),
+                "#root{gap:4; padding:3;} #a{height:5;} #b{height:5;} #c{height:5;}", 120, 176);
+        eq(List.of(zeroGrid.h, child(zeroGrid, 3).x, child(zeroGrid, 3).y), List.of(11, 3, 3), "count 为 0 的角标不另起一行，放在 grid 内容区左上角");
+        LayoutNode zeroFixedList = run(nd(LIST, "root", Map.of("item-height", 12), nd(BADGE, "z", Map.of())), "#root{align:stretch;}", 120, 176);
+        LayoutEngine.layoutItem(zeroFixedList, 0, FAKE);
+        eq(child(zeroFixedList, 0).w, 0, "定高 list 拉伸时 count 为 0 的角标宽仍为 0");
+
+        LayoutNode hugeRow = run(nd(LIST, "root", Map.of("item-height", Integer.MAX_VALUE), box("a"), nd(ROW, "r", Map.of(), box("b"))),
+                "#r{align:end;} #b{width:10; height:10;}", 120, 176);
+        LayoutEngine.layoutItem(hugeRow, 1, FAKE);
+        eq(badGeometry(hugeRow), 0, "item-height 取上限时第 1 项里 align:end 的子节点坐标也不越界");
+
+        eq(textLines("aaaa aaaa aaaa", true, 54, 1), List.of("aaaa aaa…"), "max-lines 截掉后面几行时，补了省略号的末行仍截到可用宽");
+        eq(xs(justify("center", 101, 10)), List.of(45), "justify:center 的余数向下取整");
+        eq(textLines("  hello world", true, 30), List.of("hello", "world"), "段首的空格放不下首词时不单独占一行空行");
+        eq(textLines("  hello world", true, 30, 1), List.of("hell…"), "…加 max-lines:1 也不会只剩省略号");
+        eq(textLines("ab  ", false, 60), List.of("ab"), "wrap:false 同样去掉行尾空格");
+
+        Node hiddenBox = ndc(BOX, null, List.of("h"), Map.of());
+        Node crowded = new Node(COLUMN, "root", List.of(), Map.of(), java.util.Collections.nCopies(1_000_000, hiddenBox), null, null);
+        long crowdedStart = System.nanoTime();
+        LayoutNode crowdedLayout = run(crowded, ".h{hidden:true;}", 120, 176);
+        check(crowdedLayout.truncated() && (System.nanoTime() - crowdedStart) / 1_000_000 < 1000,
+                "一百万个藏起来的子节点也按预算停下，并在根上标出截断");
+        Node doubled = box("leaf3");
+        for (int i = 0; i < 25; i++) doubled = nd(BOX, null, Map.of(), doubled, doubled);
+        check(run(doubled, "", 120, 176).truncated(), "共享子树超出预算时根上标出截断");
+        check(!run(col("root", text("t", "ab")), "", 120, 176).truncated(), "正常的树不标截断");
+        check(!listOf(2048, 12).truncated(), "2048 项的定高 list 不超预算");
     }
 
     // ============================================================

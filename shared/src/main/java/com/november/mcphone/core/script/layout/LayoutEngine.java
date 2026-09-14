@@ -23,8 +23,9 @@ public final class LayoutEngine {
     static final int UNBOUNDED = Integer.MAX_VALUE / 4;
 
     /**
-     * 一次 layout 最多建这么多个布局节点：一页 512 个再加一个 2048 项的 list 还有富余。节点数由 IR 校验与实例化管，
-     * 这里防的是同一个 Node 对象挂在多处的共享子树，建树时按层指数展开。
+     * 一次 layout 最多看这么多个节点，藏起来的也算。实例化之后一页最多 512 个（§9.9），2048 项、每项一个节点的 list 也放得下；
+     * 这里防的是绕过实例化造出来的树：同一个 Node 对象挂在多处时建树按层指数展开，或挂上千万个藏起来的子节点。
+     * 超出的子节点不排，根上的 {@link LayoutNode#truncated()} 为 true。
      */
     static final int MAX_LAYOUT_NODES = 4096;
 
@@ -56,7 +57,9 @@ public final class LayoutEngine {
         }
         int w = clampInt(availW);
         int h = clampInt(availH);
-        LayoutNode ln = build(root, style, sheet, state, key, 1, new int[]{MAX_LAYOUT_NODES - 1});
+        int[] budget = {MAX_LAYOUT_NODES - 1};
+        LayoutNode ln = build(root, style, sheet, state, key, 1, budget);
+        ln.truncated = budget[0] < 0;
         measure(ln, w, h, tm);
         arrange(ln, 0, 0, style.width().kind() == SizeSpec.Kind.FIXED ? ln.measuredW : w, ln.measuredH);
         return ln;
@@ -78,7 +81,7 @@ public final class LayoutEngine {
         Style s = list.style;
         int cw = Math.max(0, list.w - s.padLeft() - s.padRight());
         measure(c, cw, itemHeight, tm);
-        int w = s.align() == Align.STRETCH && occupies(c) ? cw : Math.min(c.measuredW, cw);
+        int w = itemWidth(s, c, cw);
         long top = (long) list.y + s.padTop() + (long) index * ((long) itemHeight + s.gap());
         arrange(c, clampInt((long) list.x + s.padLeft() + crossOffset(s.align(), cw, w)), clampInt(top), w, itemHeight);
     }
@@ -93,11 +96,15 @@ public final class LayoutEngine {
         // 叶子类型挂的 children 与超过 32 层的子树不排：IR 校验已经拒了，这里只防绕过校验造出来的树
         if (!node.type().acceptsChildren || depth >= NodeParser.MAX_DEPTH) return ln;
         List<Node> kids = node.children();
-        for (int i = 0; i < kids.size() && budget[0] > 0; i++) {
+        for (int i = 0; i < kids.size(); i++) {
+            if (budget[0] <= 0) {
+                budget[0] = -1;   // 还有子节点没看就停了
+                return ln;
+            }
+            budget[0]--;
             Node c = kids.get(i);
             Style cs = sheet.resolve(c);
             if (!visible(c, cs, state)) continue;
-            budget[0]--;
             String childKey = c.id() != null ? "#" + c.id() : (key.isEmpty() ? "" : key + ".") + "children[" + i + "]";
             ln.children.add(build(c, cs, sheet, state, childKey, depth + 1, budget));
         }
@@ -116,9 +123,10 @@ public final class LayoutEngine {
     private static void measure(LayoutNode n, int availW, int availH, TextMeasure tm) {
         n.measured = true;
         Style s = n.style;
-        // 写死尺寸的节点，子节点在它自己的尺寸里排（但不超过可用区）：不然 width: 60 的框里文字仍按父的宽度折行
+        // 写死尺寸的节点，子节点在它自己的尺寸里排：不然 width: 60 的框里文字仍按父的宽度折行。
+        // 宽夹在可用宽以内，和节点自己的宽被夹一致；高允许溢出，写死多少就在多少里排
         int boxW = fixedWithin(s.width(), availW);
-        int boxH = fixedWithin(s.height(), availH);
+        int boxH = s.height().kind() == SizeSpec.Kind.FIXED ? s.height().value() : availH;
         int innerW = inner(boxW, s.padLeft() + s.padRight());
         int innerH = inner(boxH, s.padTop() + s.padBottom());
 
@@ -240,8 +248,8 @@ public final class LayoutEngine {
                         boolean spacer = c.node.type() == NodeType.SPACER;
                         switch (axis) {
                             case STACK -> {
-                                contentW = Math.max(contentW, c.measuredW);
-                                contentH = Math.max(contentH, c.measuredH);
+                                contentW = Math.max(contentW, spacer ? 0 : c.measuredW);
+                                contentH = Math.max(contentH, spacer ? 0 : c.measuredH);
                             }
                             case COLUMN -> {
                                 contentW = Math.max(contentW, spacer ? 0 : c.measuredW);
@@ -399,7 +407,7 @@ public final class LayoutEngine {
         for (LayoutNode c : n.children) {
             boolean grows = stretch && occupies(c);
             int w = grows ? cw : Math.min(c.measuredW, cw);
-            int h = grows ? ch : Math.min(c.measuredH, ch);
+            int h = grows || verticalDivider(c) ? ch : Math.min(c.measuredH, ch);
             arrange(c, clampInt((long) cx + crossOffset(s.align(), cw, w)),
                     clampInt((long) cy + mainOffset(s.justify(), ch, h)), w, h);
         }
@@ -437,10 +445,16 @@ public final class LayoutEngine {
         Style s = n.style;
         for (int i = 0; i < n.children.size(); i++) {
             LayoutNode c = n.children.get(i);
-            int w = s.align() == Align.STRETCH && occupies(c) ? cw : Math.min(c.measuredW, cw);
+            int w = itemWidth(s, c, cw);
             arrange(c, clampInt((long) cx + crossOffset(s.align(), cw, w)), clampInt((long) cy + n.cumHeights[i]),
                     w, c.measuredH);
         }
+    }
+
+    /** list 的项的宽：拉伸时占满（count 为 0 的角标除外），spacer 交叉轴为 0，其余取测出的宽。 */
+    private static int itemWidth(Style list, LayoutNode c, int cw) {
+        if (list.align() == Align.STRETCH && occupies(c)) return cw;
+        return c.node.type() == NodeType.SPACER ? 0 : Math.min(c.measuredW, cw);
     }
 
     private static int crossOffset(Align a, int avail, int size) {
@@ -474,7 +488,7 @@ public final class LayoutEngine {
             if (wrap && maxW > 0) {
                 breakInto(paragraph, maxW, tm, raw);
             } else {
-                raw.add(paragraph);
+                raw.add(line(paragraph.codePoints().toArray(), 0, paragraph.codePointCount(0, paragraph.length())));
             }
         }
         boolean cut = maxLines > 0 && raw.size() > maxLines;
@@ -502,7 +516,7 @@ public final class LayoutEngine {
         while (i < cps.length) {
             if (lineW + widths[i] > maxW && i > start) {
                 if (cps[i] == ' ') {
-                    out.add(line(cps, start, i));
+                    emit(out, cps, start, i);
                     while (i < cps.length && cps[i] == ' ') i++;
                     start = i;
                     lineW = 0;
@@ -511,11 +525,11 @@ public final class LayoutEngine {
                 }
                 if (!cjk(cps[i]) && lastSpace > start) {
                     // lastSpace 是一串空格里的最后一个，它和 i 之间没有空格
-                    out.add(line(cps, start, lastSpace));
+                    emit(out, cps, start, lastSpace);
                     start = lastSpace + 1;
                     lineW = sum(widths, start, i);
                 } else {
-                    out.add(line(cps, start, i));
+                    emit(out, cps, start, i);
                     start = i;
                     lineW = 0;
                 }
@@ -528,6 +542,12 @@ public final class LayoutEngine {
         }
         // 段尾的空格正好在断点上被吞掉时，后面已经没有字了，不补一行空行
         if (start < cps.length || out.size() == before) out.add(line(cps, start, cps.length));
+    }
+
+    /** 断出一行；去掉行尾空格后是空的就不加：段首的一串空格放不下首词时，不该单独占出一行空行。 */
+    private static void emit(List<String> out, int[] cps, int start, int end) {
+        String s = line(cps, start, end);
+        if (!s.isEmpty()) out.add(s);
     }
 
     /** 一行，去掉行尾空格：留着的话 text-align: right 的行对不齐。 */

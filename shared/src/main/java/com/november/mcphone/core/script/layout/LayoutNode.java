@@ -24,6 +24,7 @@ public final class LayoutNode {
     int contentH;
     int[] cumHeights;
     boolean measured;
+    boolean truncated;
 
     // arrange 阶段填
     public int x;
@@ -66,5 +67,10 @@ public final class LayoutNode {
     /** scrollY 的上限。contentH 不含 padding 而 h 含：不把 padding 加回去，内容最底下那截永远滚不到。 */
     public int scrollMax() {
         return (int) Math.max(0, (long) contentH + style.padTop() + style.padBottom() - h);
+    }
+
+    /** 只在根上有意义：节点超过 LayoutEngine 的预算，有子节点没排。页面应当报出来，而不是让它悄悄少一截。 */
+    public boolean truncated() {
+        return truncated;
     }
 }
