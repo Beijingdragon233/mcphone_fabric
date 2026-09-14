@@ -58,13 +58,13 @@ public final class LayoutNode {
         return contentH;
     }
 
-    /** 不定高 list 的累积高度：第 i 项的顶边是 {@code cumHeights[i]}，末尾一格是总高。只读；其他情况为 null。 */
+    /** 不定高 list 的累积高度：第 i 项的顶边是 {@code cumHeights[i]}，末尾一格是总高；其他情况为 null。返回的是内部数组，别改。 */
     public int[] cumHeights() {
         return cumHeights;
     }
 
-    /** scrollY 的上限。 */
+    /** scrollY 的上限。contentH 不含 padding 而 h 含：不把 padding 加回去，内容最底下那截永远滚不到。 */
     public int scrollMax() {
-        return Math.max(0, contentH - h);
+        return (int) Math.max(0, (long) contentH + style.padTop() + style.padBottom() - h);
     }
 }
