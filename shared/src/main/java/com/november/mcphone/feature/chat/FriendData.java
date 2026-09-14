@@ -132,6 +132,15 @@ public class FriendData extends PhoneSavedData {
         return knownNames.get(id);
     }
 
+    /** 缓存里叫这个名字的人，不分大小写。有人改过名时同一个名字能对上不止一个 */
+    public List<UUID> idsNamed(String name) {
+        List<UUID> out = new ArrayList<>();
+        knownNames.forEach((id, known) -> {
+            if (known.equalsIgnoreCase(name)) out.add(id);
+        });
+        return out;
+    }
+
     @Override
     protected CompoundTag write(CompoundTag tag) {
         encode(FRIENDSHIPS_CODEC, friends.toPairKeys(), tag, "friendships");

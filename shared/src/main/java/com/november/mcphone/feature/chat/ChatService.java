@@ -62,11 +62,15 @@ public final class ChatService {
     public static ChatMessage sendMessage(ServerPlayer sender, UUID targetId, String rawText) {
         if (!FriendGuard.mayActOn(sender, targetId)) return null;
 
-        UUID senderId = sender.getUUID();
         String text = TextSanitizer.sanitize(rawText, TextBody.MAX_LENGTH);
         if (text.isEmpty()) return null;
 
-        ChatMessage message = ChatMessage.text(senderId, text, System.currentTimeMillis());
+        return storeText(sender, targetId, text);
+    }
+
+    /** 落一条已经过门禁、已经清洗的文本。界面那条超长截断，附属接口那条超长拒收，所以清洗不放这里 */
+    public static ChatMessage storeText(ServerPlayer sender, UUID targetId, String text) {
+        ChatMessage message = ChatMessage.text(sender.getUUID(), text, System.currentTimeMillis());
         store(sender, targetId, message);
 
         // 自己发的对自己是已读的，否则对方一回复就把中间这段全算成未读
@@ -318,7 +322,7 @@ public final class ChatService {
     }
 
     /** 在线，或名字缓存/资料缓存里有记录 */
-    private static boolean isKnownPlayer(MinecraftServer server, FriendData friends, UUID id) {
+    public static boolean isKnownPlayer(MinecraftServer server, FriendData friends, UUID id) {
         if (server.getPlayerList().getPlayer(id) != null) return true;
         if (friends.getName(id) != null) return true;
 
