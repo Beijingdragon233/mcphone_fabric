@@ -89,7 +89,7 @@ public class MssParserTest {
         eq(parse(".a{padding:1 2 3 4;}").forClass("a").padLeft(), 4, "padding 四值");
 
         // 覆盖顺序：后出现的赢
-        // §6.8 原文这里断言「同名 class 后者覆盖前者」，与 E_MSS_DUP_SELECTOR 冲突，以报错为准；覆盖顺序改用不同选择器验证
+        // 同名选择器会先触发 E_MSS_DUP_SELECTOR，所以覆盖顺序用不同选择器验证
         rejects(".a{color:$body;} .a{color:$title;}", "E_MSS_DUP_SELECTOR");
         eq(parse(".a{color:$body;} #x{color:$title;}").resolve(node(NodeType.TEXT, "x", "a")).color(),
                 Token.TITLE, "#x 覆盖 .a");
@@ -309,6 +309,13 @@ public class MssParserTest {
         eq(empty.resolve(node(NodeType.LIST, null)).height(), SizeSpec.FILL, "1 层：list 隐含 height: fill");
         eq(empty.resolve(node(NodeType.TEXT, null)).height(), SizeSpec.AUTO, "1 层：其余类型取表里的 auto");
         eq(empty.resolve(node(NodeType.TEXT, null)).color(), Token.BODY, "1 层：text 默认 $body");
+        Style button = empty.resolve(node(NodeType.BUTTON, null));
+        eq(button.background(), Token.BUTTON, "1 层：button 默认底色 $button");
+        eq(button.hoverBackground(), Token.BUTTON_HOVER, "1 层：button 默认悬停底色 $button-hover");
+        eq(empty.resolve(node(NodeType.BOX, null)).layout(), Layout.COLUMN, "1 层：box 默认 column");
+        eq(empty.resolve(node(NodeType.COLUMN, null)).layout(), Layout.COLUMN, "1 层：column 的 layout 与类型一致");
+        eq(empty.resolve(node(NodeType.ROW, null)).layout(), Layout.ROW, "1 层：row 的 layout 与类型一致");
+        eq(empty.resolve(node(NodeType.STACK, null)).layout(), Layout.STACK, "1 层：stack 的 layout 与类型一致");
 
         // 第 2 层盖第 1 层
         Stylesheet two = parse(".flat{padding:0;} .tall{height:40;} .sub{color:$accent;}");
@@ -316,6 +323,14 @@ public class MssParserTest {
         eq(two.resolve(node(NodeType.SCROLL, null, "tall")).height(), SizeSpec.fixed(40), "2 层：class 盖过 scroll 的 fill");
         eq(two.resolve(node(NodeType.DIVIDER, null, "sub")).color(), Token.ACCENT, "2 层：class 盖过 divider 的 $subtle");
         eq(pads(two.resolve(node(NodeType.BUTTON, null, "other"))), List.of(2, 6, 2, 6), "2 层：不匹配的 class 不生效");
+        Style link = parse(".link{background:none;}").resolve(node(NodeType.BUTTON, null, "link"));
+        eq(link.background(), null, "2 层：button 写 background: none 去掉底色（§5.2 的可点文字）");
+        eq(link.hoverBackground(), Token.BUTTON_HOVER, "2 层：只写 background 时 button 仍保留默认悬停底色");
+        Stylesheet layouts = parse(".actions{layout:row;} .x{layout:column;}");
+        eq(layouts.resolve(node(NodeType.ROW, null, "actions")).layout(), Layout.ROW,
+                "2 层：row 上写 layout: row 与类型一致（§9.2 的写法不该被当成冲突）");
+        eq(layouts.resolve(node(NodeType.ROW, null, "x")).layout(), Layout.COLUMN,
+                "2 层：row 上写 layout: column 留在 Style 里，S4 据此发现要被忽略的 layout");
 
         // 第 2 层内部：按文件顺序，不按节点 class 数组的顺序
         Stylesheet ba = parse(".b{color:$title;} .a{color:$accent;}");
@@ -350,6 +365,16 @@ public class MssParserTest {
         eq(four.resolve(new Node(NodeType.SPACER, null, List.of("g"), Map.of(), List.of(), null, null)).grow(), 1,
                 "4 层：弹性 spacer 的 grow 是 1，盖过 .g");
         eq(four.resolve(withInt(NodeType.SPACER, "s", "size", 8)).grow(), 5, "4 层：定长 spacer 照常取 #s");
+        Stylesheet loud = parse("#b{grow:3; border:2; background:$accent; hover-background:$title;}"
+                + " #s{width:20; height:30; padding:4;}");
+        Style silent = loud.resolve(withInt(NodeType.BADGE, "b", "count", 0));
+        eq(List.of(silent.grow(), silent.border()), List.of(0, 0), "4 层：count 为 0 的 badge 不分 grow、不画边框");
+        eq(silent.background(), null, "4 层：count 为 0 的 badge 没有底色");
+        eq(silent.hoverBackground(), null, "4 层：count 为 0 的 badge 没有悬停底色");
+        Style flex = loud.resolve(withInt(NodeType.SPACER, "s", "size", 0));
+        eq(List.of(flex.width(), flex.height()), List.of(SizeSpec.fixed(0), SizeSpec.fixed(0)), "4 层：弹性 spacer 是 0×0，盖过 #s");
+        eq(pads(flex), List.of(0, 0, 0, 0), "4 层：弹性 spacer 没有 padding");
+        eq(loud.resolve(withInt(NodeType.SPACER, "s", "size", 8)).width(), SizeSpec.fixed(20), "4 层：定长 spacer 照常取宽");
 
         // 没有继承
         Node child = node(NodeType.TEXT, "child");
@@ -397,6 +422,11 @@ public class MssParserTest {
         bad("gap: 99999999999999999999");
         bad("gap: -99999999999999999999");
         bad("gap: -");
+        bad("gap: +1");
+        bad("color: $TITLE");
+        bad("layout: COLUMN");
+        bad("padding: 1 2 3 4 5 6 7 8");
+        check(errorOf(".e{padding: 1 2 3 4 5 6;}").message().contains("'1 2 3 4 5"), "值超过 4 个词时回显已读到的部分");
     }
 
     // ============================================================
@@ -421,6 +451,11 @@ public class MssParserTest {
         rejects("#{}", "E_MSS_BAD_SELECTOR");
         rejects(";", "E_MSS_BAD_SELECTOR");
         check(errorOf("div{}").message().contains("收到 'div'"), "选择器文案回显收到的原文");
+        check(errorOf("div{}").message().endsWith("收到 'div'"), "不是名字的问题时不带名字规则");
+        check(errorOf(".Title{}").message().endsWith("收到 '.Title'。名字要小写字母开头，后面只能是小写字母、数字、_ 和 -，最长 32"),
+                "名字不合规时补一句名字规则");
+        rejects(".a/**/.b{}", "E_MSS_BAD_SELECTOR");
+        check(errorOf(".a/**/.b{}").message().endsWith("收到 '.a.b'"), "注释隔开的复合选择器按紧贴算，回显拼起来的写法");
 
         rejects(".a > .b{}", "E_MSS_COMBINATOR");
         rejects(".a>.b{}", "E_MSS_COMBINATOR");
@@ -433,6 +468,10 @@ public class MssParserTest {
         rejects(".a , .b{}", "E_MSS_MULTI_SELECTOR");
         rejects(".a::before{}", "E_MSS_PSEUDO");
         rejects(".a :hover{}", "E_MSS_PSEUDO");
+        rejects(".a [x]{}", "E_MSS_COMBINATOR");
+        rejects(".a;", "E_MSS_SYNTAX");
+        rejects(".a}", "E_MSS_SYNTAX");
+        check(errorOf(".a;").message().contains("选择器 '.a' 后面要 '{'"), "合法选择器后面紧贴 ';' 报少了 '{'，不报选择器不合法");
 
         rejects("}", "E_MSS_SYNTAX");
         rejects(".a", "E_MSS_SYNTAX");
@@ -467,6 +506,7 @@ public class MssParserTest {
         rejects(".a{ height: 100%; }", "E_PERCENT_NOT_SUPPORTED");
         rejects(".a{ padding: 2 10%; }", "E_PERCENT_NOT_SUPPORTED");
         rejects(".a{ width: %; }", "E_PERCENT_NOT_SUPPORTED");
+        rejects(".a{ gap: 5%0; }", "E_PERCENT_NOT_SUPPORTED");
 
         rejects(".a{ width: calc(1); }", "E_MSS_BAD_VALUE");
         rejects(".a{ color: rgb(1,2,3); }", "E_MSS_BAD_VALUE");
@@ -485,6 +525,11 @@ public class MssParserTest {
         rejects("．a{}", "E_MSS_SYNTAX");
         check(errorOf(".a{color：$title;}").message().contains("换成半角的 ':'"), "全角冒号提示换成半角");
         check(errorOf(".a{\u3000color: $title;}").message().contains("换成半角的 ' '"), "全角空格提示换成半角");
+        rejects(".a{col\uFF4Fr: $title;}", "E_MSS_SYNTAX");
+        rejects(".t\uFF49tle{}", "E_MSS_SYNTAX");
+        check(errorOf(".a{col\uFF4Fr: $title;}").message().contains("换成半角的 'o'"), "属性名中间的全角字母提示换成半角");
+        check(errorOf(".a{color: $title;\n.b{gap: 1;}").message().contains("漏了 '}'"), "漏写 '}' 时提示补上");
+        check(errorOf(".a{hover: $title;}").message().contains("悬停用 hover-background / hover-color"), "hover 指向两个 hover- 属性");
     }
 
     // ============================================================
@@ -507,6 +552,10 @@ public class MssParserTest {
         eq(pos(errorOf(".a{}\r\n.b{color:#fff;}")), List.of(2, 10), "CRLF 算一次换行，\\r 不另起一行");
         eq(pos(errorOf("\uFEFF.a{color:#fff;}")), List.of(1, 10), "BOM 不占列");
         eq(pos(errorOf(".a{color: $title; /* 中文注释 */ gap: 1%;}")), List.of(1, 35), "中文字符一个算一列");
+        eq(pos(errorOf(".a{/*\uD83D\uDE00*/color:#fff;}")), List.of(1, 16), "代理对算两列（UTF-16 码元）");
+        eq(pos(errorOf(".a{\n color")), List.of(1, 3), "属性名后到文件尾，未闭合仍指向 '{'");
+        eq(pos(errorOf(".a{\n color:")), List.of(1, 3), "冒号后到文件尾，未闭合仍指向 '{'");
+        eq(pos(errorOf(".a{\n color: $title")), List.of(1, 3), "值后到文件尾，未闭合仍指向 '{'");
 
         MssError dup = errorOf(".a{}\n\n  .a{}");
         eq(pos(dup), List.of(3, 3), "重复选择器指向第二次出现");
@@ -524,6 +573,22 @@ public class MssParserTest {
                 "shift 连「上一次」的位置一起挪");
         eq(many.shift(3).line(), 68, "不带位置的错误也挪行");
         eq(many.shift(3).message(), many.message(), "不带位置的文案 shift 后不变");
+        check(((MssError) roundTrip(dup)).shift(1).message().contains("上一次在 2:1"), "序列化往返之后还能 shift");
+    }
+
+    static Object roundTrip(Object o) {
+        try {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            try (java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(bytes)) {
+                out.writeObject(o);
+            }
+            try (java.io.ObjectInputStream in = new java.io.ObjectInputStream(
+                    new java.io.ByteArrayInputStream(bytes.toByteArray()))) {
+                return in.readObject();
+            }
+        } catch (java.io.IOException | ClassNotFoundException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     // ============================================================
@@ -550,6 +615,9 @@ public class MssParserTest {
         MssError huge = errorOf(".a{" + "x".repeat(10_000) + ":1;}");
         check(huge.message().length() < 400, "超长属性名的回显被截断");
         check(!errorOf(".a{\u0001:1;}").message().contains("\u0001"), "控制字符不原样进文案");
+        String bidi = errorOf(".a{color:$title\u202Eeulav;}").message();
+        check(!bidi.contains("\u202E") && bidi.contains("$title\uFFFDeulav"), "双向控制符不原样进文案");
+        check(!errorOf(".a{color:$title\u2028;}").message().contains("\u2028"), "行分隔符不原样进文案");
     }
 
     static void suggests(String typo, String expected) {
@@ -612,8 +680,8 @@ public class MssParserTest {
     static final Map<Code, String> APPENDED = Map.of(
             // §6.6 要求讲清为什么只收语义色
             Code.E_LITERAL_COLOR, "。写死的颜色不会跟着玩家的皮肤和主题变，语义色会",
-            // 名字判据与 NodeParser 相同；不列出来的话 .Title 被拒了也看不出差在哪
-            Code.E_MSS_BAD_SELECTOR, "。名字要小写字母开头，后面只能是小写字母、数字、_ 和 -，最长 32");
+            // 名字不合规时填名字规则（判据与 NodeParser 相同），其余情况填空串
+            Code.E_MSS_BAD_SELECTOR, "%s");
 
     static void templateTable() {
         eq(EnumSet.allOf(Code.class), EnumSet.copyOf(SPEC_6_7.keySet()), "错误码与 §6.7 的表一一对应");
@@ -664,10 +732,36 @@ public class MssParserTest {
             }
             fuzzOne(sb.toString(), mutated);
         }
+        // 规则数在 64 上下、会撞名：参数最多的 DUP 与 TOO_MANY 两条模板只有这样才走得到
+        Map<String, Integer> structured = new TreeMap<>();
+        for (int i = 0; i < 2000; i++) {
+            fuzzOne(structuredSheet(rnd), structured);
+        }
         System.out.println("fuzz（§6.9）：");
         printOutcome("随机字节串 2000 条", randomBytes);
         printOutcome("合法样本变异 2000 条", mutated);
+        printOutcome("55–70 条规则的生成样本 2000 条", structured);
         System.out.println();
+    }
+
+    static final String[] DECLS = {
+            "color: $title;", "padding: 1 2;", "gap: 3;", "width: fill;", "max-lines: none;",
+            "hover-color: $accent;", "layout: row;", "background: none;",
+    };
+
+    static String structuredSheet(Random rnd) {
+        StringBuilder sb = new StringBuilder();
+        int n = 55 + rnd.nextInt(16);
+        for (int i = 0; i < n; i++) {
+            int name = rnd.nextInt(25) == 0 ? rnd.nextInt(i + 1) : i;
+            sb.append(rnd.nextInt(8) == 0 ? '#' : '.').append('r').append(name).append(rnd.nextBoolean() ? " {\n" : "{");
+            for (int k = rnd.nextInt(3); k > 0; k--) {
+                sb.append("  ").append(DECLS[rnd.nextInt(DECLS.length)]).append(rnd.nextBoolean() ? "\n" : " ");
+            }
+            sb.append("}\n");
+        }
+        if (rnd.nextInt(4) == 0) sb.setCharAt(rnd.nextInt(sb.length()), ALPHABET.charAt(rnd.nextInt(ALPHABET.length())));
+        return sb.toString();
     }
 
     static void fuzzOne(String src, Map<String, Integer> outcome) {
@@ -677,12 +771,27 @@ public class MssParserTest {
             key = "解析成功";
         } catch (MssError e) {
             key = "MssError " + e.code();
+            String broken = inconsistency(src, e);
+            if (broken != null) failures.add("fuzz 的错误不自洽（" + broken + "），输入：" + show(src));
         } catch (Throwable t) {
             key = "其他异常 " + t.getClass().getName();
             failures.add("fuzz 抛出了 MssError 以外的异常 " + t + "，输入：" + show(src));
         }
         outcome.merge(key, 1, Integer::sum);
         checks++;
+    }
+
+    /** 行列落在原文里、文案头与 line()/col() 一致、shift 只挪行。都成立返回 null。 */
+    static String inconsistency(String src, MssError e) {
+        String[] lines = src.split("\n", -1);
+        if (e.line() < 1 || e.line() > lines.length || e.col() < 1 || e.col() > lines[e.line() - 1].length() + 1) {
+            return "行列越界 " + e.line() + ":" + e.col();
+        }
+        String head = e.code() == Code.E_MSS_TOO_MANY_RULES ? "ui.mss 规则数 " : "ui.mss " + e.line() + ":" + e.col() + " ";
+        if (!e.message().startsWith(e.code() + "：" + head)) return "文案头与行列不符";
+        MssError moved = e.shift(7);
+        if (moved.line() != e.line() + 7 || moved.col() != e.col() || moved.code() != e.code()) return "shift 之后行列不对";
+        return null;
     }
 
     static void printOutcome(String title, Map<String, Integer> outcome) {

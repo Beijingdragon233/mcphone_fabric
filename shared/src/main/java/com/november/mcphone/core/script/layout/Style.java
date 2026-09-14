@@ -1,7 +1,7 @@
 package com.november.mcphone.core.script.layout;
 
 /**
- * 一个节点叠完四层之后的样式（施工方案 §6.3、§6.5）。18 个属性都有值，不可变。
+ * 一个节点叠完四层之后的样式（施工方案 §6.3、§6.5）。不可变。
  *
  * <p>怎么叠见 {@link Stylesheet#resolve}；属性名到字段的对应只写在 {@link MssParser} 的 SPECS 表里。
  */
@@ -117,6 +117,7 @@ public final class Style {
         hidden = b.hidden;
     }
 
+    /** 只有 box / button 按它排。其余类型的默认值与类型一致，不一致说明作者写了会被忽略的 layout（§6.5 要 warn）。 */
     public Layout layout() {
         return layout;
     }
@@ -210,10 +211,14 @@ public final class Style {
         Builder b = new Builder();
         if (type == null) return b;
         switch (type) {
+            case ROW -> b.layout = Layout.ROW;
+            case STACK -> b.layout = Layout.STACK;
             case SCROLL, LIST -> b.height = SizeSpec.FILL;      // §6.5 height 备注
-            case BUTTON -> {                                     // §5.3
+            case BUTTON -> {                                     // §5.3、§6.2
                 b.padTop = b.padBottom = 2;
                 b.padLeft = b.padRight = 6;
+                b.background = Token.BUTTON;
+                b.hoverBackground(Token.BUTTON_HOVER);
             }
             case DIVIDER -> b.color = Token.SUBTLE;             // §5.2
             default -> { }

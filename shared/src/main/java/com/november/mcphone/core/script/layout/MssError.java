@@ -1,5 +1,6 @@
 package com.november.mcphone.core.script.layout;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -17,8 +18,7 @@ public final class MssError extends RuntimeException {
     /** 错误码与文案。以 {@code ui.mss %d:%d} 开头的模板，头两个参数是出错处的行列。 */
     public enum Code {
         E_MSS_SYNTAX("ui.mss %d:%d 语法错误：%s"),
-        E_MSS_BAD_SELECTOR("ui.mss %d:%d 选择器只能是 .class 或 #id，收到 '%s'。"
-                + "名字要小写字母开头，后面只能是小写字母、数字、_ 和 -，最长 32"),
+        E_MSS_BAD_SELECTOR("ui.mss %d:%d 选择器只能是 .class 或 #id，收到 '%s'%s"),
         E_MSS_COMBINATOR("ui.mss %d:%d 不支持组合选择器（后代/子/兄弟）。给节点直接加 class"),
         E_MSS_MULTI_SELECTOR("ui.mss %d:%d 不支持逗号分隔的多选择器，分开写两条规则"),
         E_MSS_PSEUDO("ui.mss %d:%d 不支持伪类。悬停用 hover-background / hover-color"),
@@ -59,13 +59,13 @@ public final class MssError extends RuntimeException {
     }
 
     /** 原文里的一个位置。当实参传进模板时占两个 %d，并随 {@link #shift} 一起挪。 */
-    record Pos(int line, int col) {
+    record Pos(int line, int col) implements Serializable {
     }
 
     private final Code code;
     private final int line;
     private final int col;
-    private final transient Object[] args;
+    private final Object[] args;
 
     private MssError(Code code, int line, int col, Object[] args) {
         super(render(code, line, col, args));

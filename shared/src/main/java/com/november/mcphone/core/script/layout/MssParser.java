@@ -38,9 +38,15 @@ public final class MssParser {
     /** 回显进文案的原文上限。一整行垃圾原样塞进提示里，提示本身就没法看了。 */
     private static final int ECHO_MAX = 32;
 
+    /** 取值最多的 padding 也只要 4 个词。再多就不必攒着：攒着能被一行超长的值吹起内存。 */
+    private static final int MAX_VALUE_WORDS = 4;
+
+    /** 选择器名不合规时补在 E_MSS_BAD_SELECTOR 后面。 */
+    private static final String NAME_RULE = "。名字要小写字母开头，后面只能是小写字母、数字、_ 和 -，最长 32";
+
     private static final int BAD = Integer.MIN_VALUE;
 
-    /** 18 个属性（§6.5）。加属性只动这张表和 Style 的字段；按表的顺序迭代，列「可用的属性」时每次都一样。 */
+    /** 属性表（§6.5）。加属性只动这张表和 Style 的字段；按表的顺序迭代，列「可用的属性」时每次都一样。 */
     private static final Map<String, PropSpec> SPECS = specs();
 
     private static Map<String, PropSpec> specs() {
@@ -179,7 +185,7 @@ public final class MssParser {
         return new MssParser(Objects.requireNonNull(src, "src")).sheet();
     }
 
-    /** 18 个属性名，按 §6.5 表的顺序。 */
+    /** 属性名，按 §6.5 表的顺序。 */
     static List<String> properties() {
         return List.copyOf(SPECS.keySet());
     }
@@ -198,6 +204,8 @@ public final class MssParser {
         if (len > 0 && src.charAt(0) == '\uFEFF') pos = 1;   // BOM 不占列
         List<Stylesheet.Rule> rules = new ArrayList<>();
         Map<String, Pos> seen = new HashMap<>();
+        int count = 0;
+        Pos firstOverflow = null;
         while (true) {
             skipTrivia();
             if (pos >= len) break;
@@ -207,11 +215,15 @@ public final class MssParser {
             if (prev != null) throw MssError.at(Code.E_MSS_DUP_SELECTOR, at, selector, prev);
             Pos open = here();
             advance();
-            rules.add(new Stylesheet.Rule(selector.charAt(0) == '#', selector.substring(1), at, body(open)));
+            List<Consumer<Style.Builder>> decls = body(open);
+            // 超限之后照样读完（文案报总数），但不再留规则：留着的话内存随条数涨
+            if (++count <= MAX_RULES) {
+                rules.add(new Stylesheet.Rule(selector.charAt(0) == '#', selector.substring(1), at, decls));
+            } else if (firstOverflow == null) {
+                firstOverflow = at;
+            }
         }
-        if (rules.size() > MAX_RULES) {
-            throw MssError.at(Code.E_MSS_TOO_MANY_RULES, rules.get(MAX_RULES).at(), rules.size());
-        }
+        if (firstOverflow != null) throw MssError.at(Code.E_MSS_TOO_MANY_RULES, firstOverflow, count);
         return new Stylesheet(rules);
     }
 
@@ -222,20 +234,17 @@ public final class MssParser {
         char c = src.charAt(pos);
         if (c == '}') throw syntax(at, "多出来的 '}'");
         if (fullWidth(c)) throw halfWidthHint(at, c);
-        if (c != '.' && c != '#') throw badSelector(at, start);
+        if (c != '.' && c != '#') throw badSelector(at, "", start, false);
         advance();
         int nameStart = pos;
         while (pos < len && identPart(src.charAt(pos))) advance();
-        if (!nodeName(src.substring(nameStart, pos))) throw badSelector(at, start);
+        if (pos < len && fullWidth(src.charAt(pos))) throw halfWidthHint(here(), src.charAt(pos));
+        if (!nodeName(src.substring(nameStart, pos))) throw badSelector(at, "", start, true);
         String selector = src.substring(start, pos);
 
-        // 紧贴在名字后面的 .x / #x / [x] / * 是复合选择器；隔着空白的另算组合子
-        if (pos < len) {
-            char n = src.charAt(pos);
-            if (!space(n) && !commentAt(pos) && !fullWidth(n) && "{:,>+~".indexOf(n) < 0) {
-                throw badSelector(at, start);
-            }
-        }
+        // 注释在 CSS 里什么都不算，.a/**/.b 仍是紧贴的复合选择器；隔着空白才算组合子
+        skipComments();
+        if (pos < len && ".#[*".indexOf(src.charAt(pos)) >= 0) throw badSelector(at, selector, pos, false);
 
         skipTrivia();
         if (pos >= len) throw syntax(here(), "选择器 '" + selector + "' 后面要 '{'");
@@ -243,7 +252,7 @@ public final class MssParser {
         if (n == '{') return selector;
         if (n == ':') throw MssError.at(Code.E_MSS_PSEUDO, here());
         if (n == ',') throw MssError.at(Code.E_MSS_MULTI_SELECTOR, here());
-        if (">+~*.#".indexOf(n) >= 0 || identStart(n)) throw MssError.at(Code.E_MSS_COMBINATOR, here());
+        if (">+~*.#[".indexOf(n) >= 0 || identStart(n)) throw MssError.at(Code.E_MSS_COMBINATOR, here());
         if (fullWidth(n)) throw halfWidthHint(here(), n);
         throw syntax(here(), "选择器 '" + selector + "' 后面要 '{'");
     }
@@ -267,10 +276,11 @@ public final class MssParser {
         Pos at = here();
         char c = src.charAt(pos);
         if (fullWidth(c)) throw halfWidthHint(at, c);
-        if (c == '.' || c == '#') throw syntax(at, "规则里不能再套规则");
+        if (c == '.' || c == '#') throw syntax(at, "规则里不能再套规则；如果是上一条规则漏了 '}'，补上它");
         if (!identPart(c)) throw syntax(at, "这里要属性名，收到 '" + echo(codePointAt(pos)) + "'");
         int start = pos;
         while (pos < len && identPart(src.charAt(pos))) advance();
+        if (pos < len && fullWidth(src.charAt(pos))) throw halfWidthHint(here(), src.charAt(pos));
         String name = src.substring(start, pos);
         PropSpec spec = SPECS.get(name);
         if (spec == null) throw MssError.at(Code.E_UNKNOWN_PROPERTY, at, echo(name), suggestion(name));
@@ -297,7 +307,11 @@ public final class MssParser {
             if (valueAt == null) valueAt = wordAt;
             String w = word();
             if (w.charAt(0) == '#') throw MssError.at(Code.E_LITERAL_COLOR, wordAt, echo(w));
-            if (w.endsWith("%")) throw MssError.at(Code.E_PERCENT_NOT_SUPPORTED, wordAt);
+            if (w.indexOf('%') >= 0) throw MssError.at(Code.E_PERCENT_NOT_SUPPORTED, wordAt);
+            if (words.size() == MAX_VALUE_WORDS) {
+                throw MssError.at(Code.E_MSS_BAD_VALUE, valueAt, name,
+                        echo(String.join(" ", words) + " " + w), spec.allowed());
+            }
             words.add(w);
         }
         if (valueAt == null) valueAt = here();
@@ -327,9 +341,17 @@ public final class MssParser {
     }
 
     private void skipTrivia() {
+        skip(true);
+    }
+
+    private void skipComments() {
+        skip(false);
+    }
+
+    private void skip(boolean spaces) {
         while (pos < len) {
             char c = src.charAt(pos);
-            if (space(c)) {
+            if (spaces && space(c)) {
                 advance();
             } else if (c == '/' && pos + 1 < len && src.charAt(pos + 1) == '/') {
                 while (pos < len && src.charAt(pos) != '\n') advance();
@@ -411,20 +433,22 @@ public final class MssParser {
         return syntax(at, "全角字符 '" + c + "'，换成半角的 '" + half + "'");
     }
 
-    /** 回显从 start 起的一段原文：到空白、花括号、';'、','、注释开头为止，至少一个字符。 */
-    private MssError badSelector(Pos at, int start) {
-        int end = start;
-        while (end < len && end - start <= ECHO_MAX) {
+    /** 回显 head 加上从 from 起的一段原文：到空白、花括号、';'、','、注释开头为止，至少一个字符。 */
+    private MssError badSelector(Pos at, String head, int from, boolean nameRule) {
+        int end = from;
+        while (end < len && end - from <= ECHO_MAX) {
             char c = src.charAt(end);
             if (space(c) || c == '{' || c == '}' || c == ';' || c == ',' || commentAt(end)) break;
             end++;
         }
-        if (end == start) end = start + Character.charCount(src.codePointAt(start));
-        return MssError.at(Code.E_MSS_BAD_SELECTOR, at, echo(src.substring(start, end)));
+        if (end == from && from < len) end = from + Character.charCount(src.codePointAt(from));
+        return MssError.at(Code.E_MSS_BAD_SELECTOR, at, echo(head + src.substring(from, end)), nameRule ? NAME_RULE : "");
     }
 
-    /** 编辑距离 2 以内最近的属性名（同距离取表里靠前的）；没有就把 18 个全列出来。 */
+    /** 编辑距离 2 以内最近的属性名（同距离取表里靠前的）；没有就全列出来。 */
     private static String suggestion(String name) {
+        // §6.2 正文写过 hover，而它离哪个属性都超过 2
+        if (name.equals("hover")) return "，悬停用 hover-background / hover-color";
         String best = null;
         int bestDistance = SUGGEST_DISTANCE + 1;
         for (String p : SPECS.keySet()) {
@@ -457,14 +481,17 @@ public final class MssParser {
         return prev[b.length()];
     }
 
-    /** 截到 ECHO_MAX，控制字符换成 U+FFFD：换行塞进单行提示会把提示撕开。 */
+    /** 截到 ECHO_MAX，控制、格式与行分隔字符换成 U+FFFD：换行会把单行提示撕开，双向控制符能让提示读起来和原文不同。 */
     private static String echo(String s) {
         int n = Math.min(s.length(), ECHO_MAX);
         if (n < s.length() && Character.isHighSurrogate(s.charAt(n - 1))) n--;
         StringBuilder sb = new StringBuilder(n + 1);
         for (int i = 0; i < n; i++) {
             char c = s.charAt(i);
-            sb.append(c < 0x20 || c == 0x7F ? '\uFFFD' : c);
+            int type = Character.getType(c);
+            boolean hidden = type == Character.CONTROL || type == Character.FORMAT
+                    || type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR;
+            sb.append(hidden ? '\uFFFD' : c);
         }
         if (n < s.length()) sb.append('…');
         return sb.toString();

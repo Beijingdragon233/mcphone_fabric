@@ -37,13 +37,13 @@ public final class Stylesheet {
         return classRules.size() + byId.size();
     }
 
-    /** 只套这一条 class 规则、不看节点类型时的样式。没有这条规则返回 null。 */
-    public Style forClass(String name) {
+    /** 只套这一条 class 规则、不看节点类型时的样式，测试用：任何真实节点都要走 {@link #resolve}。没有这条规则返回 null。 */
+    Style forClass(String name) {
         return alone(byClass.get(name));
     }
 
-    /** 只套这一条 id 规则、不看节点类型时的样式。没有这条规则返回 null。 */
-    public Style forId(String name) {
+    /** 同 {@link #forClass}，取 id 规则。 */
+    Style forId(String name) {
         return alone(byId.get(name));
     }
 
@@ -69,16 +69,28 @@ public final class Stylesheet {
     private static void implied(Node node, Style.Builder b) {
         switch (node.type()) {
             case BADGE -> {
+                // 留下 grow、边框或底色中的任何一样，count 为 0 的角标都会占位或画出一块色
                 if (node.num("count", 0) == 0) {
-                    b.width = b.height = Style.SizeSpec.fixed(0);
-                    b.padTop = b.padRight = b.padBottom = b.padLeft = 0;
+                    collapse(b);
+                    b.grow = 0;
+                    b.border = 0;
+                    b.background = null;
+                    b.hoverBackground(null);
                 }
             }
             case SPACER -> {
-                if (node.num("size", 0) == 0) b.grow = 1;
+                if (node.num("size", 0) == 0) {
+                    collapse(b);
+                    b.grow = 1;
+                }
             }
             default -> { }
         }
+    }
+
+    private static void collapse(Style.Builder b) {
+        b.width = b.height = Style.SizeSpec.fixed(0);
+        b.padTop = b.padRight = b.padBottom = b.padLeft = 0;
     }
 
     private static Style alone(Rule r) {
