@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * wiki 附属接口文档里「聊天」一节示例的可编译副本，只要求编得过。
+ * api.chat 的用法示例，只要求编得过：谁改了 api.chat 的签名，这里当场编不过。
  *
  * 放在仓库根的 docs/ 而不是 neoforge 层的 AddonApiExamples 里：api.chat 与加载器无关，
  * 放进层里 1.20.1-forge 就不编它，签名在那个目标上改了也没人知道。

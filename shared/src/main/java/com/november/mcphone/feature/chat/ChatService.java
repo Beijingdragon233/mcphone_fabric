@@ -65,16 +65,20 @@ public final class ChatService {
         String text = TextSanitizer.sanitize(rawText, TextBody.MAX_LENGTH);
         if (text.isEmpty()) return null;
 
-        return storeText(sender, targetId, text);
-    }
-
-    /** 落一条已经过门禁、已经清洗的文本。界面那条超长截断，附属接口那条超长拒收，所以清洗不放这里 */
-    public static ChatMessage storeText(ServerPlayer sender, UUID targetId, String text) {
-        ChatMessage message = ChatMessage.text(sender.getUUID(), text, System.currentTimeMillis());
-        store(sender, targetId, message);
+        ChatMessage message = storeText(sender, targetId, text);
 
         // 自己发的对自己是已读的，否则对方一回复就把中间这段全算成未读
         markReadAt(sender, targetId, message.time());
+        return message;
+    }
+
+    /**
+     * 落一条已经过门禁、已经清洗的文本，不动已读进度。
+     * 附属代发时发件人并没在看这个会话，在这里标已读会把对方发来的未读悄悄清零，所以标已读只留在界面那条路上。
+     */
+    public static ChatMessage storeText(ServerPlayer sender, UUID targetId, String text) {
+        ChatMessage message = ChatMessage.text(sender.getUUID(), text, System.currentTimeMillis());
+        store(sender, targetId, message);
         return message;
     }
 

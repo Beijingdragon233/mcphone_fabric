@@ -26,7 +26,7 @@ public final class ChatDelivery {
         push = p;
     }
 
-    /** 没装就抛：落库之前问，否则消息存下了、在线的人却收不到，而且不报错 */
+    /** 没装就抛。发消息的一方要在落库之前问：deliver 里也会抛，但那时消息已经存下了 */
     public static void requireInstalled() {
         if (push == null) {
             throw new IllegalStateException("[MCphone] 聊天推送没装上：这个平台的 ChatNetworking.register 没跑到");

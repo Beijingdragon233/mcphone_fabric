@@ -9,6 +9,9 @@ public enum SendResult {
     /** 已存进聊天记录，收件人不在线；他下次上线打开聊天就能看到 */
     STORED_OFFLINE,
 
+    /** 传进来的发件人已经下线，或者是重生前的旧实体。什么都没存 */
+    SENDER_OFFLINE,
+
     /** 发件人和收件人是同一个人 */
     SELF,
 

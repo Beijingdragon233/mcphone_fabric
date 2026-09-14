@@ -11,6 +11,7 @@ import com.november.mcphone.feature.chat.TextBody;
 import com.november.mcphone.util.TextSanitizer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.players.GameProfileCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -43,8 +44,11 @@ public final class PhoneChat {
     }
 
     /**
-     * 按名字找，不分大小写。先找在线的；不在线就查 MCphone 的名字缓存，缓存里对上不止一个人
-     * （有人改过名）时返回空，不猜。原版资料缓存不查：它按名字查不到时会去问 Mojang，卡住主线程。
+     * 按名字找，不分大小写。先找在线的。
+     *
+     * <p>不在线时查的是 MCphone 最后一次见到的名字：对上不止一个人、或原版资料缓存里这个 UUID 记着别的名字，
+     * 都返回空。改了名却两边都没来得及更新的人仍可能被查成旧名字，拿结果决定钱给谁之前要让玩家确认。
+     * 不按名字查原版资料缓存：它查不到时会去问 Mojang，卡住主线程。
      */
     public static Optional<PhoneContact> findPlayer(MinecraftServer server, String name) {
         Objects.requireNonNull(name, "name");
@@ -56,7 +60,13 @@ public final class PhoneChat {
 
         List<UUID> cached = friends.idsNamed(name);
         if (cached.size() != 1) return Optional.empty();
-        return Optional.of(contact(server, friends, cached.get(0)));
+        UUID id = cached.get(0);
+
+        GameProfileCache profiles = server.getProfileCache();
+        if (profiles != null && profiles.get(id).filter(p -> !p.getName().equalsIgnoreCase(name)).isPresent()) {
+            return Optional.empty();
+        }
+        return Optional.of(contact(server, friends, id));
     }
 
     /** 这个玩家的好友，按名字排序。玩家不在线也能查 */
@@ -90,12 +100,13 @@ public final class PhoneChat {
 
     /**
      * 两人之间的私信会话。会话随好友关系存在，不需要也不能单独创建：是好友就有，不是就返回空。
-     * 未读数是 self 的已读进度算出来的，所以 self 得是在线的 ServerPlayer。
+     * 未读数按 self 的已读进度算，所以 self 得是此刻在线的那个实体；已下线的旧引用也返回空。
      */
     public static Optional<PhoneConversation> conversation(ServerPlayer self, UUID peer) {
         Objects.requireNonNull(peer, "peer");
         MinecraftServer server = self.server;
         requireServerThread(server);
+        if (!isCurrent(self)) return Optional.empty();
 
         UUID selfId = self.getUUID();
         FriendData friends = FriendData.get(server);
@@ -108,16 +119,20 @@ public final class PhoneChat {
     }
 
     /**
-     * 以 sender 的名义给 recipient 发一条文本私信，和他在手机上自己发的一样：存进聊天记录，
-     * 双方在线就立刻出现在界面上并弹通知。
+     * 以 sender 的名义给 recipient 发一条文本私信：存进聊天记录，双方在线就立刻出现在界面上，收件人弹通知。
      *
-     * <p>§ 格式符与控制字符会被去掉、首尾空白会被裁掉，剩下的超过 {@link #maxTextLength()} 就整条拒收。
+     * <p>收件人看到的与 sender 亲手发的一模一样，分不出是附属代发的；sender 自己的聊天界面里也会出现这一条。
+     * 不动 sender 的已读进度。
+     *
+     * <p>sender 必须是此刻在线的那个实体，缓存下来的旧引用返回 SENDER_OFFLINE。
+     * § 格式符与控制字符会被去掉、首尾空白会被裁掉，剩下的超过 {@link #maxTextLength()} 就整条拒收。
      * 每对会话只留最近 100 条，发得多会把两人真正的聊天挤掉。
      */
     public static SendResult sendText(ServerPlayer sender, UUID recipient, String text) {
         Objects.requireNonNull(recipient, "recipient");
         MinecraftServer server = sender.server;
         requireServerThread(server);
+        if (!isCurrent(sender)) return SendResult.SENDER_OFFLINE;
 
         UUID senderId = sender.getUUID();
         if (senderId.equals(recipient)) return SendResult.SELF;
@@ -133,6 +148,12 @@ public final class PhoneChat {
         return ChatDelivery.deliver(sender, recipient, message)
                 ? SendResult.DELIVERED
                 : SendResult.STORED_OFFLINE;
+    }
+
+    /** 下线或重生之后，附属手里那个旧实体的背包与已读进度都不再是这个玩家的，写进去会丢 */
+    private static boolean isCurrent(ServerPlayer player) {
+        return !player.hasDisconnected()
+                && player.server.getPlayerList().getPlayer(player.getUUID()) == player;
     }
 
     private static PhoneContact contact(MinecraftServer server, FriendData friends, UUID id) {

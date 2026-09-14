@@ -22,7 +22,7 @@ public final class PhoneContact {
         return id;
     }
 
-    /** 在线时是真名；离线时是最后一次见到的名字，实在查不到是 UUID 前 8 位。最长 16 个字符 */
+    /** 在线时是真名；离线时是最后一次见到的名字，实在查不到是 UUID 前 8 位。离线模式与 Geyser 的名字可能超过 16 个字符 */
     public String name() {
         return name;
     }
