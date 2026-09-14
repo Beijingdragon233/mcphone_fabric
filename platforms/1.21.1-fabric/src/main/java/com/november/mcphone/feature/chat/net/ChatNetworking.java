@@ -5,6 +5,7 @@ import com.november.mcphone.feature.chat.ChatImage;
 import com.november.mcphone.feature.chat.ChatImageStore;
 import com.november.mcphone.feature.chat.ConversationKey;
 import com.november.mcphone.feature.chat.ChatImageUploads;
+import com.november.mcphone.feature.chat.ChatDelivery;
 import com.november.mcphone.feature.chat.ChatMessage;
 import com.november.mcphone.feature.chat.ChatService;
 import com.november.mcphone.feature.chat.ChatOutcome;
@@ -27,6 +28,10 @@ public final class ChatNetworking {
 
     /** 由 NetworkHandler.register 调用 */
     public static void register() {
+        // 共享代码（PhoneChat）发私信也走这一步推送，见 ChatDelivery
+        ChatDelivery.install((player, peer, message) ->
+                MCphoneNetwork.sendToPlayer(player, new NewMessagePacket(peer, message)));
+
         MCphoneNetwork.registerToServer(
                 RequestConversationsPacket.TYPE,
                 RequestConversationsPacket.STREAM_CODEC,
@@ -155,15 +160,7 @@ public final class ChatNetworking {
         ChatMessage message = ChatService.sendMessage(sender, packet.target(), packet.text());
         if (message == null) return;
 
-        // 回声给发件人：站在他的角度，对端是收件人
-        MCphoneNetwork.sendToPlayer(sender, new NewMessagePacket(packet.target(), message));
-
-        // 收件人在线才推送；离线的话消息已落库，上线拉列表时会看到
-        ServerPlayer receiver = sender.server.getPlayerList().getPlayer(packet.target());
-        if (receiver != null) {
-            MCphoneNetwork.sendToPlayer(receiver,
-                    new NewMessagePacket(sender.getUUID(), message));
-        }
+        ChatDelivery.deliver(sender, packet.target(), message);
     }
 
     /**
@@ -238,18 +235,8 @@ public final class ChatNetworking {
                     return;
                 }
 
-                // 与文本消息同一条路：发件人也靠回声显示自己那条。
-                // 写盘期间他可能已经退出去了，那就只落消息不回声——下次上线拉历史照样看得见
-                if (!sender.hasDisconnected()) {
-                    MCphoneNetwork.sendToPlayer(sender,
-                            new NewMessagePacket(upload.target(), message));
-                }
-
-                ServerPlayer receiver = server.getPlayerList().getPlayer(upload.target());
-                if (receiver != null) {
-                    MCphoneNetwork.sendToPlayer(receiver,
-                            new NewMessagePacket(sender.getUUID(), message));
-                }
+                // 与文本消息同一条路：发件人也靠回声显示自己那条
+                ChatDelivery.deliver(sender, upload.target(), message);
             });
         });
     }

@@ -21,8 +21,9 @@ public final class MCphoneApi {
      *          IAppSource / AppInfo / ICost / ItemCost / EmcCost
      *          IAppPriceProvider / IEmcWallet / EmcWallets
      *   2  —— PhoneMultiLineEditBox（1.10.4）、IPhoneApp.opensInsidePhone()
+     *   3  —— api.chat：PhoneChat / PhoneContact / PhoneConversation / ContactRelation / SendResult
      *
-     * 【这个值是在静态块里赋的，别改成 {@code = 2}】
+     * 【这个值是在静态块里赋的，别改成 {@code = 3}】
      *
      * 写成声明式里的字面量，它就成了【编译期常量】，javac 会把它内联进读它的那个类：附属编译
      * 那一刻，{@code MCphoneApi.VERSION >= 2} 里的 VERSION 就被换成了字面量，附属的字节码里连
@@ -48,7 +49,7 @@ public final class MCphoneApi {
 
     static {
         // 【别把这一句挪回上面的声明里】——那样它就成了编译期常量，会被内联进附属，理由见上
-        VERSION = 2;
+        VERSION = 3;
     }
 
 }
