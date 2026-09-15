@@ -146,9 +146,12 @@ public final class Statements {
             if (s instanceof Assign a) {
                 Object v = a.value().run(c);
                 Object old = scratch.get(a.key());
-                if (!Objects.equals(StateRules.kind(old), StateRules.kind(v))) {
+                if (old == null || !Objects.equals(StateRules.kind(old), StateRules.kind(v))) {
                     return failed(c, a.key() + " 是 " + Values.kind(old) + "，不能写入 " + Values.kind(v));
                 }
+                // §9.7 的值规则不只管初值：放过的话数组会变得不同构、字符串超过 64 字
+                String why = StateRules.check(v);
+                if (why != null) return failed(c, a.key() + " 写入的值不合规：" + why);
                 scratch.put(a.key(), v);
                 changed.add(a.key());
             } else if (s instanceof Step st) {

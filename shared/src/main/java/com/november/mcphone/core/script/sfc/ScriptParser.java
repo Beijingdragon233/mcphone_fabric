@@ -20,6 +20,16 @@ final class ScriptParser {
 
     /** 块内容的初始 state。行号从块内第 1 行起，由 {@link SfcCompiler} 加偏移。内容为空时是空表。 */
     static Map<String, Object> parse(String content) {
+        try {
+            return literalState(content);
+        } catch (SfcError e) {
+            // 小数、中文键名、不认识的转义也是「其他语法」（§9.7），不报成表达式语法错
+            if (e.code() == Code.E_EXPR_SYNTAX) throw SfcError.at(Code.E_SCRIPT_P0_SUBSET, e.line(), e.col());
+            throw e;
+        }
+    }
+
+    private static Map<String, Object> literalState(String content) {
         ExprParser p = new ExprParser(content, 1, 1, true);
         if (p.peek().kind() == 'e') return Map.of();
 

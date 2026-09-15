@@ -13,7 +13,7 @@ public final class LayoutNode {
     /**
      * 重排后找回运行时状态用的 key（§7.7）。有 id 时是 {@code #id}，否则是从最近的带 id 祖先（或根）起的路径，
      * 如 {@code #feed.children[2]}；路径用原始下标，兄弟节点被 showIf 藏起来时不会错位。模板写了 {@code :key} 的节点
-     * 用 {@code key[值]} 代替下标，列表增删时不错位。
+     * 用 {@code key[长度:值]} 代替下标，列表增删时不错位；IR 的 JSON 形态没有 key 字段，只有模板产出的树有。
      */
     public final String key;
     public final List<LayoutNode> children = new ArrayList<>();

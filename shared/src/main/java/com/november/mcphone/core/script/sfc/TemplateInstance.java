@@ -23,9 +23,6 @@ import java.util.Set;
 /**
  * 一页模板的实例化（施工方案 §9.9）。每次重排调一次 {@link #instantiate}：v-if 过滤、v-for 展开成真实的兄弟节点、
  * 绑定求值，产出一棵普通的 Node 树 —— 布局引擎永远看到静态树，不知道 v-for 存在，单遍布局才成立。
- *
- * <p>点击动作不进 Node：{@code @click} 的值是语句，§4.5 的 onClick 装不下。按节点对象查 {@link #clickOf}，
- * 所以要用同一次 instantiate 产出的节点去查。
  */
 public final class TemplateInstance {
 
@@ -35,13 +32,76 @@ public final class TemplateInstance {
 
     private final CompiledTemplate compiled;
     private final String file;
-    private Map<Node, Statements.Bound> clicks = new IdentityHashMap<>();
-    private List<String> warnings = List.of();
-    private boolean truncated;
 
     public TemplateInstance(CompiledTemplate compiled, String file) {
         this.compiled = Objects.requireNonNull(compiled, "compiled");
         this.file = Objects.requireNonNull(file, "file");
+    }
+
+    /**
+     * 一次实例化的产物。点击动作不进 Node：{@code @click} 的值是语句，§4.5 的 onClick 装不下，所以挂在产出它的这棵树上，
+     * 按节点对象查。拿哪棵树的 LayoutNode 去点，就用哪棵树的 Tree —— 两次实例化之间节点对象不通用。
+     */
+    public static final class Tree {
+        private final Node root;
+        private final List<String> warnings;
+        private final boolean truncated;
+        private final Map<Node, Statements.Bound> clicks;
+        private final String file;
+
+        private Tree(Node root, List<String> warnings, boolean truncated, Map<Node, Statements.Bound> clicks, String file) {
+            this.root = root;
+            this.warnings = warnings;
+            this.truncated = truncated;
+            this.clicks = clicks;
+            this.file = file;
+        }
+
+        public Node root() {
+            return root;
+        }
+
+        /** 这次实例化的 warn，去重后普通的最多 {@value EvalContext#MAX_WARNINGS} 条，截断与预算用完的另算、不丢。 */
+        public List<String> warnings() {
+            return warnings;
+        }
+
+        public boolean truncated() {
+            return truncated;
+        }
+
+        /** 这个节点的 @click，没有返回 null。 */
+        public Statements.Bound clickOf(Node node) {
+            return clicks.get(node);
+        }
+
+        /**
+         * 点了 hit 之后改 state（§9.4.6）：toggle 把 bind 取反、tab-bar 把 bind 设成 segment，然后执行 @click。
+         * 两步在一份副本上做，@click 任一条失败时 bind 也不写（§9.6 整组不执行）。可不可用由调用方先判（Renderer.isEnabled）。
+         * 这个节点既没有 bind 也没有 @click 时返回 null。
+         */
+        public Statements.Outcome click(Node hit, UiState state, int segment) {
+            Statements.Bound bound = clicks.get(hit);
+            String bind = hit.str("bind", null);
+            boolean binds = bind != null && state.get(bind) != null
+                    && (hit.type() == NodeType.TOGGLE || hit.type() == NodeType.TAB_BAR);
+            if (!binds && bound == null) return null;
+            UiState trial = UiState.of(state.values());
+            if (binds) {
+                if (hit.type() == NodeType.TOGGLE) {
+                    trial.toggle(bind);
+                } else {
+                    trial.set(bind, segment);
+                }
+            }
+            Statements.Outcome outcome = bound == null
+                    ? new Statements.Outcome(true, false, false, null, List.of())
+                    : bound.run(trial, file);
+            if (outcome.applied()) {
+                for (Map.Entry<String, Object> e : trial.values().entrySet()) state.set(e.getKey(), e.getValue());
+            }
+            return outcome;
+        }
     }
 
     /** 一次实例化的现场：节点预算、已用过的 id、点击表。 */
@@ -52,30 +112,14 @@ public final class TemplateInstance {
         final Map<Node, Statements.Bound> clicks = new IdentityHashMap<>();
     }
 
-    /** 按当前 state 产出 Node 树。不抛：超限截断、求值出错降级，原因见 {@link #warnings()}。 */
-    public Node instantiate(UiState state) {
+    /** 按当前 state 产出一棵树。不抛：超限截断、求值出错降级，原因在 {@link Tree#warnings()}。 */
+    public Tree instantiate(UiState state) {
         EvalContext c = new EvalContext(state.values(), file);
+        c.line = compiled.root().line();
         Pass pass = new Pass();
         Node root = node(compiled.root(), c, pass, null);
-        if (pass.truncated) c.warn("节点超过 " + NodeParser.MAX_NODES + " 个，多出来的没有进树");
-        clicks = pass.clicks;
-        warnings = c.warnings();
-        truncated = pass.truncated;
-        return root;
-    }
-
-    /** 这个节点的 @click，没有返回 null。toggle / tab-bar 的 bind 写入之后再执行它（§9.4.6）。 */
-    public Statements.Bound clickOf(Node node) {
-        return clicks.get(node);
-    }
-
-    /** 上一次实例化的 warn，去重后最多 {@value EvalContext#MAX_WARNINGS} 条。 */
-    public List<String> warnings() {
-        return warnings;
-    }
-
-    public boolean truncated() {
-        return truncated;
+        if (pass.truncated) c.warnAlways("节点超过 " + NodeParser.MAX_NODES + " 个，多出来的没有进树");
+        return new Tree(root, c.warnings(), pass.truncated, pass.clicks, file);
     }
 
     public String file() {
@@ -84,7 +128,7 @@ public final class TemplateInstance {
 
     // ============================================================
 
-    /** 预算用完时返回 null。siblingKeys 是同一次 v-for 展开里已经用过的 :key。 */
+    /** 预算用完时返回 null。siblingKeys 是同一个父节点下已经用过的 :key。 */
     private Node node(Element e, EvalContext c, Pass pass, Set<String> siblingKeys) {
         if (pass.budget <= 0) {
             pass.truncated = true;
@@ -100,8 +144,11 @@ public final class TemplateInstance {
         }
         if (e.key() != null) {
             String key = Values.text(e.key().run(c));
-            if (siblingKeys != null && !siblingKeys.add(key)) {
-                c.warn("<" + tag + "> 的 :key '" + key + "' 在同一个 v-for 里重复，这一项按下标找回滚动位置");
+            // 空 key（null、数组、对象都文本化成空串）按下标找回；同一个父节点下重复的也按下标，不然两个列表共用滚动位置
+            if (key.isEmpty()) {
+                c.warn("<" + tag + "> 的 :key 是空的，按下标找回滚动位置");
+            } else if (siblingKeys != null && !siblingKeys.add(key)) {
+                c.warn("<" + tag + "> 的 :key '" + key + "' 在同一个父节点下重复，这一项按下标找回滚动位置");
             } else {
                 props.put("key", key);
             }
@@ -114,19 +161,24 @@ public final class TemplateInstance {
         }
 
         List<Node> kids = new ArrayList<>();
-        for (Child ch : e.children()) expand(ch, c, pass, kids);
+        Set<String> keys = new HashSet<>();
+        for (Child ch : e.children()) expand(ch, c, pass, kids, keys);
 
         Node out = new Node(e.type(), id, e.classes(), Collections.unmodifiableMap(props), List.copyOf(kids), null, null);
         if (e.click() != null) pass.clicks.put(out, new Statements.Bound(e.click(), c.boundNames(), c.boundValues()));
         return out;
     }
 
-    private void expand(Child ch, EvalContext c, Pass pass, List<Node> out) {
+    private void expand(Child ch, EvalContext c, Pass pass, List<Node> out, Set<String> keys) {
         if (ch instanceof Chain chain) {
+            // 求值预算用完后条件都得 null，按假走会翻到 v-else、画出与 state 相反的分支：整串都不进树
+            if (c.exhausted()) return;
             for (int i = 0; i < chain.branches().size(); i++) {
                 Expr.Compiled cond = chain.conditions().get(i);
-                if (cond == null || Values.truthy(cond.run(c))) {
-                    add(out, node(chain.branches().get(i), c, pass, null));
+                boolean taken = cond == null || Values.truthy(cond.run(c));
+                if (c.exhausted()) return;
+                if (taken) {
+                    add(out, node(chain.branches().get(i), c, pass, keys));
                     return;
                 }
             }
@@ -141,15 +193,15 @@ public final class TemplateInstance {
         } else {
             Element e = (Element) ch;
             if (e.vFor() == null) {
-                add(out, node(e, c, pass, null));
+                add(out, node(e, c, pass, keys));
             } else {
-                forEach(e, c, pass, out);
+                forEach(e, c, pass, out, keys);
             }
         }
     }
 
     /** v-for 先、v-if 后（对每一项判断，§9.4.4）。 */
-    private void forEach(Element e, EvalContext c, Pass pass, List<Node> out) {
+    private void forEach(Element e, EvalContext c, Pass pass, List<Node> out, Set<String> keys) {
         CompiledTemplate.ForSpec spec = e.vFor();
         Object source = spec.source().run(c);
         List<?> items = null;
@@ -165,10 +217,9 @@ public final class TemplateInstance {
             count = 0;
         }
         if (count > MAX_FOR_ITEMS) {
-            c.warn("v-for 有 " + count + " 项，截到 " + MAX_FOR_ITEMS);
+            c.warnAlways("v-for 有 " + count + " 项，截到 " + MAX_FOR_ITEMS);
             count = MAX_FOR_ITEMS;
         }
-        Set<String> keys = new HashSet<>();
         for (int i = 0; i < count; i++) {
             if (pass.budget <= 0) {
                 pass.truncated = true;

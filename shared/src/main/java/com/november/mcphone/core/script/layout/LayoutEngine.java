@@ -105,8 +105,10 @@ public final class LayoutEngine {
             Node c = kids.get(i);
             Style cs = sheet.resolve(c);
             if (!visible(c, cs, state)) continue;
-            // 模板的 :key 进 props.key（§9.4.5）：列表增删时按它找回滚动位置，不按会错位的下标
-            String slot = c.props().get("key") instanceof String k ? "key[" + k + "]" : "children[" + i + "]";
+            // 模板的 :key 进 props.key（§9.4.5）：列表增删时按它找回滚动位置，不按会错位的下标。
+            // 带上长度：key 值里可以有 ] 和 .，不带的话 "a].children[0" 会和别的节点的路径拼成同一串
+            String slot = c.props().get("key") instanceof String k && !k.isEmpty()
+                    ? "key[" + k.length() + ":" + k + "]" : "children[" + i + "]";
             String childKey = c.id() != null ? "#" + c.id() : (key.isEmpty() ? "" : key + ".") + slot;
             ln.children.add(build(c, cs, sheet, state, childKey, depth + 1, budget));
         }

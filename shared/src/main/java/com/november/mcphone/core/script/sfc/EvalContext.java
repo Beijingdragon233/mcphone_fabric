@@ -68,7 +68,7 @@ final class EvalContext {
         if (evals >= MAX_EVALS) {
             if (!exhausted) {
                 exhausted = true;
-                warn("一次重排求值超过 " + MAX_EVALS + " 次，剩下的表达式按 null 处理");
+                warnAlways("一次重排求值超过 " + MAX_EVALS + " 次，剩下的表达式按 null 处理");
             }
             return false;
         }
@@ -82,6 +82,11 @@ final class EvalContext {
 
     void warn(String reason) {
         if (warnings.size() < MAX_WARNINGS) warnings.add(file + ":" + line + " " + reason);
+    }
+
+    /** 截断、求值预算用完这类「页面少了一截」的 warn 不受条数上限挡：前面刷满 32 条后它们会悄悄消失。 */
+    void warnAlways(String reason) {
+        warnings.add(file + ":" + line + " " + reason);
     }
 
     List<String> warnings() {

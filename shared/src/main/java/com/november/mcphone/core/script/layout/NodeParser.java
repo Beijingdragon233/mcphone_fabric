@@ -166,7 +166,9 @@ public final class NodeParser {
             Object value = stateValue(e.getValue(), path, key);
             String why = StateRules.check(value);
             if (why != null) {
-                throw fail(Code.E_BAD_VALUE, path, "state", path, key, e.getValue().toString(), why);
+                String written = e.getValue().toString();
+                throw fail(Code.E_BAD_VALUE, path, "state", path, key,
+                        written.length() > 32 ? written.substring(0, 32) + "…" : written, why);
             }
             value = StateRules.freeze(value);
             stateValues.put(key, value);

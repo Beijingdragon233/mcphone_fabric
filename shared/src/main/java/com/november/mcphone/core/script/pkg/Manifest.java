@@ -19,6 +19,9 @@ import java.util.regex.Pattern;
  * manifest.json（施工方案 §3.2）。字段校验全部硬失败，没有"尽力而为"的分支。
  *
  * <p>{@code id} 的两段与 {@code ui} 的两条路径都拆开存：调用点再去切一次字符串，就会有第二份切法。
+ *
+ * <p>两种来源：{@link #parse} 读包里的 manifest.json，icon 是包内路径；{@link #parseInline} 读 .vue 里的 {@code <manifest>}，
+ * icon 是 data URI（或 null），uiTree / uiStyle / engine 为 null。拿 icon 当路径用之前先看是哪一种。
  */
 public record Manifest(
         int format,
@@ -154,7 +157,7 @@ public record Manifest(
             throw PackageError.of(PackageError.Code.E_PKG_BAD_ICON, MAX_INLINE_ICON, "'" + head + "'");
         }
         String payload = v.substring(INLINE_ICON_PREFIX.length());
-        if (payload.length() > MAX_INLINE_ICON || !BASE64.matcher(payload).matches()) {
+        if (payload.isEmpty() || payload.length() > MAX_INLINE_ICON || !BASE64.matcher(payload).matches()) {
             throw PackageError.of(PackageError.Code.E_PKG_BAD_ICON, MAX_INLINE_ICON,
                     payload.length() + " 字符" + (BASE64.matcher(payload).matches() ? "" : "，而且不是 base64"));
         }
@@ -163,6 +166,8 @@ public record Manifest(
 
     /** manifest 指到的三个文件都得真在包里，否则装上是个空壳。 */
     public void requireEntries(Collection<String> entryPaths) {
+        // 内联清单的 icon 是 data URI、没有 ui：拿它对包查只会报出「'icon' 指向 'null'」这种误导的错
+        if (uiTree == null) throw new IllegalStateException("内联 manifest 没有 ui 与包内 icon，不能对着包里的条目查");
         requireEntry(entryPaths, "icon", icon);
         requireEntry(entryPaths, "ui.tree", uiTree);
         requireEntry(entryPaths, "ui.style", uiStyle);

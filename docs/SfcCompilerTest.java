@@ -137,6 +137,8 @@ public class SfcCompilerTest {
         rejects_expr("f(1)",           "E_EXPR_NO_CALLS");
         rejects_expr("conut",          "E_EXPR_UNKNOWN_IDENT");
         check(errorOf_expr("conut").message().contains("count"), "拼错标识符给出正解");
+        check(errorOf_expr("conut").message().contains("是不是 'count'"), "建议本身就是 count，不是靠「已声明的有」那段碰上的");
+        check(!errorOf_expr("zzzz").message().contains("是不是"), "离得太远的名字不瞎猜");
         rejects_expr("'a' - 1",        "E_EXPR_TYPE");
         rejects_expr(deepExpr(70),     "E_EXPR_TOO_COMPLEX");
 
@@ -167,6 +169,7 @@ public class SfcCompilerTest {
         scriptRules();
         manifestInline();
         propRulesMatchNodeParser();
+        adversaryFixes();
         fullExample();
         showcase();
         fuzz();
@@ -284,7 +287,7 @@ public class SfcCompilerTest {
     }
 
     static Node inst(String template, UiState s) {
-        return instance(template, s).instantiate(s);
+        return instance(template, s).instantiate(s).root();
     }
 
     static UiState state(Object... kv) {
@@ -488,24 +491,26 @@ public class SfcCompilerTest {
 
         UiState big = state("count", 0);
         TemplateInstance many = instance("<list item-height=\"8\"><text v-for=\"n in 3000\" :text=\"n\"/></list>", big);
-        Node list = many.instantiate(big);
+        TemplateInstance.Tree manyTree = many.instantiate(big);
+        Node list = manyTree.root();
         eq(list.children().size(), NodeParser.MAX_NODES - 1, "节点总数 512 在实例化时截断");
-        check(many.truncated(), "截断记在 truncated() 上");
-        check(many.warnings().stream().anyMatch(w -> w.contains("2048")), "v-for 超过 2048 项截断并 warn");
-        check(many.warnings().stream().anyMatch(w -> w.contains("512")), "节点超限 warn");
+        check(manyTree.truncated(), "截断记在 truncated() 上");
+        check(manyTree.warnings().stream().anyMatch(w -> w.contains("2048")), "v-for 超过 2048 项截断并 warn");
+        check(manyTree.warnings().stream().anyMatch(w -> w.contains("512")), "节点超限 warn");
 
         UiState counter = state("count", 50);
         TemplateInstance progress = instance("<progress :value=\"count * 10\"/>", counter);
-        eq(progress.instantiate(counter).num("value", -1), 100, "绑定值超出范围时夹紧");
-        check(!progress.warnings().isEmpty(), "夹紧记 warn");
+        TemplateInstance.Tree progressTree = progress.instantiate(counter);
+        eq(progressTree.root().num("value", -1), 100, "绑定值超出范围时夹紧");
+        check(!progressTree.warnings().isEmpty(), "夹紧记 warn");
 
         eq(inst("<text>{{ a }}{{ b }}</text>", state("a", 1, "b", 2)).str("text", null), "12", "两个 int 插值是拼接不是相加");
         eq(compile("<text>  a\n   &lt;b&gt;  &amp; </text>").str("text", null), "a <b> &", "空白压缩、实体解码");
         Node mixed = compile("<column>前 <box/> 后</column>");
         eq(mixed.children().size(), 3, "容器里的文字与元素各成节点");
         eq(mixed.children().get(0).str("text", null), "前", "文字节点按出现顺序");
-        eq(compile("<button>+1</button>").str("text", null), "+1", "只有文字的按钮编成 text 属性");
-        eq(compile("<button><icon name=\"plus\"/>加</button>").children().size(), 2, "有子元素的按钮文字成子节点");
+        eq(compile("<button @click=\"close()\">+1</button>").str("text", null), "+1", "只有文字的按钮编成 text 属性");
+        eq(compile("<button @click=\"close()\"><icon name=\"plus\"/>加</button>").children().size(), 2, "有子元素的按钮文字成子节点");
 
         Node chain = inst("<column><text v-if=\"tab == 0\">a</text><text v-else-if=\"tab == 1\">b</text><text v-else>c</text></column>",
                 state("tab", 1));
@@ -513,26 +518,28 @@ public class SfcCompilerTest {
 
         UiState picks = state("picked", 0);
         TemplateInstance buttons = instance("<column><button v-for=\"n in 3\" @click=\"picked = n\">x</button></column>", picks);
-        Node col = buttons.instantiate(picks);
-        buttons.clickOf(col.children().get(2)).run(picks, "test.vue");
+        TemplateInstance.Tree buttonTree = buttons.instantiate(picks);
+        Node col = buttonTree.root();
+        buttonTree.clickOf(col.children().get(2)).run(picks, "test.vue");
         eq(picks.getInt("picked"), 3, "@click 捕获实例化时的循环变量");
-        eq(buttons.clickOf(col), null, "没写 @click 的节点查不到动作");
+        eq(buttonTree.clickOf(col), null, "没写 @click 的节点查不到动作");
 
         UiState keyed = state("rows", List.of(Map.of("id", "a"), Map.of("id", "b"), Map.of("id", "a")));
         TemplateInstance keys = instance("<column><box v-for=\"r in rows\" :key=\"r.id\"/></column>", keyed);
-        Node keyedTree = keys.instantiate(keyed);
+        TemplateInstance.Tree keyedResult = keys.instantiate(keyed);
+        Node keyedTree = keyedResult.root();
         eq(keyedTree.children().get(1).props().get("key"), "b", ":key 进 props.key");
         eq(keyedTree.children().get(2).props().get("key"), null, "重复的 :key 不写");
-        check(keys.warnings().stream().anyMatch(w -> w.contains("重复")), "重复的 :key 记 warn");
+        check(keyedResult.warnings().stream().anyMatch(w -> w.contains("重复")), "重复的 :key 记 warn");
 
         UiState ids = state("count", 0);
         TemplateInstance dupIds = instance("<column><box v-for=\"n in 2\" id=\"cell\"/></column>", ids);
-        Node idTree = dupIds.instantiate(ids);
+        Node idTree = dupIds.instantiate(ids).root();
         eq(idTree.children().get(1).id(), null, "v-for 展开出来的重复 id 只留第一个");
 
         UiState tabs = state("tab", 0, "names", List.of("甲"));
         TemplateInstance badTabs = instance("<tab-bar bind=\"tab\" :tabs=\"names\"/>", tabs);
-        eq(badTabs.instantiate(tabs).props().get("tabs"), null, "不合规的 :tabs 丢掉而不是抛");
+        eq(badTabs.instantiate(tabs).root().props().get("tabs"), null, "不合规的 :tabs 丢掉而不是抛");
     }
 
     // ============================================================
@@ -618,7 +625,9 @@ public class SfcCompilerTest {
         eq(run("count = count + 1;", state("count", 1)).getInt("count"), 2, "末尾的 ; 可以写");
 
         rejectsStatement("count += 1", "E_EXPR_SYNTAX");
-        rejectsStatement("a; b; c; d; e", "E_EXPR_SYNTAX");
+        rejectsStatement("count++; count++; count++; count++; count++", "E_EXPR_SYNTAX");
+        check(String.valueOf(caught(() -> Statements.parse("count++; count++; count++; count++; count++", EXPR_SCOPE, 1, 1)))
+                .contains("最多 4 条"), "第 5 条语句撞的是 4 条上限，不是别的语法错");
         rejectsStatement("nope = 1", "E_EXPR_UNKNOWN_IDENT");
         rejectsStatement("alert(1)", "E_EXPR_NO_CALLS");
         rejectsStatement("count", "E_EXPR_SYNTAX");
@@ -737,6 +746,129 @@ public class SfcCompilerTest {
         eq(ScriptNodeTest.onePage("{\"type\":\"box\"}").isEmpty(), false, "借用 S2 的造树助手");
     }
 
+    // ============================================================
+    //  对抗审查报出来、已修的问题，各钉一条
+    // ============================================================
+
+    static void adversaryFixes() {
+        // state 的值规则不只管初值
+        Ran mixed = run("items = [1, 'x']", state("items", List.of(1, 2)));
+        check(!mixed.outcome().applied() && mixed.state().get("items").equals(List.of(1, 2)), "@click 写入不同构的数组整组不执行");
+        Ran longer = run("title = title + title + title", state("title", "x".repeat(30)));
+        eq(longer.state().getString("title").length(), 30, "@click 写入超过 64 字的字符串整组不执行");
+        check(!Statements.parse("count = 1", EXPR_SCOPE, 1, 1).run(UiState.empty(), "t.vue", List.of(), List.of()).applied(),
+                "state 里没有这个 key 时不抛，整组不执行");
+        check(caught(() -> state("title", "x").set("title", "y".repeat(65))) != null, "UiState.set 也挡超长字符串");
+        check(caught(() -> state("xs", List.of(1.5))) != null, "UiState.of 挡嵌套里的小数");
+        rejects("<script>\nstate = { rows: [{ a: 1 }, { b: 'x' }] }\n</script>" + MIN_TPL, "E_SCRIPT_STATE");
+        check(!acceptsIr("{\"state\":{\"rows\":[{\"a\":1},{\"b\":\"x\"}]},\"pages\":{\"main\":{\"type\":\"box\"}},\"entry\":\"main\"}"),
+                "IR 的对象数组也要同一组键");
+
+        // :key 不撞车
+        UiState keyState = state("ka", List.of("1", "2"), "kb", List.of("1", "a].children[0"));
+        Node keyed = inst("<column><scroll v-for=\"k in ka\" :key=\"k\"><box/></scroll><scroll v-for=\"k in kb\" :key=\"k\"><box/></scroll></column>",
+                keyState);
+        com.november.mcphone.core.script.layout.LayoutNode laid = com.november.mcphone.core.script.layout.LayoutEngine.layout(
+                keyed, com.november.mcphone.core.script.layout.MssParser.parse(""), keyState, 120, 176, FAKE_TEXT);
+        List<String> paths = new ArrayList<>();
+        collectKeys(laid, paths);
+        eq(new TreeSet<>(paths).size(), paths.size(), "布局路径两两不同：" + paths);
+        eq(keyed.children().get(2).props().get("key"), null, "两个 v-for 之间重复的 :key 也按下标");
+
+        // 点击：bind 与 @click 一起成败
+        UiState toggled = state("on", true, "count", 0);
+        TemplateInstance.Tree toggleTree = instance("<toggle bind=\"on\" @click=\"count = 'x'\"/>", toggled).instantiate(toggled);
+        Statements.Outcome failedToggle = toggleTree.click(toggleTree.root(), toggled, 0);
+        check(!failedToggle.applied() && toggled.getBool("on"), "@click 失败时 toggle 的 bind 也不写");
+        UiState tabbed = state("tab", 0, "count", 0);
+        TemplateInstance.Tree tabTree = instance("<tab-bar bind=\"tab\" :tabs=\"[{text:'a'},{text:'b'}]\" @click=\"count = tab + 10\"/>", tabbed)
+                .instantiate(tabbed);
+        tabTree.click(tabTree.root(), tabbed, 1);
+        check(tabbed.getInt("tab") == 1 && tabbed.getInt("count") == 11, "tab-bar 先写 bind 再执行 @click（§9.4.6）");
+        rejects("<button>x</button>", "E_TPL_BAD_VALUE");
+
+        // 内联清单
+        check(caught(() -> Manifest.parseInline(MANIFEST).requireEntries(List.of("icon.png"))) != null, "内联清单不能对着包查条目");
+        eq(pkgCode(() -> Manifest.parseInline(MANIFEST.replace("}", ",\"icon\":\"data:image/png;base64,\"}"))),
+                PackageError.Code.E_PKG_BAD_ICON, "空的 data URI 不收");
+        Err syntax = errorOf("<manifest>\n{\"format\":1 \"id\":\"a:b\"}\n</manifest>\n<template>\n<box/>\n</template>");
+        check(!syntax.message().contains("at line") && syntax.col() > 0, "manifest 语法错去掉 Gson 的块内行列，列号保留：" + syntax.message());
+
+        // text 的判据没有旁路
+        rejects("<column>" + "x".repeat(600) + "</column>", "E_TPL_BAD_VALUE");
+        rejects("<column>a&#1;b</column>", "E_TPL_BAD_VALUE");
+        rejects("<text text=\"" + "x".repeat(600) + "\"/>", "E_TPL_BAD_VALUE");
+        rejects("<toggle bind=\"on\" label=\"" + "x".repeat(600) + "\"/>", "E_TPL_BAD_VALUE");
+        for (int len : new int[]{NodeParser.MAX_TEXT, NodeParser.MAX_TEXT + 1}) {
+            String s = "x".repeat(len);
+            boolean ir = acceptsIr("{\"pages\":{\"main\":{\"type\":\"text\",\"text\":\"" + s + "\"}},\"entry\":\"main\"}");
+            boolean tpl = caught(() -> PropRules.parseStatic(PropRules.of(NodeType.TEXT).get("text"), s)) == null;
+            eq(tpl, ir, "text 长 " + len + " 模板与 IR 判得一样");
+        }
+
+        // 块标签后面跟空白
+        String trailing = "<manifest>\n" + MANIFEST + "\n</manifest>\n<template>\n<box/>\n</template>  \n<style>\n</style>\n";
+        Err format = errorOf(trailing);
+        check(format.code().equals("E_SFC_BLOCK_FORMAT") && format.line() == 6, "闭标签带尾随空格报 BLOCK_FORMAT、指到那一行：" + format.message());
+
+        // 512 在实例化时查，互斥分支加起来可以超过
+        StringBuilder exclusive = new StringBuilder("<column>");
+        for (int i = 0; i < 256; i++) exclusive.append("<box v-if=\"count == ").append(i).append("\"><box/></box>");
+        accepts(exclusive.append("</column>").toString());
+
+        // 预算用完后不翻到 v-else
+        UiState flag = state("on", true);
+        TemplateInstance.Tree spent = instance("<column><box v-for=\"i in 2048\" v-if=\"i < 0\"/><box v-for=\"i in 2048\" v-if=\"i < 0\"/>"
+                + "<text v-if=\"on\">开</text><text v-else>关</text></column>", flag).instantiate(flag);
+        check(spent.root().children().stream().noneMatch(n -> "关".equals(n.str("text", null))), "预算用完后 v-if 链不翻到 v-else");
+        check(spent.warnings().stream().anyMatch(w -> w.contains("4096")), "预算用完的 warn 在");
+
+        // 截断的 warn 不被 32 条上限挤掉
+        UiState crowded = state("count", 0);
+        TemplateInstance.Tree noisy = instance("<column><progress v-for=\"n in 600\" :value=\"n * 1000\"/></column>", crowded).instantiate(crowded);
+        check(noisy.warnings().stream().anyMatch(w -> w.contains("512")), "warn 刷满之后节点超限的 warn 还在");
+
+        // script 里的词法错是 P0 子集之外，报第一处
+        rejects("<script>\nstate = { price: 1.5 }\n</script>" + MIN_TPL, "E_SCRIPT_P0_SUBSET");
+        Err first = errorOf("<script>\nfoo();\nconst s = \"\\q\";\n</script>" + MIN_TPL);
+        check(first.code().equals("E_SCRIPT_P0_SUBSET") && first.line() == 2, "script 报先写错的那一行：" + first.message());
+
+        // 空白：只压 ASCII，实体最后解码
+        String nbsp = String.valueOf((char) 0xA0);
+        String ideographic = String.valueOf((char) 0x3000);
+        eq(compile("<text>a&nbsp;&nbsp;b</text>").str("text", null), "a" + nbsp + nbsp + "b", "&nbsp; 不被压掉");
+        eq(compile("<text>第一行&#10;第二行</text>").str("text", null), "第一行\n第二行", "&#10; 写得出换行");
+        eq(compile("<text>" + ideographic + ideographic + "段首</text>").str("text", null), ideographic + ideographic + "段首",
+                "全角缩进不去掉");
+        eq(compile("<text text=\"a &amp; b\"/>").str("text", null), "a & b", "属性值里的实体也解码");
+        accepts("<button :enabled=\"count &lt; 1\" @click=\"close()\">x</button>");
+
+        rejects_expr("!".repeat(130) + "1", "E_EXPR_TOO_COMPLEX");
+        UiState listed = state("items", List.of(1));
+        EvalContext joined = new EvalContext(listed.values(), "test.vue");
+        ev("'a' + items", listed, joined);
+        check(!joined.warnings().isEmpty(), "数组拼进字符串记 warn");
+    }
+
+    static final com.november.mcphone.core.script.layout.TextMeasure FAKE_TEXT = new com.november.mcphone.core.script.layout.TextMeasure() {
+        public int width(String text) {
+            return text.length() * 6;
+        }
+
+        public int lineHeight() {
+            return 9;
+        }
+
+        public String truncate(String text, int maxWidth) {
+            return text.length() * 6 <= maxWidth ? text : text.substring(0, Math.max(0, maxWidth / 6));
+        }
+    };
+
+    static void collectKeys(com.november.mcphone.core.script.layout.LayoutNode n, List<String> out) {
+        out.add(n.key);
+        for (com.november.mcphone.core.script.layout.LayoutNode c : n.children) collectKeys(c, out);
+    }
+
     static boolean acceptsIr(String json) {
         try {
             NodeParser.parse(json);
@@ -838,17 +970,18 @@ public class SfcCompilerTest {
             eq(st.values(), ir.state().entrySet().stream().collect(
                     LinkedHashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), Map::putAll), "tab=" + variant[0] + " 时 state 逐字段相等");
             TemplateInstance ti = new TemplateInstance(app.template(), "counter.vue");
-            Node sfc = ti.instantiate(st);
-            check(ti.warnings().isEmpty(), "§9.2 实例化没有 warn：" + ti.warnings());
-            System.out.println("§9.2 tab=" + variant[0] + " dump（模板）：" + dump(sfc, ti));
+            TemplateInstance.Tree tree = ti.instantiate(st);
+            Node sfc = tree.root();
+            check(tree.warnings().isEmpty(), "§9.2 实例化没有 warn：" + tree.warnings());
+            System.out.println("§9.2 tab=" + variant[0] + " dump（模板）：" + dump(sfc, tree));
             System.out.println("§9.2 tab=" + variant[0] + " dump（IR）  ：" + dump(ir.root(), null));
-            eq(dump(sfc, ti), dump(ir.root(), null), "tab=" + variant[0] + " 两边 dump 逐字相同");
-            sameTree(sfc, ir.root(), st, ti, "tab=" + variant[0] + " root");
+            eq(dump(sfc, tree), dump(ir.root(), null), "tab=" + variant[0] + " 两边 dump 逐字相同");
+            sameTree(sfc, ir.root(), st, tree, "tab=" + variant[0] + " root");
         }
     }
 
     /** 逐字段比。onClick 的 §4.5 形态装不下 count = count + 1，所以比的是在同一份 state 上执行之后的结果。 */
-    static void sameTree(Node sfc, Node ir, UiState st, TemplateInstance ti, String path) {
+    static void sameTree(Node sfc, Node ir, UiState st, TemplateInstance.Tree ti, String path) {
         eq(sfc.type(), ir.type(), path + " 的 type");
         eq(sfc.id(), ir.id(), path + " 的 id");
         eq(sfc.classes(), ir.classes(), path + " 的 class");
@@ -873,7 +1006,7 @@ public class SfcCompilerTest {
         }
     }
 
-    static String dump(Node n, TemplateInstance ti) {
+    static String dump(Node n, TemplateInstance.Tree ti) {
         StringBuilder sb = new StringBuilder("{").append(n.type().json);
         if (n.id() != null) sb.append(" #").append(n.id());
         for (String c : n.classes()) sb.append(" .").append(c);
@@ -901,8 +1034,9 @@ public class SfcCompilerTest {
             UiState st = UiState.of(app.template().initialState());
             st.set("tab", tab);
             TemplateInstance ti = new TemplateInstance(app.template(), "showcase.vue");
-            Node root = ti.instantiate(st);
-            check(ti.warnings().isEmpty() && !ti.truncated(), "showcase tab=" + tab + " 实例化没有 warn：" + ti.warnings());
+            TemplateInstance.Tree tree = ti.instantiate(st);
+            Node root = tree.root();
+            check(tree.warnings().isEmpty() && !tree.truncated(), "showcase tab=" + tab + " 实例化没有 warn：" + tree.warnings());
             check(root.children().size() == 3, "showcase tab=" + tab + " 根下是标题行、分段和一个页面");
         }
     }
@@ -926,41 +1060,91 @@ public class SfcCompilerTest {
             MANIFEST, ".a { gap: 2; }", "(x, i) in ", "nav('a')", "++", "x.y", "\\", "é",
     };
 
+    static final String[] TEMPLATE_SOUP = {
+            "<text>", "</text>", "{{ count }}", "{{ title + 1 }}", "<box/>", "<button @click=\"count++\">", "</button>",
+            "<column", ">", "</column>", " v-if=\"on\"", " v-else", " v-for=\"x in items\"", " :text=\"x\"", "<row>",
+            "</row>", "<progress :value=\"count * 10\"/>", "<toggle bind=\"on\"/>", " class=\"a\"", " :key=\"x\"", "字",
+            " ", "\n", "&lt;", "&#10;", "<!-- c -->", "<tab-bar bind=\"tab\" :tabs=\"[{text:'a'},{text:'b'}]\"/>", "\"", "/>",
+    };
+    static final String[] EXPR_SOUP = {
+            "count", "items", "title", "1", "0", "'a'", "+", "-", "*", "/", "%", "==", "!=", "<", ">=", "&&", "||", "!",
+            "?", ":", "(", ")", "[", "]", ".length", "{a:1}", "null", "true", " ", ",", "2147483647", "-",
+    };
+    static final String[] STATEMENT_SOUP = {
+            "count", "title", "tab", "items", " = ", "++", "--", ";", "nav('a')", "close()", "back()", "+", "1", "'x'",
+            "[1]", "title + title", "count * 2", " ", "(", ")",
+    };
+    static final String[] SCRIPT_SOUP = {
+            "a", "b2", "Bad", ":", ",", "1", "-2", "'s'", "\"t\"", "true", "[", "]", "{", "}", "x:", "k:", " ", "\n",
+            "// c\n", "/* c */", "null", "1.5", "f()",
+    };
+
     static void fuzz() {
         Random random = new Random(20260915L);
         Map<String, Integer> kinds = new TreeMap<>();
+        Map<String, Integer> passed = new TreeMap<>();
         List<String> others = new ArrayList<>();
-        UiState st = UiState.of(Map.of("count", 0, "items", List.of("a", "b"), "tab", 0));
+        UiState st = UiState.of(Map.of("count", 0, "items", List.of("a", "b"), "tab", 0, "on", true, "title", "x"));
         ExprParser.Scope scope = ExprParser.Scope.of(st.values());
+        String templateBody = SfcSplitter.split(COUNTER).get("template").content();
         int inputs = 5000;
         for (int i = 0; i < inputs; i++) {
-            String input = switch (i % 3) {
+            String file = switch (i % 3) {
                 case 0 -> randomBytes(random);
                 case 1 -> mutate(COUNTER, random);
-                default -> soup(random);
+                default -> soup(random, SOUP, 60);
             };
-            tally(kinds, others, input, "split", caught(() -> SfcSplitter.split(input)));
-            tally(kinds, others, input, "template", caught(() -> {
-                TemplateInstance ti = new TemplateInstance(TemplateCompiler.compile(input, st.values()), "fuzz.vue");
-                ti.instantiate(st);
-            }));
-            String expr = input.length() > 300 ? input.substring(0, 300) : input;
-            tally(kinds, others, input, "expr", caught(() -> ExprParser.expression(expr, scope, 1, 1)));
-            tally(kinds, others, input, "sfc", caught(() -> {
-                SfcCompiler.App app = SfcCompiler.compile("fuzz.vue", input);
+            String template = switch (i % 3) {
+                case 0 -> randomBytes(random);
+                case 1 -> mutate(templateBody, random);
+                default -> "<column>" + soup(random, TEMPLATE_SOUP, 30) + "</column>";
+            };
+            String expr = i % 2 == 0 ? soup(random, EXPR_SOUP, 24) : mutate("count * 10 > 100 ? 100 : count * 10 + items.length", random);
+            String statement = soup(random, STATEMENT_SOUP, 10);
+            String script = "state = {" + soup(random, SCRIPT_SOUP, 20) + "}";
+
+            tally(kinds, passed, others, file, "split", caught(() -> SfcSplitter.split(file)));
+            tally(kinds, passed, others, file, "sfc", caught(() -> {
+                SfcCompiler.App app = SfcCompiler.compile("fuzz.vue", file);
                 UiState s = UiState.of(app.template().initialState());
                 new TemplateInstance(app.template(), "fuzz.vue").instantiate(s);
             }));
+            tally(kinds, passed, others, template, "template", caught(() -> {
+                TemplateInstance.Tree tree = new TemplateInstance(TemplateCompiler.compile(template, st.values()), "fuzz.vue")
+                        .instantiate(st);
+                clickAll(tree, tree.root(), UiState.of(st.values()));
+            }));
+            tally(kinds, passed, others, expr, "expr", caught(() -> {
+                ExprParser.Typed typed = ExprParser.expression(expr, scope, 1, 1);
+                new Expr.Compiled(typed.expr(), 1, expr).run(new EvalContext(st.values(), "fuzz.vue"));
+            }));
+            tally(kinds, passed, others, statement, "statement", caught(() -> {
+                UiState s = UiState.of(st.values());
+                Statements.parse(statement, scope, 1, 1).run(s, "fuzz.vue", List.of(), List.of());
+            }));
+            tally(kinds, passed, others, script, "script", caught(() -> ScriptParser.parse(script)));
         }
-        System.out.println("fuzz：" + inputs + " 个输入 × 4 个入口，结果分布：");
+        System.out.println("fuzz：" + inputs + " 轮，每轮 6 个入口各喂一份自己文法的输入，结果分布：");
         kinds.forEach((k, v) -> System.out.printf("  %-28s %d%n", k, v));
+        System.out.println("各入口编得过的：" + passed);
         check(others.isEmpty(), "fuzz 只抛 SfcError / MssError，其他异常的样本：" + others);
-        check(kinds.getOrDefault("通过", 0) > 0, "fuzz 里有编得过的输入，变异样本没有全部落在第一道闸上");
+        for (String entry : List.of("split", "sfc", "template", "expr", "statement", "script")) {
+            check(passed.getOrDefault(entry, 0) > 0, "fuzz 的 " + entry + " 入口有编得过的输入，没有全部死在第一道闸上");
+        }
     }
 
-    static void tally(Map<String, Integer> kinds, List<String> others, String input, String entry, Err e) {
+    /** 点遍树上每个有动作的节点：click 也是入口。 */
+    static void clickAll(TemplateInstance.Tree tree, Node n, UiState s) {
+        if (n == null) return;
+        tree.click(n, s, 1);
+        for (Node c : n.children()) clickAll(tree, c, s);
+    }
+
+    static void tally(Map<String, Integer> kinds, Map<String, Integer> passed, List<String> others, String input,
+                      String entry, Err e) {
         String key = e == null ? "通过" : e.code;
         kinds.merge(key, 1, Integer::sum);
+        if (e == null) passed.merge(entry, 1, Integer::sum);
         if (e != null && e.code.startsWith("!") && others.size() < 3) {
             others.add(entry + " " + e.code + " " + e.message + " ← " + input.replace("\n", "⏎"));
         }
@@ -988,10 +1172,10 @@ public class SfcCompilerTest {
         return sb.toString();
     }
 
-    static String soup(Random r) {
+    static String soup(Random r, String[] words, int max) {
         StringBuilder sb = new StringBuilder();
-        int n = r.nextInt(60);
-        for (int k = 0; k < n; k++) sb.append(SOUP[r.nextInt(SOUP.length)]);
+        int n = r.nextInt(max);
+        for (int k = 0; k < n; k++) sb.append(words[r.nextInt(words.length)]);
         return sb.toString();
     }
 

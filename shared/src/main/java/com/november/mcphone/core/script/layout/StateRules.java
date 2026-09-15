@@ -54,12 +54,12 @@ public final class StateRules {
                 if (depth >= MAX_DEPTH) return "嵌套超过 " + MAX_DEPTH + " 层";
                 List<?> list = (List<?>) value;
                 if (list.size() > MAX_ARRAY) return "数组 " + list.size() + " 项，最多 " + MAX_ARRAY + " 项";
-                String first = list.isEmpty() ? null : kind(list.get(0));
+                Object first = list.isEmpty() ? null : list.get(0);
                 for (Object e : list) {
                     String why = check(e, depth + 1);
                     if (why != null) return why;
-                    // 同构：模板里 v-for 出来的每一项要能用同一套写法读
-                    if (!kind(e).equals(first)) return "数组元素要同一种类型，混了 " + first + " 和 " + kind(e);
+                    // 同构：模板里 v-for 出来的每一项要能用同一套写法读，对象要同一组键
+                    if (!sameShape(first, e)) return "数组元素要同一种形状，混了 " + shape(first) + " 和 " + shape(e);
                 }
                 return null;
             }
@@ -84,6 +84,27 @@ public final class StateRules {
                 return null;
             }
         }
+    }
+
+    /** 同种类；对象的键与各键的种类相同；数组套数组时比两边的首项（各自内部已经同构）。空数组与任何数组同形。 */
+    private static boolean sameShape(Object a, Object b) {
+        if (!java.util.Objects.equals(kind(a), kind(b))) return false;
+        if (a instanceof Map<?, ?> ma && b instanceof Map<?, ?> mb) {
+            if (!ma.keySet().equals(mb.keySet())) return false;
+            for (Object k : ma.keySet()) {
+                if (!java.util.Objects.equals(kind(ma.get(k)), kind(mb.get(k)))) return false;
+            }
+            return true;
+        }
+        if (a instanceof List<?> la && b instanceof List<?> lb) {
+            return la.isEmpty() || lb.isEmpty() || sameShape(la.get(0), lb.get(0));
+        }
+        return true;
+    }
+
+    private static String shape(Object v) {
+        if (v instanceof Map<?, ?> m) return "object" + new java.util.TreeSet<>(m.keySet().stream().map(String::valueOf).toList());
+        return kind(v);
     }
 
     /** 只读的深拷贝。state 里的数组交给模板读，被外面改了会让两次重排之间悄悄变样。 */

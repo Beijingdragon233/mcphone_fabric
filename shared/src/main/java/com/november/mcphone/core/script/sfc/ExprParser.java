@@ -45,11 +45,6 @@ final class ExprParser {
             if (v instanceof Map<?, ?>) return OBJ;
             return ANY;
         }
-
-        /** 数组元素的类型：state 的数组是同构的（§9.7），空数组不知道。 */
-        static T elemOf(Object v) {
-            return v instanceof List<?> l && !l.isEmpty() ? of(l.get(0)) : ANY;
-        }
     }
 
     /** 一段解析结果：AST、静态类型、数组时的元素类型、节点数。 */
@@ -99,11 +94,12 @@ final class ExprParser {
             return state.containsKey(n) ? T.of(state.get(n)) : null;
         }
 
+        /** state 的数组元素一律不知道：@click 能把整个数组换成另一种元素的数组，按初值首项推会放过运行期必错的写法。 */
         T elemOf(String n) {
             for (Scope s = this; s.parent != null; s = s.parent) {
                 if (s.name.equals(n)) return s.elem;
             }
-            return T.elemOf(state.get(n));
+            return T.ANY;
         }
 
         Object initial(String n) {
@@ -121,14 +117,22 @@ final class ExprParser {
     record Tok(char kind, String text, Object value, int line, int col, int offset) {
     }
 
-    private final List<Tok> toks;
+    private final String src;
+    private final boolean comments;
+    private final List<Tok> toks = new ArrayList<>();
+    private int at;
+    private int lexLine;
+    private int lexCol;
     private int pos;
     private Scope scope;
     private int nesting;
 
     /** line / col 是 src 第一个字符在块内的位置，报错按它往后数。comments 只有 script 块开：模板表达式里没有注释。 */
     ExprParser(String src, int line, int col, boolean comments) {
-        this.toks = lex(src, line, col, comments);
+        this.src = src;
+        this.comments = comments;
+        this.lexLine = line;
+        this.lexCol = col;
     }
 
     /** 编译一条模板表达式：长度 → 语法与静态检查 → 必须读完 → 节点数。 */
@@ -143,21 +147,30 @@ final class ExprParser {
     }
 
     // ============================================================
-    //  词法单元的读取（StatementParser / ScriptParser 也用）
+    //  词法单元的读取（Statements / ScriptParser 也用）
     // ============================================================
 
     Tok peek() {
-        return toks.get(pos);
+        return token(pos);
     }
 
     Tok peek(int ahead) {
-        return toks.get(Math.min(pos + ahead, toks.size() - 1));
+        return token(pos + ahead);
     }
 
     Tok next() {
-        Tok t = toks.get(pos);
+        Tok t = token(pos);
         if (t.kind != 'e') pos++;
         return t;
+    }
+
+    /** 按需往后读：词法错只在读到那里时才报，于是前面先写错的地方先报。 */
+    private Tok token(int index) {
+        while (toks.size() <= index) {
+            if (!toks.isEmpty() && toks.get(toks.size() - 1).kind == 'e') return toks.get(toks.size() - 1);
+            toks.add(lexOne());
+        }
+        return toks.get(index);
     }
 
     boolean at(String punct) {
@@ -436,7 +449,7 @@ final class ExprParser {
     }
 
     private void deeper() {
-        if (++nesting > MAX_NESTING) throw syntax(peek(), "嵌套超过 " + MAX_NESTING + " 层");
+        if (++nesting > MAX_NESTING) throw SfcError.at(Code.E_EXPR_TOO_COMPLEX, peek().line, peek().col, nesting);
     }
 
     private static boolean known(T t) {
@@ -555,11 +568,14 @@ final class ExprParser {
             "+", "-", "*", "/", "%", "<", ">", "!", "?", ":", ".", ",", "(", ")", "[", "]", "{", "}", "=", ";",
             "&", "|", "^", "~", "`"};
 
-    private static List<Tok> lex(String s, int line, int col, boolean comments) {
-        List<Tok> out = new ArrayList<>();
-        int i = 0;
+    private Tok lexOne() {
+        String s = src;
         int n = s.length();
-        while (true) {
+        int i = at;
+        int line = lexLine;
+        int col = lexCol;
+        Tok out;
+        {
             while (i < n) {
                 char c = s.charAt(i);
                 if (c == '\n') {
@@ -601,7 +617,10 @@ final class ExprParser {
                 }
             }
             if (i >= n) {
-                out.add(new Tok('e', "", null, line, col, i));
+                out = new Tok('e', "", null, line, col, i);
+                at = i;
+                lexLine = line;
+                lexCol = col;
                 return out;
             }
             char c = s.charAt(i);
@@ -620,7 +639,7 @@ final class ExprParser {
                 if (c == '0' && i - start > 1) throw SfcError.at(Code.E_EXPR_SYNTAX, sl, sc, "整数不写前导 0");
                 if (v > 2147483648L) throw SfcError.at(Code.E_EXPR_SYNTAX, sl, sc, "整数超出 int 范围");
                 col += i - start;
-                out.add(new Tok('i', s.substring(start, i), v, sl, sc, start));
+                out = new Tok('i', s.substring(start, i), v, sl, sc, start);
             } else if (c == '\'' || c == '"') {
                 StringBuilder sb = new StringBuilder();
                 i++;
@@ -649,11 +668,11 @@ final class ExprParser {
                         col++;
                     }
                 }
-                out.add(new Tok('s', s.substring(start, i), sb.toString(), sl, sc, start));
+                out = new Tok('s', s.substring(start, i), sb.toString(), sl, sc, start);
             } else if (identStart(c)) {
                 while (i < n && identPart(s.charAt(i))) i++;
                 col += i - start;
-                out.add(new Tok('n', s.substring(start, i), null, sl, sc, start));
+                out = new Tok('n', s.substring(start, i), null, sl, sc, start);
             } else {
                 String p = null;
                 for (String candidate : PUNCTS) {
@@ -665,9 +684,13 @@ final class ExprParser {
                 if (p == null) throw SfcError.at(Code.E_EXPR_SYNTAX, sl, sc, "不认识的字符 '" + shown(c) + "'");
                 i += p.length();
                 col += p.length();
-                out.add(new Tok('p', p, null, sl, sc, start));
+                out = new Tok('p', p, null, sl, sc, start);
             }
         }
+        at = i;
+        lexLine = line;
+        lexCol = col;
+        return out;
     }
 
     static boolean identStart(char c) {

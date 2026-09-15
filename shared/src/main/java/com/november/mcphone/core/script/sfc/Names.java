@@ -26,10 +26,10 @@ final class Names {
         return best;
     }
 
-    /** 拼进文案的那一段：{@code ，是不是 'count'？}，没有建议时是空串。 */
+    /** 拼进文案的那一段：{@code （是不是 'count'）}，没有建议时是空串。 */
     static String hint(String name, Collection<String> candidates) {
         String c = closest(name, candidates);
-        return c == null ? "" : "，是不是 '" + c + "'？";
+        return c == null ? "" : "（是不是 '" + c + "'）";
     }
 
     static String list(Collection<String> names) {

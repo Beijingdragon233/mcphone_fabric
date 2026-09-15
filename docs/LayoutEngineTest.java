@@ -595,7 +595,7 @@ public class LayoutEngineTest {
         check(throwsIae(() -> st.set("n", "str")), "类型不符拒绝写入");
         check(throwsIae(() -> st.set("zz", 1)), "没声明的 key 拒绝写入");
         check(throwsIae(() -> st.toggle("n")), "toggle 只对 bool");
-        check(throwsIae(() -> UiState.of(Map.of("l", 1L))), "初值只能是 int / bool / string");
+        check(throwsIae(() -> UiState.of(Map.of("l", 1L))), "初值只能是 int / bool / string / array / object，Long 不算 int");
         eq(List.of(st.getInt("zz"), st.getBool("zz"), st.getString("zz")), List.of(0, false, ""), "缺键读默认值");
         eq(st.get("zz"), null, "缺键 get 返回 null");
         UiState empty = UiState.of(Map.of("s", ""));

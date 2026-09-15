@@ -34,12 +34,20 @@ public final class TemplateCompiler {
 
     static final int MAX_FOR_NESTING = 2;
 
+    /**
+     * 模板里元素的个数上限，只防超大文件把编译拖垮。512 个节点的上限在实例化时查（§9.9）：
+     * 互斥的 v-if 分支加起来可以超过 512，而任何时刻进树的不超过。
+     */
+    static final int MAX_TEMPLATE_ELEMENTS = 4096;
+
     private static final Pattern ID = Pattern.compile("[a-z][a-z0-9_-]{0,31}");
     private static final Pattern CLASS_NAME = Pattern.compile("[a-z][a-z0-9_-]{0,31}");
     private static final Pattern FOR = Pattern.compile(
             "\\s*(?:\\(\\s*([A-Za-z_$][A-Za-z0-9_$]*)\\s*(?:,\\s*([A-Za-z_$][A-Za-z0-9_$]*)\\s*)?\\)|([A-Za-z_$][A-Za-z0-9_$]*))\\s+in\\s+",
             Pattern.DOTALL);
     private static final Set<String> KEYWORDS = Set.of("true", "false", "null", "in");
+    /** Vue 的 condense 只压 ASCII 空白；全角空格、&nbsp; 与 &#10; 解出来的换行都是作者有意写的。 */
+    private static final Pattern ASCII_SPACE = Pattern.compile("[ \\t\\n\\r\\f]+");
     private static final Set<NodeType> CLICKABLE = Set.of(NodeType.BUTTON, NodeType.TOGGLE, NodeType.TAB_BAR);
     private static final List<String> ELEMENT_NAMES = Arrays.stream(NodeType.values()).map(t -> t.json).toList();
 
@@ -62,9 +70,10 @@ public final class TemplateCompiler {
     }
 
     record RawText(int line, List<Piece> pieces) implements Raw {
+        /** 只有 ASCII 空白才算空：全角空格是作者写的内容。 */
         boolean blank() {
             for (Piece p : pieces) {
-                if (p.expr != null || !p.literal.isBlank()) return false;
+                if (p.expr != null || !ASCII_SPACE.matcher(p.literal).replaceAll("").isEmpty()) return false;
             }
             return true;
         }
@@ -134,7 +143,7 @@ public final class TemplateCompiler {
             throw SfcError.at(Code.E_TPL_UNKNOWN_ELEMENT, tagLine, tagCol, name, Names.hint(name, ELEMENT_NAMES),
                     String.join(" ", ELEMENT_NAMES));
         }
-        if (++elements > NodeParser.MAX_NODES) throw syntax(tagLine, tagCol, "模板里的元素超过 " + NodeParser.MAX_NODES + " 个");
+        if (++elements > MAX_TEMPLATE_ELEMENTS) throw syntax(tagLine, tagCol, "模板里的元素超过 " + MAX_TEMPLATE_ELEMENTS + " 个");
         if (ancestors.size() >= NodeParser.MAX_DEPTH) throw syntax(tagLine, tagCol, "元素嵌套超过 " + NodeParser.MAX_DEPTH + " 层");
 
         List<Attr> attrs = new ArrayList<>();
@@ -223,7 +232,8 @@ public final class TemplateCompiler {
             int vStart = pos;
             while (pos < src.length() && src.charAt(pos) != q) advance();
             if (pos >= src.length()) throw syntax(aLine, aCol, "属性 '" + name + "' 的值没有收尾的引号");
-            String value = src.substring(vStart, pos);
+            // 属性值里的实体与文字内容里一样解码：:enabled="count &lt; 1" 该是 <，不是位运算
+            String value = decode(src.substring(vStart, pos));
             advance();
             return new Attr(name, value, aLine, aCol, vLine, vCol);
         }
@@ -234,7 +244,7 @@ public final class TemplateCompiler {
                 && !src.startsWith("/>", pos)) {
             advance();
         }
-        return new Attr(name, src.substring(vStart, pos), aLine, aCol, vLine, vCol);
+        return new Attr(name, decode(src.substring(vStart, pos)), aLine, aCol, vLine, vCol);
     }
 
     /** 一段文字，读到下一个 '<' 为止；{{ }} 里的 '<' 属于表达式。 */
@@ -390,7 +400,7 @@ public final class TemplateCompiler {
             int[] at = position(vFor, m.end());
             Typed source = ExprParser.expression(vFor.value.substring(m.end()), scope, at[0], at[1]);
             if (source.type() != T.ARR && source.type() != T.INT && source.type() != T.ANY) {
-                throw syntax(vFor.line, vFor.col, "v-for 的来源要是数组或整数，这里是 " + source.type().label);
+                throw syntax(at[0], at[1], "v-for 的来源要是数组或整数，这里是 " + source.type().label);
             }
             T itemType = source.type() == T.INT ? T.INT : source.type() == T.ARR ? source.elem() : T.ANY;
             inner = scope.with(item, itemType, T.ANY);
@@ -443,6 +453,11 @@ public final class TemplateCompiler {
         Expr.Compiled keyExpr = key != null ? expr(key, inner) : null;
         Statements statements = null;
         if (click != null) statements = Statements.parse(click.value, inner, click.valueLine, click.valueCol);
+        // IR 里 button 的 onClick 必填（§5.3），两种形态判得一样
+        if (type == NodeType.BUTTON && click == null) {
+            throw SfcError.at(Code.E_TPL_BAD_VALUE, raw.line, raw.col, tag, "@click", "（没写）",
+                    "必填：按钮要写点了做什么，例如 @click=\"close()\"");
+        }
 
         // 子内容
         boolean hasElementChild = false;
@@ -462,7 +477,7 @@ public final class TemplateCompiler {
                 }
                 Text content = content(raw.children, inner);
                 if (content.literal() != null) {
-                    staticProps.put("text", staticText(tag, raw, content.literal()));
+                    staticProps.put("text", staticText(raw.line, raw.col, content.literal()));
                 } else {
                     boundProps.put("text", new BoundProp(specs.get("text"), content.expr()));
                 }
@@ -493,7 +508,9 @@ public final class TemplateCompiler {
                 closed = flush(out, conds, branches);
                 conds = null;
                 branches = null;
-                out.add(content(List.of(t), scope));
+                Text text = content(List.of(t), scope);
+                if (text.literal() != null) staticText(t.line, 1, text.literal());
+                out.add(text);
                 continue;
             }
             RawElement e = (RawElement) r;
@@ -543,10 +560,11 @@ public final class TemplateCompiler {
                 pieces.addAll(t.pieces);
             }
         }
+        // 先在原文上压空白、去首尾，最后才解码实体：反过来的话 &#10; 解出的换行和 &nbsp; 会被一起压掉
         List<Object> parts = new ArrayList<>();
         for (Piece p : pieces) {
             if (p.literal != null) {
-                String s = decode(p.literal).replaceAll("\\s+", " ");
+                String s = ASCII_SPACE.matcher(p.literal).replaceAll(" ");
                 if (!parts.isEmpty() && parts.get(parts.size() - 1) instanceof String prev) {
                     parts.set(parts.size() - 1, prev + s);
                 } else {
@@ -556,10 +574,11 @@ public final class TemplateCompiler {
                 parts.add(ExprParser.expression(p.expr, scope, p.line, p.col));
             }
         }
-        if (!parts.isEmpty() && parts.get(0) instanceof String s) parts.set(0, s.stripLeading());
+        if (!parts.isEmpty() && parts.get(0) instanceof String s && s.startsWith(" ")) parts.set(0, s.substring(1));
         int last = parts.size() - 1;
-        if (last >= 0 && parts.get(last) instanceof String s) parts.set(last, s.stripTrailing());
+        if (last >= 0 && parts.get(last) instanceof String s && s.endsWith(" ")) parts.set(last, s.substring(0, s.length() - 1));
         parts.removeIf(p -> p instanceof String s && s.isEmpty());
+        parts.replaceAll(p -> p instanceof String s ? decode(s) : p);
 
         int line = firstLine < 0 ? 1 : firstLine;
         if (parts.stream().allMatch(p -> p instanceof String)) return new Text(line, String.join("", parts.stream().map(p -> (String) p).toList()), null);
@@ -581,9 +600,10 @@ public final class TemplateCompiler {
         return new Text(line, null, new Expr.Compiled(new Expr.Concat(List.copyOf(exprs)), exprLine, "{{ }}"));
     }
 
-    private String staticText(String tag, RawElement raw, String text) {
+    /** 编进 text 节点的字面文字：与 IR 的 text 同一条判据（§5.2）。 */
+    private static String staticText(int line, int col, String text) {
         if (text.length() > NodeParser.MAX_TEXT || !PropRules.visible(text)) {
-            throw SfcError.at(Code.E_TPL_BAD_VALUE, raw.line, raw.col, tag, "text", shorten(text),
+            throw SfcError.at(Code.E_TPL_BAD_VALUE, line, col, "text", "text", shorten(text),
                     "最多 " + NodeParser.MAX_TEXT + " 字，除换行外没有控制字符");
         }
         return text;
@@ -702,7 +722,7 @@ public final class TemplateCompiler {
                     case "amp" -> "&";
                     case "quot" -> "\"";
                     case "apos", "#39" -> "'";
-                    case "nbsp" -> " ";
+                    case "nbsp" -> String.valueOf((char) 0xA0);
                     default -> numeric(name);
                 };
                 if (out != null) {

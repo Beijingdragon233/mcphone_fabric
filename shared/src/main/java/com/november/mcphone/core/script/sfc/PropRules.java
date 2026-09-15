@@ -163,7 +163,7 @@ final class PropRules {
                 throw new Bad(spec.allowed());
             }
             case TEXT -> {
-                if (!visible(raw)) throw new Bad(spec.allowed());
+                if (raw.length() > NodeParser.MAX_TEXT || !visible(raw)) throw new Bad(spec.allowed());
                 return raw;
             }
             case ICON -> {

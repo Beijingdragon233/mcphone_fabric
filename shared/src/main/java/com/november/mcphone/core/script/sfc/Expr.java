@@ -114,7 +114,13 @@ sealed interface Expr {
                     return !Values.same(a, b);
                 case "+":
                     if (a instanceof Integer x && b instanceof Integer y) return x + y;
-                    if (a instanceof String || b instanceof String) return c.capped(Values.text(a) + Values.text(b));
+                    if (a instanceof String || b instanceof String) {
+                        Object other = a instanceof String ? b : a;
+                        if (other instanceof List<?> || other instanceof Map<?, ?>) {
+                            c.warn(Values.kind(other) + " 拼进字符串显示为空");
+                        }
+                        return c.capped(Values.text(a) + Values.text(b));
+                    }
                     throw Abort.type(op, a, b);
                 default:
                     break;
@@ -199,13 +205,16 @@ sealed interface Expr {
         }
     }
 
-    /** 插值：各段文本化后拼起来。不走 +：{{ a }}{{ b }} 两个 int 该拼成 "12"，不是加成 3。 */
+    /**
+     * 插值：各段文本化后拼起来。不走 +：{{ a }}{{ b }} 两个 int 该拼成 "12"，不是加成 3。
+     * 每个 {{ }} 各记一次求值：一段文字里塞几万个插值时，整段只算一次会绕过 4096 的上限。
+     */
     record Concat(List<Expr> parts) implements Expr {
         public Object eval(EvalContext c) {
             enter(c);
             StringBuilder sb = new StringBuilder();
             for (Expr p : parts) {
-                Object v = p.eval(c);
+                Object v = p instanceof Lit || c.budget() ? p.eval(c) : null;
                 if (v instanceof List<?> || v instanceof Map<?, ?>) c.warn(Values.kind(v) + " 放进文字里显示为空");
                 sb.append(Values.text(v));
                 if (sb.length() > EvalContext.MAX_CONCAT) break;

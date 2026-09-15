@@ -25,10 +25,8 @@ public final class UiState {
         Map<String, Object> copy = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : initial.entrySet()) {
             Object v = e.getValue();
-            if (StateRules.kind(v) == null) {
-                throw new IllegalArgumentException("state['" + e.getKey() + "'] 只能是 int / bool / string / array / object，给的是 "
-                        + (v == null ? "null" : v.getClass().getSimpleName()));
-            }
+            String why = StateRules.check(v);
+            if (why != null) throw new IllegalArgumentException("state['" + e.getKey() + "'] 的初值不合规：" + why);
             copy.put(Objects.requireNonNull(e.getKey(), "state 的 key"), StateRules.freeze(v));
         }
         return new UiState(copy);
@@ -77,6 +75,8 @@ public final class UiState {
             throw new IllegalArgumentException("state['" + key + "'] 是 " + want + "，不能写入 "
                     + (value == null ? "null" : value.getClass().getSimpleName()));
         }
+        String why = StateRules.check(value);
+        if (why != null) throw new IllegalArgumentException("state['" + key + "'] 不能写入：" + why);
         if (!old.equals(value)) {
             values.put(key, StateRules.freeze(value));
             revision++;

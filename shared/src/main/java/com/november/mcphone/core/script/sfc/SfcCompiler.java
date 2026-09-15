@@ -75,8 +75,17 @@ public final class SfcCompiler {
             return Manifest.parseInline(block.content());
         } catch (PackageError e) {
             int line = manifestLine(block.content(), e);
-            throw SfcError.at(Code.E_SFC_MANIFEST, line, 0, e.getMessage()).shift(block.startLine() - 1);
+            Matcher at = GSON_POSITION.matcher(e.getMessage());
+            int col = e.code() == PackageError.Code.E_PKG_MANIFEST_SYNTAX && at.find() ? Integer.parseInt(at.group(2)) : 0;
+            throw SfcError.at(Code.E_SFC_MANIFEST, line, col, forAuthor(e.getMessage())).shift(block.startLine() - 1);
         }
+    }
+
+    /** 去掉 Gson 文案里的块内行列（前面已经换算成原文件行号，留着会自相矛盾）和写给开发者的提示。 */
+    static String forAuthor(String message) {
+        return message.replaceAll("\\s*at line \\d+ column \\d+ path \\S*", "")
+                .replaceAll("\\s*Use JsonReader\\.set\\w+\\([^)]*\\) to accept malformed JSON", "")
+                .replaceAll("\\s*See https?://\\S+", "");
     }
 
     /**
