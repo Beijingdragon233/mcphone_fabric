@@ -153,6 +153,12 @@ public final class Renderer {
             g.fill(x, y, x + n.w, y + n.h, p.pressedOverlay());
         }
 
+        // badge 与 tab-bar 在类型分支里整块铺底色，先画的边会被盖掉，它们的边框放到最后；
+        // 其余先画边框：LayoutEngine 不给边框留位置，后画会压住 padding 比边框细的开关、进度条
+        int bc = color(s.color(), p);
+        boolean borderLast = type == NodeType.BADGE || type == NodeType.TAB_BAR;
+        if (!borderLast) drawBorder(g, s.border(), bc, x, y, n.w, n.h);
+
         int fg = enabled ? color(hover ? s.hoverColor() : s.color(), p) : p.buttonDisabledTextColor();
         int px = x + s.padLeft();
         int py = y + s.padTop();
@@ -186,7 +192,7 @@ public final class Renderer {
                 if (count == 0) break;
                 int badgeBg = color(s.background(), p);
                 g.fill(x, y, x + n.w, y + n.h, badgeBg != 0 ? badgeBg : p.accentColor());
-                if (fg != 0) g.drawString(font, count > 99 ? "99+" : String.valueOf(count), px + 2, py, fg, false);
+                g.drawString(font, count > 99 ? "99+" : String.valueOf(count), px + 2, py, fg, false);
             }
             case PROGRESS -> {
                 int barH = Math.min(n.node.num("height", 4), innerH);
@@ -204,8 +210,7 @@ public final class Renderer {
             }
         }
 
-        // 边框最后画：badge、tab-bar 的分支会整块铺底色，先画的边会被盖掉
-        drawBorder(g, s.border(), color(s.color(), p), x, y, n.w, n.h);
+        if (borderLast) drawBorder(g, s.border(), bc, x, y, n.w, n.h);
     }
 
     /**
@@ -229,7 +234,7 @@ public final class Renderer {
     /** text 与没有 children 的 button 的换行结果。有 children 的按钮 lines 为 null，文字由子节点画。 */
     private static void drawLines(GuiGraphics g, Font font, List<String> lines, Style s, int px, int py, int innerW,
                                   int fg) {
-        if (lines == null || fg == 0) return;
+        if (lines == null) return;
         int ty = py;
         for (String line : lines) {
             int lw = font.width(line);
@@ -264,7 +269,7 @@ public final class Renderer {
     private static void drawToggle(GuiGraphics g, Font font, PhoneStyle p, LayoutNode n, UiState state,
                                    boolean enabled, int px, int py, int innerW, int innerH, int fg) {
         String label = n.node.str("label", n.node.str("i18n", null));
-        if (label != null && fg != 0) {
+        if (label != null) {
             g.drawString(font, GuiUtil.truncate(font, label, innerW - TOGGLE_W - 4), px,
                     py + (innerH - font.lineHeight) / 2, fg, n.style.shadow());
         }
@@ -301,10 +306,7 @@ public final class Renderer {
         }
     }
 
-    /**
-     * 语义色 → 当前配色的 ARGB。null（none）返回 0，调用方据此不画；文字尤其要跳过：
-     * 原版 drawString 会把 alpha 为 0 的颜色补成不透明，none 就成了黑字。
-     */
+    /** 语义色 → 当前配色的 ARGB。null（none，只有底色类属性收）返回 0，调用方据此不画。 */
     static int color(Style.Token token, PhoneStyle p) {
         if (token == null) return 0;
         return switch (token) {

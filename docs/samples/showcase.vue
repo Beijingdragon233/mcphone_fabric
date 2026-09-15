@@ -106,7 +106,8 @@
 
   .items     { height: 100; align: stretch; }
 
-  /* 上层只盖住下层的左半边：右半边露出下层的计数，点左半边它不许变 */
-  .under     { width: 80; height: 16; align: end; }
-  .over      { width: 40; height: 16; background: $accent; hover-background: $button-hover; }
+  /* 上层只盖住下层的左半边：右半边露出下层的计数，点左半边它不许变。
+     文字靠右两种写法都给：按钮文字编成 text 属性时看 text-align，编成子节点时看 align */
+  .under     { width: 110; height: 16; align: end; text-align: right; }
+  .over      { width: 50; height: 16; background: $accent; hover-background: $button-hover; }
 </style>

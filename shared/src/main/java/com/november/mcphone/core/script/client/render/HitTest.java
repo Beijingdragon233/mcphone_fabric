@@ -14,7 +14,8 @@ import java.util.Set;
  * 画布矩形是最外层的裁剪区：溢出到内容区之外的部分画得出来，但不悬停、不命中。
  *
  * <p>鼠标坐标原样比较，不取整。节点边界都是整数，小数 m 落在 [x, x+w) 里当且仅当 floor(m) 落在里面，
- * 所以 100% 手机缩放下宿主给悬停的截断整数与给点击的小数判给同一个节点；加 Math.round 反而错开半格。
+ * 所以宿主的手机倍率恰为 1 时，给悬停的截断整数与给点击的小数判给同一个节点。倍率不是 1 时
+ * （开机动画、窗口放不下被缩小、HUD、设置里调了界面大小）宿主的两条坐标本身就对不齐，这里怎么取整都会错判一部分，只能在 PhoneScreen 修。
  */
 public final class HitTest {
 
@@ -61,6 +62,8 @@ public final class HitTest {
         int before = Renderer.clampScroll(scroller);
         long step = Math.round(amount * SCROLL_STEP);
         if (step == 0) step = (long) Math.signum(amount);
+        // 夹一下再减：amount 极大时 step 是 Long.MIN_VALUE，before - step 会回绕成负数，滚到顶而不是底
+        step = Math.max(-Integer.MAX_VALUE, Math.min(Integer.MAX_VALUE, step));
         scroller.scrollY = (int) Math.max(0, Math.min(before - step, scroller.scrollMax()));
         return scroller.scrollY != before;
     }
