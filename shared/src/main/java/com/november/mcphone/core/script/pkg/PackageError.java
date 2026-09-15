@@ -36,6 +36,7 @@ public final class PackageError extends RuntimeException {
         E_PKG_BAD_ENGINE("manifest.json 的 engine 只认 declarative-1，收到 '%s'"),
         E_PKG_MISSING_ENTRY("manifest.json 的 '%s' 指向 '%s'，包里没有这个文件"),
         E_PKG_NO_MANIFEST("包里没有 manifest.json —— 它必须在包根"),
+        E_PKG_BAD_ICON("<manifest> 的 icon 要写成 data:image/png;base64,…，base64 部分最多 %d 字符，收到 %s"),
 
         // ── 路径（§3.4）
         E_PKG_BAD_PATH("路径 '%s' 不合法：%s"),
@@ -71,19 +72,28 @@ public final class PackageError extends RuntimeException {
     }
 
     private final Code code;
+    private final Object[] args;
 
-    private PackageError(Code code, String message) {
+    private PackageError(Code code, String message, Object[] args) {
         super(message);
         this.code = code;
+        this.args = args;
     }
 
     public Code code() {
         return code;
     }
 
+    /** 模板的实参，顺序与模板一致。.vue 的 {@code <manifest>} 报错时拿字段名去找它在第几行。 */
+    public List<Object> args() {
+        return List.of(args);
+    }
+
     /** 按 {@link Code} 自带的模板成文。调用点只给参数，给不出文案。 */
     public static PackageError of(Code code, Object... args) {
-        return new PackageError(code, code.name() + "：" + String.format(Locale.ROOT, code.text(), args));
+        Object[] kept = new Object[args.length];
+        for (int i = 0; i < args.length; i++) kept[i] = String.valueOf(args[i]);
+        return new PackageError(code, code.name() + "：" + String.format(Locale.ROOT, code.text(), args), kept);
     }
 
     /**

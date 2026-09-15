@@ -105,7 +105,9 @@ public final class LayoutEngine {
             Node c = kids.get(i);
             Style cs = sheet.resolve(c);
             if (!visible(c, cs, state)) continue;
-            String childKey = c.id() != null ? "#" + c.id() : (key.isEmpty() ? "" : key + ".") + "children[" + i + "]";
+            // 模板的 :key 进 props.key（§9.4.5）：列表增删时按它找回滚动位置，不按会错位的下标
+            String slot = c.props().get("key") instanceof String k ? "key[" + k + "]" : "children[" + i + "]";
+            String childKey = c.id() != null ? "#" + c.id() : (key.isEmpty() ? "" : key + ".") + slot;
             ln.children.add(build(c, cs, sheet, state, childKey, depth + 1, budget));
         }
         return ln;

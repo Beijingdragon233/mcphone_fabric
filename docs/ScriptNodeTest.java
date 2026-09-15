@@ -210,8 +210,22 @@ public class ScriptNodeTest {
                 "state 键名要字母开头");
         trigger(Code.E_BAD_TYPE, ui(obj("tab", "1.5"), obj("main", node("column")), "main"),
                 "state 的值不收小数");
-        trigger(Code.E_BAD_TYPE, ui(obj("tab", "[]"), obj("main", node("column")), "main"),
-                "state 的值不收数组");
+        // §9.7：数组（≤32、同构）与对象（≤16 键、一层）也是初值，容器最多套 2 层
+        Ui containers = NodeParser.parse(ui(obj("items", arr(q("a"), q("b")), "rows", arr(obj("id", "1")),
+                "tabIndex", "0"), obj("main", node("column")), "main"));
+        eq(containers.state().get("items"), List.of("a", "b"), "state 收数组");
+        eq(containers.state().get("rows"), List.of(java.util.Map.of("id", 1)), "state 收数组套对象");
+        eq(containers.state().get("tabIndex"), 0, "state 键名首字母之后可以大写");
+        trigger(Code.E_BAD_VALUE, ui(obj("tab", arr("1", q("x"))), obj("main", node("column")), "main"),
+                "state 的数组要同构");
+        trigger(Code.E_BAD_VALUE, ui(obj("tab", obj("a", obj("b", "1"))), obj("main", node("column")), "main"),
+                "state 的对象只能一层");
+        trigger(Code.E_BAD_VALUE, ui(obj("tab", arr(arr(arr("1")))), obj("main", node("column")), "main"),
+                "state 的容器最多套 2 层");
+        trigger(Code.E_BAD_TYPE, ui(obj("tab", arr("1.5")), obj("main", node("column")), "main"),
+                "state 的数组里也不收小数");
+        trigger(Code.E_BAD_TYPE, ui(obj("tab", "null"), obj("main", node("column")), "main"),
+                "state 的值不收 null");
         trigger(Code.E_BAD_VALUE, ui(obj("tab", q("x".repeat(65))), obj("main", node("column")), "main"),
                 "state 的字符串上限 64");
 
