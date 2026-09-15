@@ -153,16 +153,6 @@ public final class Renderer {
             g.fill(x, y, x + n.w, y + n.h, p.pressedOverlay());
         }
 
-        // 四条边各画一次，不是大矩形叠小矩形：那样半透明底色会叠两层
-        int bw = Math.min(s.border(), Math.min(n.w, n.h) / 2);
-        int bc = color(s.color(), p);
-        if (bw > 0 && bc != 0) {
-            g.fill(x, y, x + n.w, y + bw, bc);
-            g.fill(x, y + n.h - bw, x + n.w, y + n.h, bc);
-            g.fill(x, y + bw, x + bw, y + n.h - bw, bc);
-            g.fill(x + n.w - bw, y + bw, x + n.w, y + n.h - bw, bc);
-        }
-
         int fg = enabled ? color(hover ? s.hoverColor() : s.color(), p) : p.buttonDisabledTextColor();
         int px = x + s.padLeft();
         int py = y + s.padTop();
@@ -196,7 +186,7 @@ public final class Renderer {
                 if (count == 0) break;
                 int badgeBg = color(s.background(), p);
                 g.fill(x, y, x + n.w, y + n.h, badgeBg != 0 ? badgeBg : p.accentColor());
-                g.drawString(font, count > 99 ? "99+" : String.valueOf(count), px + 2, py, fg, false);
+                if (fg != 0) g.drawString(font, count > 99 ? "99+" : String.valueOf(count), px + 2, py, fg, false);
             }
             case PROGRESS -> {
                 int barH = Math.min(n.node.num("height", 4), innerH);
@@ -213,12 +203,33 @@ public final class Renderer {
                 // 容器与 spacer 只有底色和边框
             }
         }
+
+        // 边框最后画：badge、tab-bar 的分支会整块铺底色，先画的边会被盖掉
+        drawBorder(g, s.border(), color(s.color(), p), x, y, n.w, n.h);
+    }
+
+    /**
+     * 四条边各画一次，不是大矩形叠小矩形：那样半透明底色会叠两层。
+     * 边比节点还粗时逐边夹在节点里：不夹的话 fill 的两个角反过来，原版会把它摆正了画到节点外面。
+     */
+    private static void drawBorder(GuiGraphics g, int bw, int color, int x, int y, int w, int h) {
+        if (bw <= 0 || color == 0) return;
+        int top = Math.min(bw, h);
+        int bottom = Math.min(bw, h - top);
+        int left = Math.min(bw, w);
+        int right = Math.min(bw, w - left);
+        g.fill(x, y, x + w, y + top, color);
+        if (bottom > 0) g.fill(x, y + h - bottom, x + w, y + h, color);
+        if (h - top - bottom > 0) {
+            g.fill(x, y + top, x + left, y + h - bottom, color);
+            if (right > 0) g.fill(x + w - right, y + top, x + w, y + h - bottom, color);
+        }
     }
 
     /** text 与没有 children 的 button 的换行结果。有 children 的按钮 lines 为 null，文字由子节点画。 */
     private static void drawLines(GuiGraphics g, Font font, List<String> lines, Style s, int px, int py, int innerW,
                                   int fg) {
-        if (lines == null) return;
+        if (lines == null || fg == 0) return;
         int ty = py;
         for (String line : lines) {
             int lw = font.width(line);
@@ -253,7 +264,7 @@ public final class Renderer {
     private static void drawToggle(GuiGraphics g, Font font, PhoneStyle p, LayoutNode n, UiState state,
                                    boolean enabled, int px, int py, int innerW, int innerH, int fg) {
         String label = n.node.str("label", n.node.str("i18n", null));
-        if (label != null) {
+        if (label != null && fg != 0) {
             g.drawString(font, GuiUtil.truncate(font, label, innerW - TOGGLE_W - 4), px,
                     py + (innerH - font.lineHeight) / 2, fg, n.style.shadow());
         }
@@ -290,7 +301,10 @@ public final class Renderer {
         }
     }
 
-    /** 语义色 → 当前配色的 ARGB。null（none）返回 0，调用方据此不画。 */
+    /**
+     * 语义色 → 当前配色的 ARGB。null（none）返回 0，调用方据此不画；文字尤其要跳过：
+     * 原版 drawString 会把 alpha 为 0 的颜色补成不透明，none 就成了黑字。
+     */
     static int color(Style.Token token, PhoneStyle p) {
         if (token == null) return 0;
         return switch (token) {

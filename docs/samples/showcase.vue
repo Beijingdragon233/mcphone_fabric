@@ -94,7 +94,7 @@
   .j-end     { justify: end; }
   .j-between { justify: between; }
 
-  .band      { background: $button; }
+  .band      { width: fill; background: $button; }
   .a-start   { align: start; }
   .a-center  { align: center; }
   .a-end     { align: end; }
@@ -106,6 +106,7 @@
 
   .items     { height: 100; align: stretch; }
 
-  .under     { width: 80; height: 16; }
-  .over      { width: 80; height: 16; background: $accent; hover-background: $button-hover; }
+  /* 上层只盖住下层的左半边：右半边露出下层的计数，点左半边它不许变 */
+  .under     { width: 80; height: 16; align: end; }
+  .over      { width: 40; height: 16; background: $accent; hover-background: $button-hover; }
 </style>

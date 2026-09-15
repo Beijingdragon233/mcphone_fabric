@@ -11,9 +11,10 @@ import java.util.Set;
 /**
  * 命中判定（施工方案 §8.5）。点击、悬停、滚轮走同一次遍历，偏移与 {@link Renderer} 画的一致：
  * 子节点逆序测（后画的在上），scroll / list 的裁剪区逐级取交集、子节点减去 scrollY，list 只测可见区里的项。
+ * 画布矩形是最外层的裁剪区：溢出到内容区之外的部分画得出来，但不悬停、不命中。
  *
- * <p>收 PhoneCanvas 的版本把鼠标四舍五入到整数：悬停用的 {@link PhoneCanvas#mouseX()} 是宿主四舍五入过的，
- * 点击与滚轮收到的是小数，取整方式不同的话两者在边界那一格判给不同的节点。
+ * <p>鼠标坐标原样比较，不取整。节点边界都是整数，小数 m 落在 [x, x+w) 里当且仅当 floor(m) 落在里面，
+ * 所以 100% 手机缩放下宿主给悬停的截断整数与给点击的小数判给同一个节点；加 Math.round 反而错开半格。
  */
 public final class HitTest {
 
@@ -25,7 +26,7 @@ public final class HitTest {
 
     /** 鼠标下最上面那个可交互节点（button / toggle / tab-bar），没有返回 null。禁用的也返回：它要吃掉点击。 */
     public static LayoutNode pick(LayoutNode root, PhoneCanvas c, double mx, double my) {
-        return pick(root, c.x(), c.y(), c.width(), c.height(), Math.round(mx), Math.round(my), new FontMeasure(c.font()));
+        return pick(root, c.x(), c.y(), c.width(), c.height(), mx, my, new FontMeasure(c.font()));
     }
 
     /** 同上，画布矩形与鼠标直接给数。 */
@@ -35,8 +36,7 @@ public final class HitTest {
 
     /** 鼠标下最内层的 scroll / list，没有返回 null。不往外冒泡：内层滚到头也不带着外层滚（§5.1）。 */
     public static LayoutNode pickScroller(LayoutNode root, PhoneCanvas c, double mx, double my) {
-        return pickScroller(root, c.x(), c.y(), c.width(), c.height(), Math.round(mx), Math.round(my),
-                new FontMeasure(c.font()));
+        return pickScroller(root, c.x(), c.y(), c.width(), c.height(), mx, my, new FontMeasure(c.font()));
     }
 
     /** 同上，画布矩形与鼠标直接给数。 */
@@ -53,24 +53,30 @@ public final class HitTest {
         return chain;
     }
 
-    /** 滚一格滚轮，amount 为正是往上。滚到头返回 false，把事件留给手机页面（§8.7）。 */
+    /**
+     * 滚一格滚轮，amount 为正是往上。触控板不足 1px 的小数格也滚 1px，否则慢慢推永远推不动。
+     * 滚到头返回 false，把事件留给手机页面（§8.7）。
+     */
     public static boolean scroll(LayoutNode scroller, double amount) {
         int before = Renderer.clampScroll(scroller);
-        long next = before - (long) (amount * SCROLL_STEP);
-        scroller.scrollY = (int) Math.max(0, Math.min(next, scroller.scrollMax()));
+        long step = Math.round(amount * SCROLL_STEP);
+        if (step == 0) step = (long) Math.signum(amount);
+        scroller.scrollY = (int) Math.max(0, Math.min(before - step, scroller.scrollMax()));
         return scroller.scrollY != before;
     }
 
     /** tab-bar 上 mx 落在第几段。切法与 Renderer 画的一样：等宽，余数给最后一段。 */
     public static int segmentAt(LayoutNode tabBar, PhoneCanvas c, double mx) {
-        return segmentAt(tabBar, c.x(), Math.round(mx));
+        return segmentAt(tabBar, c.x(), mx);
     }
 
     /** 同上，ox 是画布左边界。 */
     public static int segmentAt(LayoutNode tabBar, int ox, double mx) {
         int count = Renderer.tabs(tabBar).size();
-        int segW = count == 0 ? 0 : tabBar.w / count;
-        if (segW <= 0) return 0;
+        if (count == 0) return 0;
+        int segW = tabBar.w / count;
+        // 比段数还窄时前面几段宽 0，画出来整条都是最后一段
+        if (segW <= 0) return count - 1;
         long i = (long) Math.floor((mx - ((long) tabBar.x + ox)) / segW);
         return (int) Math.max(0, Math.min(count - 1, i));
     }

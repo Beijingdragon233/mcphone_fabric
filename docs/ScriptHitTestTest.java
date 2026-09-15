@@ -145,6 +145,7 @@ public class ScriptHitTestTest {
         check(HitTest.scroll(sc, -100) && sc.scrollY == 100, "滚过头停在 scrollMax");
         check(!HitTest.scroll(sc, -1.0) && sc.scrollY == 100, "到底再往下滚：返回 false");
         check(HitTest.scroll(sc, 0.5) && sc.scrollY == 94, "触控板的半格按比例滚");
+        check(HitTest.scroll(sc, 0.01) && sc.scrollY == 93, "不足 1px 的小数格也滚 1px，不会永远推不动");
 
         LayoutNode padded = root(SCROLL_PAGE, "#sc{height:30;padding:4;}");
         LayoutNode psc = byId(padded, "sc");
@@ -252,6 +253,9 @@ public class ScriptHitTestTest {
         eq(HitTest.segmentAt(narrow, OX, OX + 65.9), 1, "段宽 33：66 之前是第 1 段");
         eq(HitTest.segmentAt(narrow, OX, OX + 66), 2, "余数给最后一段：66–99 是第 2 段");
         eq(HitTest.segmentAt(narrow, OX, OX + 99.5), 2, "最后一段吃掉余数");
+
+        LayoutNode tiny = byId(page(TAB_PAGE, "{\"t\":0}", "#tb{width:2;}").root, "tb");
+        eq(HitTest.segmentAt(tiny, OX, OX), 2, "比段数还窄：画出来整条是最后一段，判也给最后一段");
     }
 
     static void hover() {
@@ -272,12 +276,13 @@ public class ScriptHitTestTest {
         LayoutNode right = byId(r, "r");
         PhoneCanvas c = canvas(0, 0);
         eq(left.w, 18, "左按钮 18 宽，右按钮从 18 起");
-        eq(HitTest.pick(r, c, OX + 17.6, OY + 5), right, "点击 17.6 按宿主给悬停的方式四舍五入到 18，是右按钮");
-        eq(HitTest.pick(r, c, OX + 17.4, OY + 5), left, "点击 17.4 四舍五入到 17，是左按钮");
-        check(frame(r, OX + 18, OY + 5).hovered(right), "悬停坐标 18 也是右按钮");
+        // 100% 手机缩放下宿主给悬停的是原版截断后的整数，给点击的是小数
+        eq(HitTest.pick(r, c, OX + 17.9, OY + 5), left, "点击 17.9 不取整，是左按钮");
+        check(frame(r, OX + 17, OY + 5).hovered(left), "同一处的悬停截断成 17，也是左按钮");
+        eq(HitTest.pick(r, c, OX + 18, OY + 5), right, "18 起是右按钮");
 
         LayoutNode tb = byId(page(TAB_PAGE, "{\"t\":0}", ".x{}").root, "tb");
-        eq(HitTest.segmentAt(tb, c, OX + 39.6), 1, "segmentAt 同样四舍五入");
+        eq(HitTest.segmentAt(tb, c, OX + 39.9), 0, "segmentAt 同样不取整：39.9 还在第 0 段");
     }
 
     static void icons() {
