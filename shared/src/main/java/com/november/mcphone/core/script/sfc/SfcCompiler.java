@@ -60,7 +60,7 @@ public final class SfcCompiler {
             Block templateBlock = blocks.get("template");
             CompiledTemplate template;
             try {
-                template = TemplateCompiler.compile(templateBlock.content(), state);
+                template = TemplateCompiler.compile(templateBlock.content(), state, templateBlock.startLine() - 1);
             } catch (SfcError e) {
                 throw e.shift(templateBlock.startLine() - 1);
             }
@@ -83,9 +83,12 @@ public final class SfcCompiler {
 
     /** 去掉 Gson 文案里的块内行列（前面已经换算成原文件行号，留着会自相矛盾）和写给开发者的提示。 */
     static String forAuthor(String message) {
-        return message.replaceAll("\\s*at line \\d+ column \\d+ path \\S*", "")
+        String out = message.replaceAll("\\s*at line \\d+ column \\d+ path \\S*", "")
                 .replaceAll("\\s*Use JsonReader\\.set\\w+\\([^)]*\\) to accept malformed JSON", "")
-                .replaceAll("\\s*See https?://\\S+", "");
+                .replaceAll("\\s*See https?://\\S+", "")
+                .strip();
+        // Gson 的原因有时整句都是上面那几段，删完只剩冒号
+        return out.endsWith("：") ? out + "JSON 写法不对，检查这一行的引号、逗号、冒号与括号" : out;
     }
 
     /**

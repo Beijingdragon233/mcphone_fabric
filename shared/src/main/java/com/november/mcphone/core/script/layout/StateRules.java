@@ -5,10 +5,12 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.TreeSet;
 import java.util.regex.Pattern;
 
 /**
- * state 的键名与初值规则（施工方案 §9.7）。IR 的 JSON 形态与 .vue 的 {@code <script>} 都过这一份：抄两份必然分叉。
+ * state 的键名与值规则（施工方案 §9.7）。IR 的 JSON 形态、.vue 的 {@code <script>} 与 {@code @click} 写入都过这一份：抄几份必然分叉。
  *
  * <p>值的 Java 形态只有 Integer / Boolean / String / List / Map。
  */
@@ -37,36 +39,45 @@ public final class StateRules {
         return null;
     }
 
-    /** 初值不合规时返回理由，合规返回 null。 */
+    /** 作者写的值（初值、@click 写入、IR 的 set）不合规时返回理由，合规返回 null。 */
     public static String check(Object value) {
-        return check(value, 0);
+        return check(value, 0, true);
     }
 
-    private static String check(Object value, int depth) {
+    /**
+     * 只查形状：种类、同构、层数、对象一层、键名，不查个数与长度。宿主写进来的服务端数据用它：
+     * 32 项 / 64 字是给作者手写的，服务端的列表本来就可能更长，§9.4.5 的 2048 截断就是为它留的。
+     */
+    public static String checkShape(Object value) {
+        return check(value, 0, false);
+    }
+
+    private static String check(Object value, int depth, boolean limits) {
         String kind = kind(value);
         if (kind == null) return "只能是 int / bool / string / array / object，给的是 " + (value == null ? "null" : "别的");
         switch (kind) {
             case "string" -> {
                 int len = ((String) value).length();
-                return len > MAX_STRING ? "字符串 " + len + " 字，最多 " + MAX_STRING + " 字" : null;
+                return limits && len > MAX_STRING ? "字符串 " + len + " 字，最多 " + MAX_STRING + " 字" : null;
             }
             case "array" -> {
                 if (depth >= MAX_DEPTH) return "嵌套超过 " + MAX_DEPTH + " 层";
                 List<?> list = (List<?>) value;
-                if (list.size() > MAX_ARRAY) return "数组 " + list.size() + " 项，最多 " + MAX_ARRAY + " 项";
-                Object first = list.isEmpty() ? null : list.get(0);
+                if (limits && list.size() > MAX_ARRAY) return "数组 " + list.size() + " 项，最多 " + MAX_ARRAY + " 项";
+                Object ref = null;
                 for (Object e : list) {
-                    String why = check(e, depth + 1);
+                    String why = check(e, depth + 1, limits);
                     if (why != null) return why;
-                    // 同构：模板里 v-for 出来的每一项要能用同一套写法读，对象要同一组键
-                    if (!sameShape(first, e)) return "数组元素要同一种形状，混了 " + shape(first) + " 和 " + shape(e);
+                    // 同构：模板里 v-for 出来的每一项要能用同一套写法读，对象要同一组键。空数组不当基准，否则 [[], [1], ['x']] 能过
+                    if (ref != null && !sameShape(ref, e)) return "数组元素要同一种形状，混了 " + shape(ref) + " 和 " + shape(e);
+                    if (ref == null || ref instanceof List<?> r && r.isEmpty()) ref = e;
                 }
                 return null;
             }
             case "object" -> {
                 if (depth >= MAX_DEPTH) return "嵌套超过 " + MAX_DEPTH + " 层";
                 Map<?, ?> map = (Map<?, ?>) value;
-                if (map.size() > MAX_OBJECT_KEYS) {
+                if (limits && map.size() > MAX_OBJECT_KEYS) {
                     return "对象 " + map.size() + " 个键，最多 " + MAX_OBJECT_KEYS + " 个";
                 }
                 for (Map.Entry<?, ?> e : map.entrySet()) {
@@ -75,7 +86,7 @@ public final class StateRules {
                     }
                     Object v = e.getValue();
                     if (v instanceof List<?> || v instanceof Map<?, ?>) return "对象只能一层，'" + k + "' 的值不能再是 array / object";
-                    String why = check(v, depth + 1);
+                    String why = check(v, depth + 1, limits);
                     if (why != null) return why;
                 }
                 return null;
@@ -86,25 +97,57 @@ public final class StateRules {
         }
     }
 
-    /** 同种类；对象的键与各键的种类相同；数组套数组时比两边的首项（各自内部已经同构）。空数组与任何数组同形。 */
+    /**
+     * value 能不能写进初值是 declared 的那个 key：种类相同；数组的元素形状与初值的元素一致（初值是空数组时不限）；
+     * 对象的键与各键种类一致。编译期按初值推断 v-for 变量的类型，靠这条成立。合规返回 null。
+     */
+    public static String fits(Object declared, Object value) {
+        if (!Objects.equals(kind(declared), kind(value))) {
+            return "是 " + kind(declared) + "，不能写入 " + (value == null ? "null" : Objects.requireNonNullElse(kind(value), "别的"));
+        }
+        if (declared instanceof List<?> d && value instanceof List<?> v) {
+            Object de = representative(d);
+            Object ve = representative(v);
+            if (de != null && ve != null && !sameShape(de, ve)) return "的元素要是 " + shape(de) + "，给的是 " + shape(ve);
+        } else if (declared instanceof Map<?, ?> && !sameShape(declared, value)) {
+            return "要是 " + shape(declared) + "，给的是 " + shape(value);
+        }
+        return null;
+    }
+
+    /** 数组里拿来代表元素形状的那一项：优先非空的子数组。空数组返回 null。 */
+    public static Object representative(List<?> list) {
+        for (Object e : list) {
+            if (!(e instanceof List<?> l && l.isEmpty())) return e;
+        }
+        return list.isEmpty() ? null : list.get(0);
+    }
+
+    /** 同种类；对象的键与各键的种类相同；数组套数组时比两边的代表项（各自内部已经同构）。空数组与任何数组同形。 */
     private static boolean sameShape(Object a, Object b) {
-        if (!java.util.Objects.equals(kind(a), kind(b))) return false;
+        if (!Objects.equals(kind(a), kind(b))) return false;
         if (a instanceof Map<?, ?> ma && b instanceof Map<?, ?> mb) {
             if (!ma.keySet().equals(mb.keySet())) return false;
             for (Object k : ma.keySet()) {
-                if (!java.util.Objects.equals(kind(ma.get(k)), kind(mb.get(k)))) return false;
+                if (!Objects.equals(kind(ma.get(k)), kind(mb.get(k)))) return false;
             }
             return true;
         }
         if (a instanceof List<?> la && b instanceof List<?> lb) {
-            return la.isEmpty() || lb.isEmpty() || sameShape(la.get(0), lb.get(0));
+            Object ra = representative(la);
+            Object rb = representative(lb);
+            return ra == null || rb == null || sameShape(ra, rb);
         }
         return true;
     }
 
     private static String shape(Object v) {
-        if (v instanceof Map<?, ?> m) return "object" + new java.util.TreeSet<>(m.keySet().stream().map(String::valueOf).toList());
-        return kind(v);
+        if (v instanceof Map<?, ?> m) return "object" + new TreeSet<>(m.keySet().stream().map(String::valueOf).toList());
+        if (v instanceof List<?> l) {
+            Object r = representative(l);
+            return r == null ? "array" : "array<" + shape(r) + ">";
+        }
+        return String.valueOf(kind(v));
     }
 
     /** 只读的深拷贝。state 里的数组交给模板读，被外面改了会让两次重排之间悄悄变样。 */

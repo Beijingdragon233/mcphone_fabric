@@ -55,7 +55,8 @@ public final class TemplateCompiler {
     //  原始树
     // ============================================================
 
-    record Attr(String name, String value, int line, int col, int valueLine, int valueCol) {
+    /** value 是解码实体之后的值，raw 是原文：表达式按 raw 量长度、按 raw 换算报错位置。 */
+    record Attr(String name, String value, String raw, int line, int col, int valueLine, int valueCol) {
     }
 
     /** 文字里的一段：literal 不为 null 是字面文字，否则是 {{ }} 里的表达式源码。 */
@@ -83,19 +84,28 @@ public final class TemplateCompiler {
     }
 
     private final String src;
+    private final int lineOffset;
     private int pos;
     private int line = 1;
     private int col = 1;
     private int elements;
 
-    private TemplateCompiler(String src) {
+    private TemplateCompiler(String src, int lineOffset) {
         this.src = src;
+        this.lineOffset = lineOffset;
     }
 
     /** 编译一个 {@code <template>} 块的内容。state 是 {@code <script>} 给的初值，决定哪些名字声明过。 */
     public static CompiledTemplate compile(String content, Map<String, Object> state) {
+        return compile(content, state, 0);
+    }
+
+    /**
+     * lineOffset 加在运行期 warn 的行号上（块内行 → 原文件行，§9.8）。编译期抛的错仍是块内行号，由 {@link SfcCompiler} 统一加偏移。
+     */
+    public static CompiledTemplate compile(String content, Map<String, Object> state, int lineOffset) {
         Objects.requireNonNull(content, "content");
-        TemplateCompiler c = new TemplateCompiler(content);
+        TemplateCompiler c = new TemplateCompiler(content, lineOffset);
         RawElement root = c.document();
         Map<String, Object> declared = Collections.unmodifiableMap(new LinkedHashMap<>(state));
         Element compiled = c.element(root, Scope.of(declared), 0, 1);
@@ -219,7 +229,7 @@ public final class TemplateCompiler {
             pos = save;
             line = saveLine;
             col = saveCol;
-            return new Attr(name, null, aLine, aCol, aLine, aCol);
+            return new Attr(name, null, null, aLine, aCol, aLine, aCol);
         }
         advance();
         skipBlank();
@@ -233,9 +243,9 @@ public final class TemplateCompiler {
             while (pos < src.length() && src.charAt(pos) != q) advance();
             if (pos >= src.length()) throw syntax(aLine, aCol, "属性 '" + name + "' 的值没有收尾的引号");
             // 属性值里的实体与文字内容里一样解码：:enabled="count &lt; 1" 该是 <，不是位运算
-            String value = decode(src.substring(vStart, pos));
+            String rawValue = src.substring(vStart, pos);
             advance();
-            return new Attr(name, value, aLine, aCol, vLine, vCol);
+            return new Attr(name, decode(rawValue), rawValue, aLine, aCol, vLine, vCol);
         }
         int vLine = line;
         int vCol = col;
@@ -244,7 +254,8 @@ public final class TemplateCompiler {
                 && !src.startsWith("/>", pos)) {
             advance();
         }
-        return new Attr(name, decode(src.substring(vStart, pos)), aLine, aCol, vLine, vCol);
+        String rawValue = src.substring(vStart, pos);
+        return new Attr(name, decode(rawValue), rawValue, aLine, aCol, vLine, vCol);
     }
 
     /** 一段文字，读到下一个 '<' 为止；{{ }} 里的 '<' 属于表达式。 */
@@ -397,15 +408,17 @@ public final class TemplateCompiler {
                 if (scope.isLoopVar(n)) throw syntax(vFor.line, vFor.col, "v-for 的变量 '" + n + "' 和外层 v-for 的同名，换个名字");
             }
             if (item.equals(index)) throw syntax(vFor.line, vFor.col, "v-for 的两个变量同名");
-            int[] at = position(vFor, m.end());
-            Typed source = ExprParser.expression(vFor.value.substring(m.end()), scope, at[0], at[1]);
+            Decoded decodedFor = decodeMapped(vFor.raw);
+            int rawStart = decodedFor.rawIndex()[m.end()];
+            int[] at = walk(vFor.raw, vFor.valueLine, vFor.valueCol, rawStart);
+            Typed source = compileExpr(vFor.raw.substring(rawStart), scope, at[0], at[1]);
             if (source.type() != T.ARR && source.type() != T.INT && source.type() != T.ANY) {
                 throw syntax(at[0], at[1], "v-for 的来源要是数组或整数，这里是 " + source.type().label);
             }
             T itemType = source.type() == T.INT ? T.INT : source.type() == T.ARR ? source.elem() : T.ANY;
             inner = scope.with(item, itemType, T.ANY);
             if (index != null) inner = inner.with(index, T.INT, T.ANY);
-            forSpec = new ForSpec(item, index, compiled(source, vFor, m.end()));
+            forSpec = new ForSpec(item, index, new Expr.Compiled(source.expr(), at[0] + lineOffset, vFor.raw.substring(rawStart)));
         }
 
         Expr.Compiled perItemIf = vFor != null && vIf != null ? expr(vIf, inner) : null;
@@ -452,12 +465,7 @@ public final class TemplateCompiler {
 
         Expr.Compiled keyExpr = key != null ? expr(key, inner) : null;
         Statements statements = null;
-        if (click != null) statements = Statements.parse(click.value, inner, click.valueLine, click.valueCol);
-        // IR 里 button 的 onClick 必填（§5.3），两种形态判得一样
-        if (type == NodeType.BUTTON && click == null) {
-            throw SfcError.at(Code.E_TPL_BAD_VALUE, raw.line, raw.col, tag, "@click", "（没写）",
-                    "必填：按钮要写点了做什么，例如 @click=\"close()\"");
-        }
+        if (click != null) statements = statements(click, inner);
 
         // 子内容
         boolean hasElementChild = false;
@@ -475,9 +483,9 @@ public final class TemplateCompiler {
                 if (staticProps.containsKey("text") || boundProps.containsKey("text")) {
                     throw syntax(raw.line, raw.col, "<" + tag + "> 的文字内容和 text 属性只能写一个");
                 }
-                Text content = content(raw.children, inner);
+                Text content = content(raw.children, inner, tag, "text");
                 if (content.literal() != null) {
-                    staticProps.put("text", staticText(raw.line, raw.col, content.literal()));
+                    staticProps.put("text", content.literal());
                 } else {
                     boundProps.put("text", new BoundProp(specs.get("text"), content.expr()));
                 }
@@ -490,8 +498,13 @@ public final class TemplateCompiler {
         }
 
         requireProps(raw, staticProps, boundProps, hasElementChild);
+        // IR 里 button 的 onClick 必填（§5.3），两种形态判得一样；排在文字必填之后，与 IR 的报错顺序一致（§4.8 的 5f 在 5h 之前）
+        if (type == NodeType.BUTTON && click == null) {
+            throw SfcError.at(Code.E_TPL_BAD_VALUE, raw.line, raw.col, tag, "@click", "（没写）",
+                    "必填：按钮要写点了做什么，例如 @click=\"close()\"");
+        }
 
-        return new Element(type, raw.line, idValue, List.copyOf(classes), Collections.unmodifiableMap(staticProps),
+        return new Element(type, raw.line + lineOffset, idValue, List.copyOf(classes), Collections.unmodifiableMap(staticProps),
                 Collections.unmodifiableMap(boundProps), forSpec, perItemIf, keyExpr, statements, List.copyOf(children));
     }
 
@@ -508,9 +521,7 @@ public final class TemplateCompiler {
                 closed = flush(out, conds, branches);
                 conds = null;
                 branches = null;
-                Text text = content(List.of(t), scope);
-                if (text.literal() != null) staticText(t.line, 1, text.literal());
-                out.add(text);
+                out.add(content(List.of(t), scope, parent.name, "文字内容"));
                 continue;
             }
             RawElement e = (RawElement) r;
@@ -550,17 +561,15 @@ public final class TemplateCompiler {
         return true;
     }
 
-    /** 文字内容 → 字面文字或拼接表达式。连续空白压成一个空格，首尾去掉，和 Vue 的 condense 一样。 */
-    private Text content(List<Raw> raws, Scope scope) {
+    /**
+     * 文字内容 → 字面文字或拼接表达式，字面部分按 IR 的 text 判据查（§5.2：≤512 字、除换行外没有控制字符）。
+     * 连续 ASCII 空白压成一个空格、去掉首尾，和 Vue 的 condense 一样；在原文上压完才解码实体，否则 &#10; 解出的换行和 &nbsp; 会被一起压掉。
+     */
+    private Text content(List<Raw> raws, Scope scope, String owner, String what) {
         List<Piece> pieces = new ArrayList<>();
-        int firstLine = -1;
         for (Raw r : raws) {
-            if (r instanceof RawText t) {
-                if (firstLine < 0) firstLine = t.line;
-                pieces.addAll(t.pieces);
-            }
+            if (r instanceof RawText t) pieces.addAll(t.pieces);
         }
-        // 先在原文上压空白、去首尾，最后才解码实体：反过来的话 &#10; 解出的换行和 &nbsp; 会被一起压掉
         List<Object> parts = new ArrayList<>();
         for (Piece p : pieces) {
             if (p.literal != null) {
@@ -571,7 +580,7 @@ public final class TemplateCompiler {
                     parts.add(s);
                 }
             } else {
-                parts.add(ExprParser.expression(p.expr, scope, p.line, p.col));
+                parts.add(compileExpr(p.expr, scope, p.line, p.col));
             }
         }
         if (!parts.isEmpty() && parts.get(0) instanceof String s && s.startsWith(" ")) parts.set(0, s.substring(1));
@@ -580,33 +589,44 @@ public final class TemplateCompiler {
         parts.removeIf(p -> p instanceof String s && s.isEmpty());
         parts.replaceAll(p -> p instanceof String s ? decode(s) : p);
 
-        int line = firstLine < 0 ? 1 : firstLine;
-        if (parts.stream().allMatch(p -> p instanceof String)) return new Text(line, String.join("", parts.stream().map(p -> (String) p).toList()), null);
-        List<Expr> exprs = new ArrayList<>();
-        int exprLine = line;
+        int[] at = start(pieces);
+        StringBuilder literal = new StringBuilder();
+        boolean allLiteral = true;
         for (Object p : parts) {
             if (p instanceof String s) {
-                exprs.add(new Expr.Lit(s));
+                literal.append(s);
             } else {
-                exprs.add(((Typed) p).expr());
+                allLiteral = false;
             }
         }
+        if (literal.length() > NodeParser.MAX_TEXT || !PropRules.visible(literal.toString())) {
+            throw SfcError.at(Code.E_TPL_BAD_VALUE, at[0], at[1], owner, what, shorten(literal.toString()),
+                    "最多 " + NodeParser.MAX_TEXT + " 字，除换行外没有控制字符");
+        }
+        if (allLiteral) return new Text(at[0] + lineOffset, literal.toString(), null);
+
+        List<Expr> exprs = new ArrayList<>();
+        for (Object p : parts) exprs.add(p instanceof String s ? new Expr.Lit(s) : ((Typed) p).expr());
+        int exprLine = at[0];
         for (Piece p : pieces) {
             if (p.expr != null) {
                 exprLine = p.line;
                 break;
             }
         }
-        return new Text(line, null, new Expr.Compiled(new Expr.Concat(List.copyOf(exprs)), exprLine, "{{ }}"));
+        return new Text(at[0] + lineOffset, null, new Expr.Compiled(new Expr.Concat(List.copyOf(exprs)), exprLine + lineOffset, "{{ }}"));
     }
 
-    /** 编进 text 节点的字面文字：与 IR 的 text 同一条判据（§5.2）。 */
-    private static String staticText(int line, int col, String text) {
-        if (text.length() > NodeParser.MAX_TEXT || !PropRules.visible(text)) {
-            throw SfcError.at(Code.E_TPL_BAD_VALUE, line, col, "text", "text", shorten(text),
-                    "最多 " + NodeParser.MAX_TEXT + " 字，除换行外没有控制字符");
+    /** 文字真正开始的位置：第一个非空白字符或第一个 {{。报错指到这里，而不是前一个标签的 >。 */
+    private static int[] start(List<Piece> pieces) {
+        for (Piece p : pieces) {
+            if (p.expr != null) return new int[]{p.line, Math.max(1, p.col - 2)};
+            for (int i = 0; i < p.literal.length(); i++) {
+                char ch = p.literal.charAt(i);
+                if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r' && ch != '\f') return walk(p.literal, p.line, p.col, i);
+            }
         }
-        return text;
+        return pieces.isEmpty() ? new int[]{1, 1} : new int[]{pieces.get(0).line, pieces.get(0).col};
     }
 
     private void requireProps(RawElement raw, Map<String, Object> statics, Map<String, BoundProp> bounds,
@@ -652,21 +672,63 @@ public final class TemplateCompiler {
         return out;
     }
 
-    private static Expr.Compiled expr(Attr a, Scope scope) {
-        Typed t = ExprParser.expression(a.value, scope, a.valueLine, a.valueCol);
-        return new Expr.Compiled(t.expr(), a.valueLine, a.value);
+    private Expr.Compiled expr(Attr a, Scope scope) {
+        Typed t = compileExpr(a.raw, scope, a.valueLine, a.valueCol);
+        return new Expr.Compiled(t.expr(), a.valueLine + lineOffset, a.raw);
     }
 
-    private Expr.Compiled compiled(Typed t, Attr a, int offset) {
-        return new Expr.Compiled(t.expr(), position(a, offset)[0], a.value.substring(offset));
+    private Statements statements(Attr a, Scope scope) {
+        Decoded d = decodeMapped(a.raw);
+        try {
+            return Statements.parse(d.text(), scope, a.valueLine, a.valueCol).shifted(lineOffset);
+        } catch (SfcError e) {
+            throw remap(e, d, a.raw, a.valueLine, a.valueCol);
+        }
     }
 
-    /** 属性值里第 offset 个字符的行列：值可以跨行。 */
-    private static int[] position(Attr a, int offset) {
-        int l = a.valueLine;
-        int c = a.valueCol;
-        for (int i = 0; i < offset; i++) {
-            if (a.value.charAt(i) == '\n') {
+    /** 模板里的一条表达式：256 按原文量（§9.5.7 限的是源码长度），解码实体后再解析，报错位置换回原文。 */
+    private static Typed compileExpr(String raw, Scope scope, int line, int col) {
+        if (raw.length() > ExprParser.MAX_LENGTH) throw SfcError.at(Code.E_EXPR_TOO_LONG, line, col);
+        Decoded d = decodeMapped(raw);
+        try {
+            return ExprParser.expression(d.text(), scope, line, col);
+        } catch (SfcError e) {
+            throw remap(e, d, raw, line, col);
+        }
+    }
+
+    /** 解码后的串上报的行列 → 原文上的行列。&amp; 比 & 长 4 个字符，不换算的话它后面的列全都偏。 */
+    private static SfcError remap(SfcError e, Decoded d, String raw, int line, int col) {
+        if (d.text().equals(raw)) return e;
+        int offset = offsetAt(d.text(), line, col, e.line(), e.col());
+        if (offset < 0) return e;
+        int[] at = walk(raw, line, col, d.rawIndex()[offset]);
+        return e.movedTo(at[0], at[1]);
+    }
+
+    /** s 从 (line, col) 开始，(targetLine, targetCol) 是第几个字符；不在 s 里返回 -1。 */
+    private static int offsetAt(String s, int line, int col, int targetLine, int targetCol) {
+        int l = line;
+        int c = col;
+        for (int i = 0; i <= s.length(); i++) {
+            if (l == targetLine && c == targetCol) return i;
+            if (i == s.length()) break;
+            if (s.charAt(i) == '\n') {
+                l++;
+                c = 1;
+            } else {
+                c++;
+            }
+        }
+        return -1;
+    }
+
+    /** s 从 (line, col) 开始，第 offset 个字符的行列：值可以跨行。 */
+    private static int[] walk(String s, int line, int col, int offset) {
+        int l = line;
+        int c = col;
+        for (int i = 0; i < offset && i < s.length(); i++) {
+            if (s.charAt(i) == '\n') {
                 l++;
                 c = 1;
             } else {
@@ -702,14 +764,33 @@ public final class TemplateCompiler {
         return SfcError.at(Code.E_TPL_SYNTAX, line, col, reason);
     }
 
+    /** 放进报错文案的值：截到 40 字，控制字符写成 U+XXXX，否则文案里看不见错在哪。 */
     private static String shorten(String s) {
-        return s.length() > 40 ? Values.cut(s, 40) + "…" : s;
+        String cut = s.length() > 40 ? Values.cut(s, 40) : s;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cut.length(); i++) {
+            char ch = cut.charAt(i);
+            if (ch < 0x20 || ch == 0x7F) {
+                sb.append(ExprParser.shown(ch));
+            } else {
+                sb.append(ch);
+            }
+        }
+        return cut.length() < s.length() ? sb + "…" : sb.toString();
     }
 
-    /** HTML 实体：五个常用的与数字形式。认不出的原样留着。 */
+    /** 解码后的串与原文的对照：rawIndex[i] 是解码后第 i 个字符在原文里的下标，末尾多一格是原文长度。 */
+    private record Decoded(String text, int[] rawIndex) {
+    }
+
+    /** HTML 实体：五个常用的、&nbsp; 与数字形式。认不出的原样留着。 */
     static String decode(String s) {
-        if (s.indexOf('&') < 0) return s;
+        return s.indexOf('&') < 0 ? s : decodeMapped(s).text();
+    }
+
+    private static Decoded decodeMapped(String s) {
         StringBuilder sb = new StringBuilder();
+        int[] index = new int[s.length() + 1];
         int i = 0;
         while (i < s.length()) {
             char c = s.charAt(i);
@@ -726,15 +807,18 @@ public final class TemplateCompiler {
                     default -> numeric(name);
                 };
                 if (out != null) {
+                    for (int k = 0; k < out.length(); k++) index[sb.length() + k] = i;
                     sb.append(out);
                     i = semi + 1;
                     continue;
                 }
             }
+            index[sb.length()] = i;
             sb.append(c);
             i++;
         }
-        return sb.toString();
+        index[sb.length()] = s.length();
+        return new Decoded(sb.toString(), java.util.Arrays.copyOf(index, sb.length() + 1));
     }
 
     private static String numeric(String name) {

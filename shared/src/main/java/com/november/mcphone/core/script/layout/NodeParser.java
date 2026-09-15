@@ -166,9 +166,7 @@ public final class NodeParser {
             Object value = stateValue(e.getValue(), path, key);
             String why = StateRules.check(value);
             if (why != null) {
-                String written = e.getValue().toString();
-                throw fail(Code.E_BAD_VALUE, path, "state", path, key,
-                        written.length() > 32 ? written.substring(0, 32) + "…" : written, why);
+                throw fail(Code.E_BAD_VALUE, path, "state", path, key, clip(e.getValue().toString()), why);
             }
             value = StateRules.freeze(value);
             stateValues.put(key, value);
@@ -628,6 +626,12 @@ public final class NodeParser {
                     throw fail(Code.E_STATE_TYPE, path + ".set." + key, nodePath, path + ".set",
                             key, typeName(stateType), typeName(value.getClass()));
                 }
+                // 初值的规则对点击写入同样成立：放过的话校验通过的包在点击时从 UiState.set 抛出来
+                String why = StateRules.check(value);
+                if (why != null) {
+                    throw fail(Code.E_BAD_VALUE, path + ".set." + key, nodePath, path + ".set", key,
+                            clip(String.valueOf(value)), why);
+                }
                 set.put(key, value);
             }
         }
@@ -774,6 +778,11 @@ public final class NodeParser {
         if (List.class.isAssignableFrom(c)) return "array";
         if (Map.class.isAssignableFrom(c)) return "object";
         return "string";
+    }
+
+    /** 放进报错文案的值截到 32 个码点：整段数组塞进去有几千字，按码元截会切断代理对。 */
+    private static String clip(String s) {
+        return s.codePointCount(0, s.length()) > 32 ? s.substring(0, s.offsetByCodePoints(0, 32)) + "…" : s;
     }
 
     /** 排序不是为了好看：Set.of 的迭代顺序逐进程随机，不排的话同一条报错两次跑文字不同。 */

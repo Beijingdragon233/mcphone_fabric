@@ -94,12 +94,14 @@ final class ExprParser {
             return state.containsKey(n) ? T.of(state.get(n)) : null;
         }
 
-        /** state 的数组元素一律不知道：@click 能把整个数组换成另一种元素的数组，按初值首项推会放过运行期必错的写法。 */
+        /** state 数组的元素按初值推：写入必须与初值同形（UiState.writeProblem / set），推断才成立。初值是空数组时不知道。 */
         T elemOf(String n) {
             for (Scope s = this; s.parent != null; s = s.parent) {
                 if (s.name.equals(n)) return s.elem;
             }
-            return T.ANY;
+            if (!(state.get(n) instanceof List<?> list)) return T.ANY;
+            Object r = StateRules.representative(list);
+            return r == null ? T.ANY : T.of(r);
         }
 
         Object initial(String n) {

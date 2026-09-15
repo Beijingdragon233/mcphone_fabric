@@ -758,7 +758,9 @@ public class SfcCompilerTest {
         eq(longer.state().getString("title").length(), 30, "@click 写入超过 64 字的字符串整组不执行");
         check(!Statements.parse("count = 1", EXPR_SCOPE, 1, 1).run(UiState.empty(), "t.vue", List.of(), List.of()).applied(),
                 "state 里没有这个 key 时不抛，整组不执行");
-        check(caught(() -> state("title", "x").set("title", "y".repeat(65))) != null, "UiState.set 也挡超长字符串");
+        check(state("title", "x").writeProblem("title", "y".repeat(65)) != null, "作者写入（@click）挡超长字符串");
+        check(caught(() -> state("title", "x").set("title", "y".repeat(65))) == null, "宿主写入不套 64 字：服务端数据可以更长");
+        check(caught(() -> state("items", List.of(1)).set("items", List.of("a"))) != null, "宿主写入也要与初值同形");
         check(caught(() -> state("xs", List.of(1.5))) != null, "UiState.of 挡嵌套里的小数");
         rejects("<script>\nstate = { rows: [{ a: 1 }, { b: 'x' }] }\n</script>" + MIN_TPL, "E_SCRIPT_STATE");
         check(!acceptsIr("{\"state\":{\"rows\":[{\"a\":1},{\"b\":\"x\"}]},\"pages\":{\"main\":{\"type\":\"box\"}},\"entry\":\"main\"}"),
@@ -848,6 +850,88 @@ public class SfcCompilerTest {
         EvalContext joined = new EvalContext(listed.values(), "test.vue");
         ev("'a' + items", listed, joined);
         check(!joined.warnings().isEmpty(), "数组拼进字符串记 warn");
+        secondRoundFixes();
+    }
+
+    /** 回打报出来、已修的问题。 */
+    static void secondRoundFixes() {
+        // state：IR 的 set 过值规则；写入对着初值比形状；同构可传递；编译期恢复按初值推断
+        check(!acceptsIr("{\"state\":{\"t\":\"x\"},\"pages\":{\"main\":{\"type\":\"button\",\"text\":\"b\","
+                + "\"onClick\":{\"set\":{\"t\":\"" + "y".repeat(65) + "\"}}}},\"entry\":\"main\"}"), "IR 的 onClick.set 也挡超长字符串");
+        UiState shaped = state("items", List.of(1, 2));
+        check(run("items = []", shaped).outcome().applied(), "写成空数组可以");
+        check(!run("items = ['a']", shaped).outcome().applied(), "先写空数组再写字符串数组绕不过初值的形状");
+        check(com.november.mcphone.core.script.layout.StateRules.check(List.of(List.of(), List.of(1), List.of("x"))) != null,
+                "同构判断不被开头的空数组骗过");
+        rejects("<column><text v-for=\"x in items\" :text=\"x * 2\"/></column>", "E_EXPR_TYPE");
+
+        // 内联 icon 真解码
+        eq(pkgCode(() -> Manifest.parseInline(MANIFEST.replace("}", ",\"icon\":\"data:image/png;base64,A\"}"))),
+                PackageError.Code.E_PKG_BAD_ICON, "解不开的 base64 不收");
+
+        // Tree.click 的边界
+        UiState tabs = state("tab", 0);
+        TemplateInstance tabsInstance = instance("<tab-bar bind=\"tab\" :tabs=\"[{text:'a'},{text:'b'}]\"/>", tabs);
+        TemplateInstance.Tree older = tabsInstance.instantiate(tabs);
+        TemplateInstance.Tree newer = tabsInstance.instantiate(tabs);
+        eq(newer.click(newer.root(), tabs, 99), null, "tab-bar 的 segment 越界什么都不改");
+        eq(tabs.getInt("tab"), 0, "越界时 bind 没写");
+        check(String.valueOf(caught(() -> newer.click(older.root(), tabs, 1))).contains("IllegalArgumentException"),
+                "拿另一棵树的节点去点直接拒绝");
+
+        // 带 id 的节点不占 :key 名额；按钮缺文字先报文字
+        Node withId = compile("<column><scroll id=\"feed\" :key=\"'x'\"><box/></scroll><scroll :key=\"'x'\"><box/></scroll></column>");
+        eq(withId.children().get(1).props().get("key"), "x", "带 id 的节点不占同父节点的 :key 名额");
+        check(errorOf("<button/>").message().contains("text / i18n"), "按钮缺文字与缺 @click 时先报文字，与 IR 的顺序一致");
+
+        // 实体解码后报错位置换回原文
+        String amp = "<text :text=\"'&amp;' + conut\"/>";
+        Err ampErr = errorOf(amp);
+        eq(ampErr.col(), amp.indexOf("conut") + 1, "&amp; 之后的列按原文算");
+        String newline = "<progress :value=\"count&#10;+ conut\"/>";
+        eq(errorOf(newline).line(), lineOf(full(newline), "conut"), "&#10; 不让行号往下错");
+        eq(inst("<text>{{ count &lt; 1 ? 'a' : 'b' }}</text>", state("count", 0)).str("text", null), "a", "{{ }} 里的实体也解码，与 :text 一样");
+        rejects_expr("count" + " + 1".repeat(63), "E_EXPR_TOO_LONG");
+        rejects("<text :text=\"" + "&lt;".repeat(70) + "\"/>", "E_EXPR_TOO_LONG");
+
+        // 求值预算用完后不出节点，而不是丢了 :enabled 按默认值画成可点
+        UiState spentState = state("count", 0);
+        TemplateInstance.Tree spent = instance("<column><box v-for=\"i in 2048\" v-if=\"i < 0\"/><box v-for=\"i in 2048\" v-if=\"i < 0\"/>"
+                + "<button :enabled=\"count > 0\" @click=\"count = 0\">清零</button></column>", spentState).instantiate(spentState);
+        check(spent.root().children().stream().noneMatch(n -> n.type() == NodeType.BUTTON), "预算用完后按钮不进树");
+
+        // 2048 的截断 warn 一次重排只记一条
+        UiState many = state("count", 0);
+        TemplateInstance.Tree repeated = instance("<column><box v-for=\"i in 3000\"/><box v-for=\"i in 3000\"/><box v-for=\"i in 3000\"/></column>", many)
+                .instantiate(many);
+        eq(repeated.warnings().stream().filter(w -> w.contains("2048")).count(), 1L, "2048 截断的 warn 只记第一处");
+
+        // 插值不重复扣预算：4095 次之后一个 {{ }} 还放得下
+        UiState edge = state("count", 0);
+        TemplateInstance.Tree fits = instance("<column><box v-for=\"i in 2047\" v-if=\"i < 0\"/><box v-for=\"i in 2046\" v-if=\"i < 0\"/>"
+                + "<text>{{ count }}</text></column>", edge).instantiate(edge);
+        check(fits.root().children().stream().anyMatch(n -> "0".equals(n.str("text", null))), "第 4096 次求值的插值照常显示");
+
+        // 运行期 warn 报原始文件行号
+        String runtime = full("<progress :value=\"count * 1000\"/>");
+        SfcCompiler.App runtimeApp = SfcCompiler.compile("r.vue", runtime);
+        UiState runtimeState = UiState.of(runtimeApp.template().initialState());
+        runtimeState.set("count", 1);
+        List<String> runtimeWarnings = new TemplateInstance(runtimeApp.template(), "r.vue").instantiate(runtimeState).warnings();
+        check(runtimeWarnings.stream().anyMatch(w -> w.startsWith("r.vue:" + lineOf(runtime, "progress") + " ")),
+                "运行期 warn 带原始文件行号：" + runtimeWarnings);
+
+        // 字面文字报错指到文字本身
+        Err literal = errorOf("<manifest>\n" + MANIFEST + "\n</manifest>\n<template>\n<column>\n<box/>\n  a&#1;b\n</column>\n</template>\n");
+        check(literal.line() == 7 && literal.col() == 3 && literal.message().contains("U+0001"), "文字里的控制字符报在它那一行、文案看得见：" + literal.message());
+        rejects("<text>{{ title }}" + "x".repeat(600) + "</text>", "E_TPL_BAD_VALUE");
+
+        // 块标签尖括号里带空白；manifest 文案不删空；语句长度不算空白
+        Err inner = errorOf("<manifest>\n" + MANIFEST + "\n</manifest>\n<template>\n<box/>\n</template >\n");
+        check(inner.code().equals("E_SFC_BLOCK_FORMAT") && inner.line() == 6, "</template > 报 BLOCK_FORMAT：" + inner.message());
+        Err tru = errorOf("<manifest>\n{\"format\": tru}\n</manifest>\n<template>\n<box/>\n</template>\n");
+        check(!tru.message().strip().endsWith("："), "manifest 语法错的原因不是空的：" + tru.message());
+        check(caught(() -> Statements.parse("count++" + " ".repeat(260) + ";close()", EXPR_SCOPE, 1, 1)) == null, "语句间的空白不算长度");
     }
 
     static final com.november.mcphone.core.script.layout.TextMeasure FAKE_TEXT = new com.november.mcphone.core.script.layout.TextMeasure() {

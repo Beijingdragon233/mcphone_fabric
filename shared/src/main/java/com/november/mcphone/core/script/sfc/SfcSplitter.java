@@ -20,6 +20,8 @@ public final class SfcSplitter {
     public static final Set<String> BLOCKS = Set.of("manifest", "template", "script", "style");
 
     private static final Pattern TAG = Pattern.compile("</?([a-z][a-z0-9-]*)>");
+    /** 顶格、写歪了的块标签：尖括号里多了空白，或者后面跟了空白。 */
+    private static final Pattern LOOSE = Pattern.compile("<\\s*/?\\s*([a-z][a-z0-9-]*)\\s*>");
     private static final char BOM = (char) 0xFEFF;
 
     private SfcSplitter() {
@@ -43,7 +45,7 @@ public final class SfcSplitter {
             if (open != null) {
                 // 顶格的块标签后面跟了空白：编辑器留下的尾随空格最常见，当成内容会报成「没有闭合」且指错行
                 if (!tag && !raw.isEmpty() && raw.charAt(0) == '<') {
-                    Matcher loose = TAG.matcher(raw.stripTrailing());
+                    Matcher loose = LOOSE.matcher(raw.stripTrailing());
                     if (loose.matches() && BLOCKS.contains(loose.group(1))) {
                         throw SfcError.at(Code.E_SFC_BLOCK_FORMAT, i + 1, 1);
                     }

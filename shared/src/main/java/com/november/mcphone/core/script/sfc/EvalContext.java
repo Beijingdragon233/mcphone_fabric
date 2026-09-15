@@ -1,6 +1,7 @@
 package com.november.mcphone.core.script.sfc;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,7 @@ final class EvalContext {
     private final List<String> names = new ArrayList<>();
     private final List<Object> values = new ArrayList<>();
     private final Set<String> warnings = new LinkedHashSet<>();
+    private final Set<String> once = new HashSet<>();
     private int evals;
     private boolean exhausted;
 
@@ -87,6 +89,11 @@ final class EvalContext {
     /** 截断、求值预算用完这类「页面少了一截」的 warn 不受条数上限挡：前面刷满 32 条后它们会悄悄消失。 */
     void warnAlways(String reason) {
         warnings.add(file + ":" + line + " " + reason);
+    }
+
+    /** 同一类「页面少了一截」的 warn 一次实例化只记第一处：很多个 v-for 各自超出上限时不刷满日志。 */
+    void warnOnce(String kind, String reason) {
+        if (once.add(kind)) warnAlways(reason);
     }
 
     List<String> warnings() {

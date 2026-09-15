@@ -1,6 +1,5 @@
 package com.november.mcphone.core.script.sfc;
 
-import com.november.mcphone.core.script.layout.StateRules;
 import com.november.mcphone.core.script.layout.UiState;
 import com.november.mcphone.core.script.sfc.ExprParser.Scope;
 import com.november.mcphone.core.script.sfc.ExprParser.Tok;
@@ -12,7 +11,6 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -72,17 +70,16 @@ public final class Statements {
     }
 
     static Statements parse(String src, Scope scope, int line, int col) {
-        if (src.length() > MAX_STATEMENTS * (ExprParser.MAX_LENGTH + 1)) throw SfcError.at(Code.E_EXPR_TOO_LONG, line, col);
+        // 只防超大输入；单条语句的 256 字符在下面按记号量，空白不算
+        if (src.length() > MAX_STATEMENTS * ExprParser.MAX_LENGTH * 4) throw SfcError.at(Code.E_EXPR_TOO_LONG, line, col);
         ExprParser p = new ExprParser(src, line, col, false);
         if (p.peek().kind() == 'e') throw ExprParser.syntax(p.peek(), "@click 是空的");
         List<Stmt> out = new ArrayList<>();
         while (p.peek().kind() != 'e') {
             Tok first = p.peek();
             if (out.size() == MAX_STATEMENTS) throw ExprParser.syntax(first, "@click 最多 " + MAX_STATEMENTS + " 条语句");
+            if (span(p) > ExprParser.MAX_LENGTH) throw SfcError.at(Code.E_EXPR_TOO_LONG, first.line(), first.col());
             out.add(statement(p, scope, src));
-            if (p.peek().offset() - first.offset() > ExprParser.MAX_LENGTH) {
-                throw SfcError.at(Code.E_EXPR_TOO_LONG, first.line(), first.col());
-            }
             if (p.at(";")) {
                 p.next();
             } else if (p.peek().kind() != 'e') {
@@ -128,6 +125,55 @@ public final class Statements {
         throw ExprParser.syntax(t, SHAPES);
     }
 
+    /** 这一条语句从第一个记号到顶层 ; 之前最后一个记号的长度。先量再解析：超长的不必解析完才拒（嵌套过深会先撞别的错）。 */
+    private static int span(ExprParser p) {
+        Tok first = p.peek();
+        Tok last = first;
+        int depth = 0;
+        for (int k = 0; ; k++) {
+            Tok t = p.peek(k);
+            if (t.kind() == 'e') break;
+            if (t.kind() == 'p') {
+                switch (t.text()) {
+                    case "(", "[", "{" -> depth++;
+                    case ")", "]", "}" -> depth--;
+                    case ";" -> {
+                        if (depth <= 0) return end(last) - first.offset();
+                    }
+                    default -> {
+                    }
+                }
+            }
+            last = t;
+            if (end(t) - first.offset() > ExprParser.MAX_LENGTH) break;
+        }
+        return end(last) - first.offset();
+    }
+
+    private static int end(Tok t) {
+        return t.offset() + t.text().length();
+    }
+
+    /** 运行期 warn 用的行号整体下移（块内行 → 原文件行，§9.8）。编译期的报错由 SfcCompiler 统一加偏移，不走这里。 */
+    Statements shifted(int lines) {
+        if (lines == 0) return this;
+        List<Stmt> moved = new ArrayList<>();
+        for (Stmt s : list) {
+            if (s instanceof Assign a) {
+                moved.add(new Assign(a.key(), shift(a.value(), lines)));
+            } else if (s instanceof Nav n) {
+                moved.add(new Nav(shift(n.page(), lines)));
+            } else {
+                moved.add(s);
+            }
+        }
+        return new Statements(List.copyOf(moved), line + lines);
+    }
+
+    static Expr.Compiled shift(Expr.Compiled c, int lines) {
+        return new Expr.Compiled(c.root(), c.line() + lines, c.source());
+    }
+
     private static Expr.Compiled compiled(Typed t, Tok at, String src) {
         if (t.nodes() > ExprParser.MAX_NODES) throw SfcError.at(Code.E_EXPR_TOO_COMPLEX, at.line(), at.col(), t.nodes());
         return new Expr.Compiled(t.expr(), at.line(), src);
@@ -145,13 +191,9 @@ public final class Statements {
             c.line = line;
             if (s instanceof Assign a) {
                 Object v = a.value().run(c);
-                Object old = scratch.get(a.key());
-                if (old == null || !Objects.equals(StateRules.kind(old), StateRules.kind(v))) {
-                    return failed(c, a.key() + " 是 " + Values.kind(old) + "，不能写入 " + Values.kind(v));
-                }
-                // §9.7 的值规则不只管初值：放过的话数组会变得不同构、字符串超过 64 字
-                String why = StateRules.check(v);
-                if (why != null) return failed(c, a.key() + " 写入的值不合规：" + why);
+                // §9.7 的值规则不只管初值，形状也对着初值比：编译期按初值推断的类型靠它成立
+                String why = state.writeProblem(a.key(), v);
+                if (why != null) return failed(c, why);
                 scratch.put(a.key(), v);
                 changed.add(a.key());
             } else if (s instanceof Step st) {

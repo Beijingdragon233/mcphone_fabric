@@ -10,6 +10,7 @@ import com.google.gson.stream.JsonToken;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -67,7 +68,14 @@ public record Manifest(
     /** 内联 icon 的 base64 部分上限，§11.2 的 8 KiB。 */
     public static final int MAX_INLINE_ICON = 8 * 1024;
 
-    private static final Pattern BASE64 = Pattern.compile("[A-Za-z0-9+/]*={0,2}");
+    /** 真解一遍：只看字符集的话 "="、"A" 这种解不开的串也能过，要等客户端画图标时才失败。 */
+    private static boolean decodes(String base64) {
+        try {
+            return Base64.getDecoder().decode(base64).length > 0;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
 
     /** 解析并校验。任何一条不过就抛，不返回半个 Manifest。 */
     public static Manifest parse(String json) {
@@ -157,9 +165,9 @@ public record Manifest(
             throw PackageError.of(PackageError.Code.E_PKG_BAD_ICON, MAX_INLINE_ICON, "'" + head + "'");
         }
         String payload = v.substring(INLINE_ICON_PREFIX.length());
-        if (payload.isEmpty() || payload.length() > MAX_INLINE_ICON || !BASE64.matcher(payload).matches()) {
+        if (payload.length() > MAX_INLINE_ICON || !decodes(payload)) {
             throw PackageError.of(PackageError.Code.E_PKG_BAD_ICON, MAX_INLINE_ICON,
-                    payload.length() + " 字符" + (BASE64.matcher(payload).matches() ? "" : "，而且不是 base64"));
+                    payload.length() + " 字符" + (payload.length() > MAX_INLINE_ICON ? "" : "，解不出字节"));
         }
         return v;
     }

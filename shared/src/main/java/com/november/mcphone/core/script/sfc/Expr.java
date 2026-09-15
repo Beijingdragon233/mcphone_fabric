@@ -207,14 +207,23 @@ sealed interface Expr {
 
     /**
      * 插值：各段文本化后拼起来。不走 +：{{ a }}{{ b }} 两个 int 该拼成 "12"，不是加成 3。
-     * 每个 {{ }} 各记一次求值：一段文字里塞几万个插值时，整段只算一次会绕过 4096 的上限。
+     * 第二个起每个 {{ }} 各记一次求值（第一个已由 Compiled.run 记过）：一段文字里塞几万个插值时，整段只算一次会绕过 4096 的上限。
      */
     record Concat(List<Expr> parts) implements Expr {
         public Object eval(EvalContext c) {
             enter(c);
             StringBuilder sb = new StringBuilder();
+            boolean charged = false;
             for (Expr p : parts) {
-                Object v = p instanceof Lit || c.budget() ? p.eval(c) : null;
+                Object v;
+                if (p instanceof Lit) {
+                    v = p.eval(c);
+                } else if (!charged) {
+                    charged = true;
+                    v = p.eval(c);
+                } else {
+                    v = c.budget() ? p.eval(c) : null;
+                }
                 if (v instanceof List<?> || v instanceof Map<?, ?>) c.warn(Values.kind(v) + " 放进文字里显示为空");
                 sb.append(Values.text(v));
                 if (sb.length() > EvalContext.MAX_CONCAT) break;

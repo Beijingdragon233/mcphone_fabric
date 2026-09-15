@@ -117,6 +117,11 @@ public final class SfcError extends RuntimeException {
         return code.positioned() ? new SfcError(code, file, line + lines, col, args) : this;
     }
 
+    /** 同一条错误换到另一个位置：实体解码后的串上算出的行列要换回原文上的。 */
+    public SfcError movedTo(int newLine, int newCol) {
+        return new SfcError(code, file, newLine, newCol, args);
+    }
+
     public SfcError inFile(String name) {
         return new SfcError(code, name, line, col, args);
     }

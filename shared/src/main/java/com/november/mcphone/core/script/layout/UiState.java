@@ -7,38 +7,52 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * 一页的 UI 状态（施工方案 §9.7）：key 只有初值里声明过的那些，值是 int / bool / string / array / object，种类不变。不持久化。
+ * 一页的 UI 状态（施工方案 §9.7）：key 只有初值里声明过的那些，值是 int / bool / string / array / object，形状不变。不持久化。
  *
  * <p>{@link #revision()} 只在值真的变了时加一，页面拿它判断要不要重排（§7.6）。
  */
 public final class UiState {
 
     private final Map<String, Object> values;
+    /** 初值。写入对着它比形状，不对着当前值比：对着当前值比的话，先写 [] 再写 ['a'] 就把 int 数组换成了字符串数组。 */
+    private final Map<String, Object> declared;
     private int revision;
 
-    private UiState(Map<String, Object> values) {
+    private UiState(Map<String, Object> values, Map<String, Object> declared) {
         this.values = values;
+        this.declared = declared;
     }
 
-    /** 以初值建一份，例如 {@code NodeParser.Ui#state()}。 */
+    /** 以初值建一份，例如 {@code NodeParser.Ui#state()}。初值按 §9.7 的全部规则查，不合规抛 {@link IllegalArgumentException}。 */
     public static UiState of(Map<String, Object> initial) {
+        if (initial.size() > StateRules.MAX_KEYS) {
+            throw new IllegalArgumentException("state 最多 " + StateRules.MAX_KEYS + " 个 key，给了 " + initial.size() + " 个");
+        }
         Map<String, Object> copy = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : initial.entrySet()) {
-            Object v = e.getValue();
-            String why = StateRules.check(v);
-            if (why != null) throw new IllegalArgumentException("state['" + e.getKey() + "'] 的初值不合规：" + why);
-            copy.put(Objects.requireNonNull(e.getKey(), "state 的 key"), StateRules.freeze(v));
+            String key = Objects.requireNonNull(e.getKey(), "state 的 key");
+            if (!StateRules.KEY.matcher(key).matches()) {
+                throw new IllegalArgumentException("state 的 key '" + key + "' 要" + StateRules.KEY_RULE);
+            }
+            String why = StateRules.check(e.getValue());
+            if (why != null) throw new IllegalArgumentException("state['" + key + "'] 的初值不合规：" + why);
+            copy.put(key, StateRules.freeze(e.getValue()));
         }
-        return new UiState(copy);
+        return new UiState(copy, Collections.unmodifiableMap(new LinkedHashMap<>(copy)));
+    }
+
+    public static UiState empty() {
+        return new UiState(new LinkedHashMap<>(), Map.of());
+    }
+
+    /** 同一份声明、当前值的副本，revision 从 0 起。点击先在副本上试，全部成功才写回原件。 */
+    public UiState copy() {
+        return new UiState(new LinkedHashMap<>(values), declared);
     }
 
     /** 全部键值，只读。模板编译拿它知道声明了哪些 key、各是什么种类。 */
     public Map<String, Object> values() {
         return Collections.unmodifiableMap(values);
-    }
-
-    public static UiState empty() {
-        return new UiState(new LinkedHashMap<>());
     }
 
     public int revision() {
@@ -62,22 +76,27 @@ public final class UiState {
         return values.get(key) instanceof String s ? s : "";
     }
 
+    /** 作者写入（@click）的判据：key 声明过、形状与初值一致、值过 §9.7 的全部规则（个数与长度也查）。合规返回 null。 */
+    public String writeProblem(String key, Object value) {
+        Object d = declared.get(key);
+        if (d == null) return "state 里没有 '" + key + "'";
+        String why = StateRules.fits(d, value);
+        if (why != null) return "state['" + key + "'] " + why;
+        why = StateRules.check(value);
+        return why == null ? null : "state['" + key + "'] 不能写入：" + why;
+    }
+
     /**
-     * 改一个值。key 必须声明过、种类必须与初值相同，否则抛 {@link IllegalArgumentException}：
-     * IR 校验已经保证了这两条，调用方绕过校验时在这里挡住，而不是把一个 String 塞进 int 的 key。
-     * 按种类比而不是按 Class 比：两个内容相同的 List 可以是不同的实现类。
+     * 改一个值。key 必须声明过、形状必须与初值一致，否则抛 {@link IllegalArgumentException}。
+     * 个数与长度不在这里查：宿主写进来的服务端数据可以比作者手写的长（§9.4.5 的 2048 截断为它而设）；作者的写入另过 {@link #writeProblem}。
      */
     public void set(String key, Object value) {
-        Object old = values.get(key);
-        if (old == null) throw new IllegalArgumentException("state 里没有 '" + key + "'");
-        String want = StateRules.kind(old);
-        if (!want.equals(StateRules.kind(value))) {
-            throw new IllegalArgumentException("state['" + key + "'] 是 " + want + "，不能写入 "
-                    + (value == null ? "null" : value.getClass().getSimpleName()));
-        }
-        String why = StateRules.check(value);
-        if (why != null) throw new IllegalArgumentException("state['" + key + "'] 不能写入：" + why);
-        if (!old.equals(value)) {
+        Object d = declared.get(key);
+        if (d == null) throw new IllegalArgumentException("state 里没有 '" + key + "'");
+        String why = StateRules.fits(d, value);
+        if (why == null) why = StateRules.checkShape(value);
+        if (why != null) throw new IllegalArgumentException("state['" + key + "'] " + why);
+        if (!values.get(key).equals(value)) {
             values.put(key, StateRules.freeze(value));
             revision++;
         }

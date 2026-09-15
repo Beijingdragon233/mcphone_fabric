@@ -47,13 +47,16 @@ public final class TemplateInstance {
         private final List<String> warnings;
         private final boolean truncated;
         private final Map<Node, Statements.Bound> clicks;
+        private final Set<Node> nodes;
         private final String file;
 
-        private Tree(Node root, List<String> warnings, boolean truncated, Map<Node, Statements.Bound> clicks, String file) {
+        private Tree(Node root, List<String> warnings, boolean truncated, Map<Node, Statements.Bound> clicks,
+                     Set<Node> nodes, String file) {
             this.root = root;
             this.warnings = warnings;
             this.truncated = truncated;
             this.clicks = clicks;
+            this.nodes = nodes;
             this.file = file;
         }
 
@@ -78,15 +81,23 @@ public final class TemplateInstance {
         /**
          * 点了 hit 之后改 state（§9.4.6）：toggle 把 bind 取反、tab-bar 把 bind 设成 segment，然后执行 @click。
          * 两步在一份副本上做，@click 任一条失败时 bind 也不写（§9.6 整组不执行）。可不可用由调用方先判（Renderer.isEnabled）。
-         * 这个节点既没有 bind 也没有 @click 时返回 null。
+         * 这个节点既没有 bind 也没有 @click、bind 不在 state 里、或 tab-bar 的 segment 越界时返回 null，什么都不改。
+         * hit 不是这棵树产出的节点时抛 {@link IllegalArgumentException}：查不到 @click 却照写 bind，会悄悄拆开「bind 与 @click 同成败」。
          */
         public Statements.Outcome click(Node hit, UiState state, int segment) {
+            if (!nodes.contains(hit)) {
+                throw new IllegalArgumentException("这个节点不是这棵树产出的：点击要用同一次 instantiate 的树去查");
+            }
             Statements.Bound bound = clicks.get(hit);
             String bind = hit.str("bind", null);
             boolean binds = bind != null && state.get(bind) != null
                     && (hit.type() == NodeType.TOGGLE || hit.type() == NodeType.TAB_BAR);
+            if (hit.type() == NodeType.TAB_BAR && binds) {
+                int count = hit.props().get("tabs") instanceof List<?> tabs ? tabs.size() : 0;
+                if (segment < 0 || segment >= count) return null;
+            }
             if (!binds && bound == null) return null;
-            UiState trial = UiState.of(state.values());
+            UiState trial = state.copy();
             if (binds) {
                 if (hit.type() == NodeType.TOGGLE) {
                     trial.toggle(bind);
@@ -110,6 +121,7 @@ public final class TemplateInstance {
         boolean truncated;
         final Set<String> ids = new HashSet<>();
         final Map<Node, Statements.Bound> clicks = new IdentityHashMap<>();
+        final Set<Node> nodes = Collections.newSetFromMap(new IdentityHashMap<>());
     }
 
     /** 按当前 state 产出一棵树。不抛：超限截断、求值出错降级，原因在 {@link Tree#warnings()}。 */
@@ -119,7 +131,7 @@ public final class TemplateInstance {
         Pass pass = new Pass();
         Node root = node(compiled.root(), c, pass, null);
         if (pass.truncated) c.warnAlways("节点超过 " + NodeParser.MAX_NODES + " 个，多出来的没有进树");
-        return new Tree(root, c.warnings(), pass.truncated, pass.clicks, file);
+        return new Tree(root, c.warnings(), pass.truncated, pass.clicks, pass.nodes, file);
     }
 
     public String file() {
@@ -128,12 +140,16 @@ public final class TemplateInstance {
 
     // ============================================================
 
-    /** 预算用完时返回 null。siblingKeys 是同一个父节点下已经用过的 :key。 */
+    /**
+     * 节点预算或求值预算用完时返回 null。siblingKeys 是同一个父节点下已经用过的 :key，根节点传 null。
+     * 求值预算用完后不出节点：绑定属性求出来都是 null 会被丢掉，按默认值画（:enabled 丢了就是可点）正好与 state 相反。
+     */
     private Node node(Element e, EvalContext c, Pass pass, Set<String> siblingKeys) {
         if (pass.budget <= 0) {
             pass.truncated = true;
             return null;
         }
+        if (siblingKeys != null && c.exhausted()) return null;
         pass.budget--;
         String tag = e.type().json;
 
@@ -142,29 +158,31 @@ public final class TemplateInstance {
             Object v = PropRules.normalize(b.getValue().spec(), b.getValue().expr().run(c), c, tag);
             if (v != null) props.put(b.getKey(), v);
         }
-        if (e.key() != null) {
-            String key = Values.text(e.key().run(c));
-            // 空 key（null、数组、对象都文本化成空串）按下标找回；同一个父节点下重复的也按下标，不然两个列表共用滚动位置
-            if (key.isEmpty()) {
-                c.warn("<" + tag + "> 的 :key 是空的，按下标找回滚动位置");
-            } else if (siblingKeys != null && !siblingKeys.add(key)) {
-                c.warn("<" + tag + "> 的 :key '" + key + "' 在同一个父节点下重复，这一项按下标找回滚动位置");
-            } else {
-                props.put("key", key);
-            }
-        }
-
         String id = e.id();
         if (id != null && !pass.ids.add(id)) {
             c.warn("id '" + id + "' 在树里出现了不止一次，后面的去掉 id");
             id = null;
         }
+        if (e.key() != null) {
+            String key = Values.text(e.key().run(c));
+            // 空 key（null、数组、对象都文本化成空串）按下标找回；同一个父节点下重复的也按下标，不然两个列表共用滚动位置。
+            // 有 id 的节点路径是 #id，不占 key 的名额
+            if (key.isEmpty()) {
+                c.warn("<" + tag + "> 的 :key 是空的，按下标找回滚动位置");
+            } else if (id == null && siblingKeys != null && !siblingKeys.add(key)) {
+                c.warn("<" + tag + "> 的 :key '" + key + "' 在同一个父节点下重复，这一项按下标找回滚动位置");
+            } else {
+                props.put("key", key);
+            }
+        }
+        if (siblingKeys != null && c.exhausted()) return null;
 
         List<Node> kids = new ArrayList<>();
         Set<String> keys = new HashSet<>();
         for (Child ch : e.children()) expand(ch, c, pass, kids, keys);
 
         Node out = new Node(e.type(), id, e.classes(), Collections.unmodifiableMap(props), List.copyOf(kids), null, null);
+        pass.nodes.add(out);
         if (e.click() != null) pass.clicks.put(out, new Statements.Bound(e.click(), c.boundNames(), c.boundValues()));
         return out;
     }
@@ -187,9 +205,13 @@ public final class TemplateInstance {
                 pass.truncated = true;
                 return;
             }
+            if (c.exhausted()) return;
             pass.budget--;
             Object text = t.literal() != null ? t.literal() : PropRules.normalize(TEXT, t.expr().run(c), c, "text");
-            out.add(new Node(NodeType.TEXT, null, List.of(), Map.of("text", text), List.of(), null, null));
+            if (c.exhausted()) return;
+            Node node = new Node(NodeType.TEXT, null, List.of(), Map.of("text", text), List.of(), null, null);
+            pass.nodes.add(node);
+            out.add(node);
         } else {
             Element e = (Element) ch;
             if (e.vFor() == null) {
@@ -217,10 +239,11 @@ public final class TemplateInstance {
             count = 0;
         }
         if (count > MAX_FOR_ITEMS) {
-            c.warnAlways("v-for 有 " + count + " 项，截到 " + MAX_FOR_ITEMS);
+            c.warnOnce("for-items", "v-for 有 " + count + " 项，截到 " + MAX_FOR_ITEMS + "（这次重排里别处同样截断的不再逐条记）");
             count = MAX_FOR_ITEMS;
         }
         for (int i = 0; i < count; i++) {
+            if (c.exhausted()) return;
             if (pass.budget <= 0) {
                 pass.truncated = true;
                 return;
