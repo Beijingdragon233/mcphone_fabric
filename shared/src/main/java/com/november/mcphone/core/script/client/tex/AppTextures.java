@@ -21,11 +21,17 @@ import java.util.Map;
  * 一页里三十张图只露出两张时，另外二十八张一个字节的显存都不占。宽高不限量 —— 一条 8 个字节，
  * 限它没有意义；限的是显存。
  *
- * <p><b>每个 App 同时至多 {@link #MAX_PER_APP} 张贴图在显存里</b>（§28.2 #13），满了淘汰最久没画的那张，
- * 与聊天图片那套（ChatImageCache）同一个办法。§28.2 #13 的处置写的是"拒绝加载"，这里没照做：
- * 按那个写法，先被问到的 16 张会【永久】占住名额 —— 换个 tab 再回来，后来的那几张在关页面之前
- * 一直是占位图，而显存里躺着的是玩家早就不看的图。淘汰制把这道闸变回它本来的意思：一道内存上限。
- * 代价是一页同时露出超过 16 张图会每帧换进换出 —— 那已经超出 §28.2 #13 的预算，作者该减图。
+ * <p><b>每个 App 同时至多 {@link #MAX_PER_APP} 张贴图在显存里</b>（§28.2 #13）。这道闸按帧分两种行为：
+ * <ul>
+ *   <li><b>一帧之内</b>照 §28.2 #13 写的办：满了就拒绝加载，多出来的画占位图。每帧至多传 16 张，
+ *       而且每帧拒的是同一批（画的顺序是树序，稳定），不闪。</li>
+ *   <li><b>跨帧</b>按最久没画的淘汰，与聊天图片那套（ChatImageCache）同一个办法。</li>
+ * </ul>
+ * 少了前一半，一个装了二十张图的 {@code scroll} 就会每帧把刚画过的换出去再换回来 —— {@code scroll}
+ * 不剔除滚出可见区的子节点（见 Renderer.childRange），裁掉的照样调 {@link #of}，于是那是每帧二十次
+ * ImageIO 解码加建删纹理，而那个包完全合规（§28.2 #13 限的是显存里 16 张，不是包里只能有 16 张）。
+ * 少了后一半，先被问到的 16 张会【永久】占住名额：换个 tab 再回来，后来的那几张在关页面之前一直是
+ * 占位图，而显存里躺着的是玩家早就不看的图。
  *
  * <p><b>没有调用方 = 泄漏</b>：{@link #release} 现在全仓没人调（宿主页是 S9/S10 的事）。
  * 接宿主页的人必须在关页面、卸包时调它，否则开关两百次就是两百份贴图挂在 TextureManager 上（§8.8）。
@@ -39,16 +45,29 @@ public final class AppTextures {
     public static final int MAX_BYTES = 64 * 1024;
     /** 边长上限，宽高各自算（§5.2）。 */
     public static final int MAX_SIDE = 128;
-    /** 每个 App 同时能有多少张贴图在显存里（§28.2 #13）。满了淘汰最久没画的那张。 */
+    /**
+     * 每个 App 同时能有多少张贴图在显存里（§28.2 #13）。满了淘汰最久没画的那张。
+     *
+     * <p>必须 ≥ 1：调成 0 不会变成"一张都不加载"，而是退化成 1 —— 表空的时候腾位置那一步无事可做，
+     * 照样传得进去。要关掉图片得在别处关，不是把这个数调成 0。
+     */
     public static final int MAX_PER_APP = 16;
     /**
-     * 一个 App 最多留多少条判定。
+     * 一个 App 最多留多少条【被拒】的判定。
      *
-     * <p>模板里的 {@code :src} 可以是表达式，每次重排都能造出一批没见过的路径；判定表要是不封顶，
-     * 它就随重排次数一直涨，一条最长 512 字节（S1 的路径上限）。
+     * <p>模板里的 {@code :src} 可以是表达式，每次重排都能造出一批没见过的路径；不封顶的话判定表
+     * 随重排次数一直涨，一条最长 512 字节（S1 的路径上限）。
+     *
+     * <p>只封被拒的：收下的那些条数已经被包里的文件数钉死了（S1 的 {@code MAX_ENTRIES} 是 64）。
+     * 连 OK 一起封的话，一个装满图的大 App 只要先被问到几条失效路径，后面【真实存在的图】就会被误伤。
      */
-    static final int MAX_JUDGED = MAX_PER_APP * 4;
-    /** 一个 App 最多报多少条"这张图用不了"。同一个坏 src 每次重排都报一遍的话，日志就没法看了。 */
+    static final int MAX_REJECTED = 32;
+    /**
+     * 一次打开最多报多少条"这张图用不了"。同一个坏 src 每次重排都报一遍的话，日志就没法看了。
+     *
+     * <p>计数挂在 App 上，而 {@link #release} 把 App 整个删掉 —— 也就是每次打开页面重新计数。
+     * 一个稳定的坏图开关两百次仍然是两百行，那是两百次"打开时告诉作者一次"，不是刷屏。
+     */
     static final int MAX_WARNINGS = 32;
 
     private AppTextures() {
@@ -69,7 +88,7 @@ public final class AppTextures {
         NOT_PNG,
         /** 头没问题，像素解不开或者传不上去 */
         BROKEN,
-        /** 这个 App 问过的图片路径太多了（多半是 {@code :src} 绑了个每次都变的表达式），判定表封顶了 */
+        /** 这个 App 用不了的图片路径太多了（多半是 {@code :src} 绑了个每次都变的表达式），判定表封顶了 */
         TOO_MANY
     }
 
@@ -79,13 +98,18 @@ public final class AppTextures {
         int height;
         /** 画过才有。测试里的假上传口给的 location 是 null。 */
         ImageCodec.Texture texture;
+        /** 最后一次被画是哪一帧。淘汰不许动这一帧已经画过的图，见 {@link #hasRoom}。 */
+        int lastFrame = -1;
     }
 
     private static final class App {
-        /** src → 判定结果。插入序，封顶在 {@link #MAX_JUDGED}。 */
+        /** src → 判定结果。插入序；被拒的那些封顶在 {@link #MAX_REJECTED}。 */
         final Map<String, Entry> entries = new LinkedHashMap<>();
         /** 显存里那几张，访问序：满了淘汰迭代器给出的第一条，也就是最久没画的那张。 */
         final Map<String, Entry> live = new LinkedHashMap<>(16, 0.75f, true);
+        /** 画到第几帧了，由 {@link #beginFrame} 推。 */
+        int frame;
+        int rejected;
         int warned;
     }
 
@@ -95,11 +119,25 @@ public final class AppTextures {
     private static int epoch;
 
     /**
-     * §7.6 的四个 epoch 之一。资源重载之后这个数会变，页面据此重排 ——
-     * 贴图全丢了，原始尺寸要重新读，布局跟着变。
+     * §7.6 的四个 epoch 之一。资源重载、以及一张图被判成 {@link Result#BROKEN} 时它会变。
+     *
+     * <p><b>现在没有消费者</b>：读它的是宿主页（S9/S10），眼下还不存在。接上的人要知道两件事 ——
+     * 一是这个数变了就得重排（贴图全丢了、原始尺寸要重新读、布局跟着变），二是它可能在
+     * {@link #of} 里前进，而那是画到一半的时候：重排要推到下一帧，不能在遍历当前这棵树的中途做。
      */
     public static int epoch() {
         return epoch;
+    }
+
+    /**
+     * 这一帧开始了。由 {@code Frame} 的构造函数调 —— 那是"画这一页"的必经之路（§8.6：Frame 要在这一帧开头新建）。
+     *
+     * <p>帧号只有一个用处：淘汰不许动这一帧已经画过的图（{@link #hasRoom}）。不分帧的话，
+     * 一页同屏十七张图时被淘汰的永远是刚画过的那张，每帧换进换出 —— 那是几十次解码加建删纹理。
+     */
+    public static void beginFrame(AppPackage pkg) {
+        App app = pkg == null ? null : APPS.get(pkg.digest());
+        if (app != null) app.frame++;
     }
 
     /** 这张图的原始尺寸 {宽, 高}；用不了返回 null（§5.2：image 不写 w / h 时按原始尺寸算）。 */
@@ -130,27 +168,48 @@ public final class AppTextures {
         App app = APPS.get(pkg.digest());
         if (e.texture != null) {
             app.live.get(src);              // 访问序：刷一下，淘汰的时候它就不是最老的那个
+            e.lastFrame = app.frame;
             return e.texture.location();
         }
-        trim(app);
-        e.texture = uploader.upload(pkg.entry(src));
-        if (e.texture == null) {
+        if (!hasRoom(app)) return null;     // 这一帧的图已经把显存占满了，多出来的画占位图
+        // 先传，传成了才真的去还别人的：顺序反过来的话，一张坏图会白白顶掉一张好图
+        ImageCodec.Texture tex = uploader.upload(pkg.entry(src));
+        if (tex == null) {
             // 头过了像素没过：判定就地改成 BROKEN，否则每一帧都要重解一遍这张坏图。
-            // epoch 跟着前进：measure 是按头里那个宽高留的位置，现在这张图没了，得按占位尺寸重排一次
+            // epoch 跟着前进：measure 是按头里那个宽高留的位置，现在这张图没了，得按占位尺寸重排一次。
+            // BROKEN 是终态：解码那头偶发的内存不足（ImageCodec 会吞掉并返回 null）也会落进这里，
+            // 那张图在资源重载之前不会再试第二次
             e.result = Result.BROKEN;
             epoch++;
             warn(pkg, src, Result.BROKEN);
             return null;
         }
+        evict(app);
+        e.texture = tex;
+        e.lastFrame = app.frame;
         app.live.put(src, e);
         return e.texture.location();
     }
 
-    /** 腾出一个位置：显存里满了就把最久没画的那张还回去。它下次被画到时会重传。 */
-    private static void trim(App app) {
+    /**
+     * 显存里还放得下一张吗：没满，或者最久没画的那张不是这一帧画的。
+     *
+     * <p>这一帧已经画过的那些不许淘汰 —— 淘汰它等于承认"这一页同屏的图比预算多"，而那时每帧都会把
+     * 刚画的换出去再换回来：几十次 ImageIO 解码加建删纹理，一秒六十轮。放不下就画占位图
+     * （§28.2 #13 写的处置就是这个），下一页、下一个 tab 自然就腾出来了。
+     */
+    private static boolean hasRoom(App app) {
+        if (app.live.size() < MAX_PER_APP) return true;
+        var it = app.live.values().iterator();      // 迭代不算访问，不会把顺序搅乱
+        return it.hasNext() && it.next().lastFrame != app.frame;
+    }
+
+    /** 把最久没画的那张还回去，它下次被画到时重传。调之前先问过 {@link #hasRoom}。 */
+    private static void evict(App app) {
         var it = app.live.entrySet().iterator();
         while (app.live.size() >= MAX_PER_APP && it.hasNext()) {
             Entry eldest = it.next().getValue();
+            if (eldest.lastFrame == app.frame) return;
             uploader.release(eldest.texture);
             eldest.texture = null;
             it.remove();
@@ -184,23 +243,38 @@ public final class AppTextures {
      */
     public static void clearCache() {
         for (App app : APPS.values()) {
-            for (Entry e : app.live.values()) uploader.release(e.texture);
+            for (Entry e : app.live.values()) {
+                uploader.release(e.texture);
+                e.texture = null;
+            }
+            app.live.clear();
         }
         APPS.clear();
         epoch++;
     }
 
-    /** 这条素材的判定结果，只给测试用。和 {@link #width} 一样会当场判一次，也一样占名额。 */
+    /** 这条素材的判定结果，只给测试用。和 {@link #size} 一样会当场判一次，判完就留在表里。 */
     static Result resultOf(AppPackage pkg, String src) {
         Entry e = entry(pkg, src);
         return e == null ? null : e.result;
     }
 
-    /** 这张图的贴图在不在显存里，只给测试用：假上传口给的 location 是 null，{@link #of} 的返回值分不出来。 */
+    /**
+     * 这张图的贴图在不在显存里，只给测试用：假上传口给的 location 是 null，{@link #of} 的返回值分不出来。
+     *
+     * <p>【别在这儿用 {@code live.get}】：{@code live} 是访问序的，{@code get} 会把这一条刷成最新，
+     * 于是"看一眼"就改掉了谁该被淘汰。{@code containsKey} 不动顺序。
+     */
     static boolean uploaded(AppPackage pkg, String src) {
         App app = pkg == null ? null : APPS.get(pkg.digest());
         Entry e = app == null ? null : app.entries.get(src);
-        return e != null && e.texture != null;
+        return e != null && e.texture != null && app.live.containsKey(src);
+    }
+
+    /** 这个包在显存里有几张，只给测试用。它必须永远 ≤ {@link #MAX_PER_APP}。 */
+    static int liveCount(AppPackage pkg) {
+        App app = pkg == null ? null : APPS.get(pkg.digest());
+        return app == null ? 0 : app.live.size();
     }
 
     /** 表里攒了多少条判定，只给测试用：装卸两百次之后它必须回到装之前的数（§8.8）。 */
@@ -218,15 +292,18 @@ public final class AppTextures {
         if (known != null) return known;
 
         Entry e = new Entry();
-        if (app.entries.size() >= MAX_JUDGED) {
-            // 这条不进表：表满了还往里塞，:src 绑一个每次都变的表达式就能让它一直涨
-            e.result = Result.TOO_MANY;
-            warn(app, pkg, src, e.result);
-            return e;
-        }
         e.result = judge(pkg, src, e);
+        if (e.result != Result.OK) {
+            if (app.rejected >= MAX_REJECTED) {
+                // 这条不进表：用不了的路径记满了还往里塞，:src 绑个每次都变的表达式就能让表一直涨
+                e.result = Result.TOO_MANY;
+                warn(app, pkg, src, e.result);
+                return e;
+            }
+            app.rejected++;
+            warn(app, pkg, src, e.result);
+        }
         app.entries.put(src, e);
-        if (e.result != Result.OK) warn(app, pkg, src, e.result);
         return e;
     }
 
@@ -279,7 +356,7 @@ public final class AppTextures {
             case TOO_BIG -> "超过 " + MAX_SIDE + "×" + MAX_SIDE;
             case NOT_PNG -> "不是 PNG";
             case BROKEN -> "PNG 头没问题，像素解不开";
-            case TOO_MANY -> "这个 App 问过的图片路径已经有 " + MAX_JUDGED + " 条了";
+            case TOO_MANY -> "这个 App 用不了的图片路径已经有 " + MAX_REJECTED + " 条了";
             case OK -> "";
         };
     }

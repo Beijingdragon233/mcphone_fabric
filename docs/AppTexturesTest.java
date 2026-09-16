@@ -22,7 +22,11 @@ import java.util.zip.ZipOutputStream;
  *
  * <p>贴图真的进没进显存这里测不了 —— 有 Minecraft 的类路径，没有游戏的运行环境。所以上传口换成假的：
  * 要测的是"哪些图收、哪些图拒、满了淘汰谁、关页面还不还"，那部分一个 GL 调用都不需要。
- * 五个缩放下画出来对不对、F3+T 之后刷不刷新、真的显存有没有涨，只能在游戏里看（§8.8）。
+ *
+ * <p><b>真上传口那条链一行都没跑</b>（{@code GameUploader} → {@code ImageCodec.decodeAndScale} → 建 NativeImage
+ * → {@code TextureManager.register}）：NativeImage 要 LWJGL 的本地库，register 要 GL 上下文，断言测试这个 JVM
+ * 两样都没有。所以带透明 / 灰度 / 索引色 / APNG 的 PNG 解出来对不对、ARGB→ABGR 的字节序、真的显存有没有涨，
+ * 只能在游戏里看（§8.8）—— 这是"测不了"，不是"忘了测"。
  *
  * <p>假上传口给的 location 是 null（docs/ 是三个目标共编一份，而 ResourceLocation 的构造在 1.20.1 与
  * 1.21.1 上不同名），所以断言"画得出来"一律走 {@link AppTextures#uploaded}，不看 {@code of()} 的返回值 ——
@@ -52,7 +56,7 @@ public class AppTexturesTest {
         pngHeader();
         paths();
         limits();
-        judgedTableCap();
+        rejectedCap();
         vram();
         cacheAndRelease();
         twoApps();
@@ -204,34 +208,41 @@ public class AppTexturesTest {
     }
 
     // ============================================================
-    //  判定表封顶：:src 可以是表达式，每次重排都能造出一批没见过的路径
+    //  判定表封顶：只封用不了的那些，:src 可以是表达式，每次重排都能造出一批没见过的路径
     // ============================================================
 
-    static void judgedTableCap() throws Exception {
+    static void rejectedCap() throws Exception {
         Fake fake = reset();
-        AppPackage pkg = pkg(map("assets/a.png", png(8, 8)));
+        Map<String, byte[]> entries = new LinkedHashMap<>();
+        for (int i = 0; i < 20; i++) entries.put("assets/真" + i + ".png", png(8, 8));
+        AppPackage pkg = pkg(entries);
 
-        for (int i = 0; i < AppTextures.MAX_JUDGED; i++) {
+        for (int i = 0; i < AppTextures.MAX_REJECTED; i++) {
             eq(AppTextures.resultOf(pkg, "assets/变" + i + ".png"), AppTextures.Result.MISSING,
                "包里没有这张，记一条");
         }
-        eq(AppTextures.cachedEntries(), AppTextures.MAX_JUDGED, "记满了");
+        eq(AppTextures.cachedEntries(), AppTextures.MAX_REJECTED, "用不了的记满了");
 
-        eq(AppTextures.resultOf(pkg, "assets/再来一张.png"), AppTextures.Result.TOO_MANY, "表满了就不再记");
-        eq(AppTextures.cachedEntries(), AppTextures.MAX_JUDGED, "满了之后表不再涨");
+        eq(AppTextures.resultOf(pkg, "assets/再来一张.png"), AppTextures.Result.TOO_MANY, "满了就不再记");
+        eq(AppTextures.cachedEntries(), AppTextures.MAX_REJECTED, "满了之后表不再涨");
         for (int i = 0; i < 500; i++) AppTextures.resultOf(pkg, "assets/洪水" + i + ".png");
-        eq(AppTextures.cachedEntries(), AppTextures.MAX_JUDGED, "五百条也涨不动");
+        eq(AppTextures.cachedEntries(), AppTextures.MAX_REJECTED, "五百条也涨不动");
 
-        // 表满了之后，连本来能用的图也拿不到 —— 这是封顶的代价，写在这儿免得有人当 bug 查
-        eq(AppTextures.resultOf(pkg, "assets/a.png"), AppTextures.Result.TOO_MANY, "表满之后新来的一律拒");
+        // 封顶只封用不了的：包里真实存在的图一张都不许误伤。
+        // 连 OK 一起封的话，一个装满图的大 App 只要先被问到几条失效路径，后面真实存在的图就没了
+        for (int i = 0; i < 20; i++) {
+            eq(AppTextures.resultOf(pkg, "assets/真" + i + ".png"), AppTextures.Result.OK,
+               "第 " + (i + 1) + " 张真实存在的图照收，不受失效路径的连累");
+        }
+        eq(AppTextures.cachedEntries(), AppTextures.MAX_REJECTED + 20, "收下的那些不占封顶的额度");
         eq(fake.uploads, 0, "一张都没上传");
 
         AppTextures.release(pkg);
-        eq(AppTextures.resultOf(pkg, "assets/a.png"), AppTextures.Result.OK, "关页面之后表清空，又收得下了");
+        eq(AppTextures.cachedEntries(), 0, "关页面之后表清空");
     }
 
     // ============================================================
-    //  显存名额：同时至多 16 张，满了淘汰最久没画的那张
+    //  显存名额：一帧之内满了就画占位图，跨帧按最久没画的淘汰
     // ============================================================
 
     static void vram() throws Exception {
@@ -246,37 +257,64 @@ public class AppTexturesTest {
         }
         eq(fake.live, 0, "问尺寸不占显存");
 
+        // 第一帧：画 16 张
+        AppTextures.beginFrame(pkg);
         for (int i = 0; i < AppTextures.MAX_PER_APP; i++) AppTextures.of(pkg, "assets/n" + i + ".png");
         eq(fake.live, 16, "画了 16 张，显存里 16 张");
+        eq(AppTextures.liveCount(pkg), 16, "表里也是 16 张");
         eq(fake.uploads, 16, "各传了一次");
         check(AppTextures.uploaded(pkg, "assets/n0.png"), "第一张在显存里");
 
-        // 第 17 张：淘汰最久没画的那张（n0），显存不涨
+        // 同一帧里的第 17 张：拒绝加载、画占位图（§28.2 #13），不许把刚画过的换出去
         AppTextures.of(pkg, "assets/n16.png");
+        eq(fake.uploads, 16, "没传 —— 这一帧的额度用完了");
+        eq(fake.releases, 0, "更没有把刚画过的还回去");
+        check(!AppTextures.uploaded(pkg, "assets/n16.png"), "第 17 张这一帧画占位图");
+        check(AppTextures.uploaded(pkg, "assets/n0.png"), "第一张还在");
+        eq(wh(pkg, "assets/n16.png"), "[24, 8]", "拿不到贴图不影响尺寸：布局照原始尺寸留位置");
+        eq(AppTextures.resultOf(pkg, "assets/n16.png"), AppTextures.Result.OK, "也不算被拒");
+
+        // 下一帧：上一帧那 16 张不再画了（换了 tab / 滚走了），第 17 张就该上得来
+        AppTextures.beginFrame(pkg);
+        AppTextures.of(pkg, "assets/n16.png");
+        check(AppTextures.uploaded(pkg, "assets/n16.png"), "换一帧就画得出来 —— 不是永久占位图");
+        check(!AppTextures.uploaded(pkg, "assets/n0.png"), "被淘汰的是最久没画的 n0");
         eq(fake.live, 16, "还是 16 张，没涨");
         eq(fake.releases, 1, "还了一张");
-        check(!AppTextures.uploaded(pkg, "assets/n0.png"), "最久没画的 n0 被淘汰了");
-        check(AppTextures.uploaded(pkg, "assets/n16.png"), "第 17 张画得出来 —— 不是永久占位图");
         eq(wh(pkg, "assets/n0.png"), "[8, 8]", "被淘汰的那张，尺寸还在（布局不受影响）");
         eq(AppTextures.resultOf(pkg, "assets/n0.png"), AppTextures.Result.OK, "被淘汰不等于被拒");
 
-        // 访问序：画一下 n1 把它刷到最新，再来一张新的时候被淘汰的就该是 n2
+        // 访问序：这一帧画过 n1，再上一张新的时候被淘汰的就该是 n2
         AppTextures.of(pkg, "assets/n1.png");
         eq(fake.uploads, 17, "n1 还在显存里，重画不重传");
         AppTextures.of(pkg, "assets/n17.png");
-        check(AppTextures.uploaded(pkg, "assets/n1.png"), "刚画过的 n1 没被淘汰");
+        check(AppTextures.uploaded(pkg, "assets/n1.png"), "这一帧画过的 n1 没被淘汰");
         check(!AppTextures.uploaded(pkg, "assets/n2.png"), "被淘汰的是最久没画的 n2");
-        eq(fake.live, 16, "始终 16 张");
+        eq(AppTextures.liveCount(pkg), 16, "始终 16 张");
 
         // 被淘汰的那张再画到时重传
         AppTextures.of(pkg, "assets/n0.png");
         eq(fake.uploads, 19, "n0 被淘汰过，重画时重传");
         check(AppTextures.uploaded(pkg, "assets/n0.png"), "重传之后又画得出来了");
-        eq(fake.live, 16, "还是 16 张");
+        eq(AppTextures.liveCount(pkg), 16, "还是 16 张");
 
         AppTextures.release(pkg);
         eq(fake.live, 0, "关页面全还回去");
         eq(fake.releases, fake.uploads, "传了多少还了多少，一张不差");
+
+        // 一个装了 20 张图的 scroll：scroll 不剔除滚出可见区的子节点，裁掉的照样每帧问一遍。
+        // 连画两帧，上传与归还都不许涨 —— 涨了就是每帧几十次解码加建删纹理
+        Fake gallery = reset();
+        AppPackage g = pkg(entries);
+        for (int frame = 0; frame < 2; frame++) {
+            AppTextures.beginFrame(g);
+            for (int i = 0; i < 20; i++) AppTextures.of(g, "assets/n" + i + ".png");
+            eq(AppTextures.liveCount(g), 16, "第 " + frame + " 帧里显存里 16 张");
+        }
+        eq(gallery.uploads, 16, "两帧一共只传了 16 张");
+        eq(gallery.releases, 0, "一张都没换出去 —— 多出来的四张每帧都画占位图，稳定，不闪");
+        check(AppTextures.uploaded(g, "assets/n0.png"), "赢的是画得早的那批（树序），每帧同一批");
+        check(!AppTextures.uploaded(g, "assets/n19.png"), "输的也是同一批");
     }
 
     // ============================================================
