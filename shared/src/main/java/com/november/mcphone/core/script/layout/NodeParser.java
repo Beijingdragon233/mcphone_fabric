@@ -35,7 +35,7 @@ public final class NodeParser {
     /** 嵌套深度上限。 */
     public static final int MAX_DEPTH = 32;
     /** state 的条数上限。 */
-    public static final int MAX_STATE = 16;
+    public static final int MAX_STATE = StateRules.MAX_KEYS;
     /** pages 的页数上限。 */
     public static final int MAX_PAGES = 8;
     /** 单个节点的 class 个数上限。 */
@@ -45,14 +45,13 @@ public final class NodeParser {
     /** i18n 占位参数个数上限。 */
     public static final int MAX_ARGS = 4;
     /** state 里字符串值的长度上限。 */
-    public static final int MAX_STATE_STRING = 64;
+    public static final int MAX_STATE_STRING = StateRules.MAX_STRING;
 
     /** icon 的固定集合，P0 共 12 个，不许扩展（§5.2）。 */
     public static final Set<String> ICON_NAMES = Set.of(
             "back", "forward", "up", "down", "check", "cross",
             "plus", "minus", "gear", "search", "info", "warn");
 
-    private static final Pattern STATE_KEY = Pattern.compile("[a-z][a-z0-9_]{0,31}");
     private static final Pattern PAGE_KEY = Pattern.compile("[a-z][a-z0-9_]{0,31}");
     private static final Pattern ID = Pattern.compile("[a-z][a-z0-9_-]{0,31}");
     private static final Pattern CLASS_NAME = Pattern.compile("[a-z][a-z0-9_-]{0,31}");
@@ -161,32 +160,41 @@ public final class NodeParser {
         for (Map.Entry<String, JsonElement> e : state.entrySet()) {
             String key = e.getKey();
             String path = "state." + key;
-            if (!STATE_KEY.matcher(key).matches()) {
-                throw fail(Code.E_BAD_VALUE, path, "state", "state", "键名", key,
-                        "匹配 [a-z][a-z0-9_]{0,31}");
+            if (!StateRules.KEY.matcher(key).matches()) {
+                throw fail(Code.E_BAD_VALUE, path, "state", "state", "键名", key, StateRules.KEY_RULE);
             }
             Object value = stateValue(e.getValue(), path, key);
+            String why = StateRules.check(value);
+            if (why != null) {
+                throw fail(Code.E_BAD_VALUE, path, "state", path, key, clip(e.getValue().toString()), why);
+            }
+            value = StateRules.freeze(value);
             stateValues.put(key, value);
             stateTypes.put(key, value.getClass());
         }
     }
 
-    /** state 的值只能是 int / bool / string(≤64)。 */
+    /** JSON → state 值的 Java 形态。个数、长度、同构这些由 {@link StateRules#check} 判。 */
     private Object stateValue(JsonElement e, String path, String key) {
         if (e.isJsonPrimitive()) {
             JsonPrimitive p = e.getAsJsonPrimitive();
             if (p.isBoolean()) return p.getAsBoolean();
             if (p.isNumber()) return intOf(p, path, key);
-            if (p.isString()) {
-                String s = p.getAsString();
-                if (s.length() > MAX_STATE_STRING) {
-                    throw fail(Code.E_BAD_VALUE, path, "state", path, key,
-                            s.length() + " 字", "字符串最多 " + MAX_STATE_STRING + " 字");
-                }
-                return s;
-            }
+            if (p.isString()) return p.getAsString();
         }
-        throw fail(Code.E_BAD_TYPE, path, "state", path, key, "int / bool / string", typeOf(e));
+        if (e.isJsonArray()) {
+            List<Object> out = new ArrayList<>();
+            for (JsonElement item : e.getAsJsonArray()) out.add(stateValue(item, path, key));
+            return out;
+        }
+        if (e.isJsonObject()) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<String, JsonElement> item : e.getAsJsonObject().entrySet()) {
+                out.put(item.getKey(), stateValue(item.getValue(), path, key));
+            }
+            return out;
+        }
+        throw fail(Code.E_BAD_TYPE, path, "state", path, key, "int / bool / string / array / object", typeOf(e));
     }
 
     // ============================================================
@@ -618,6 +626,12 @@ public final class NodeParser {
                     throw fail(Code.E_STATE_TYPE, path + ".set." + key, nodePath, path + ".set",
                             key, typeName(stateType), typeName(value.getClass()));
                 }
+                // 初值的规则对点击写入同样成立：放过的话校验通过的包在点击时从 UiState.set 抛出来
+                String why = StateRules.check(value);
+                if (why != null) {
+                    throw fail(Code.E_BAD_VALUE, path + ".set." + key, nodePath, path + ".set", key,
+                            clip(String.valueOf(value)), why);
+                }
                 set.put(key, value);
             }
         }
@@ -761,7 +775,14 @@ public final class NodeParser {
     private static String typeName(Class<?> c) {
         if (c == Integer.class) return "int";
         if (c == Boolean.class) return "bool";
+        if (List.class.isAssignableFrom(c)) return "array";
+        if (Map.class.isAssignableFrom(c)) return "object";
         return "string";
+    }
+
+    /** 放进报错文案的值截到 32 个码点：整段数组塞进去有几千字，按码元截会切断代理对。 */
+    private static String clip(String s) {
+        return s.codePointCount(0, s.length()) > 32 ? s.substring(0, s.offsetByCodePoints(0, 32)) + "…" : s;
     }
 
     /** 排序不是为了好看：Set.of 的迭代顺序逐进程随机，不排的话同一条报错两次跑文字不同。 */

@@ -10,6 +10,7 @@ import com.google.gson.stream.JsonToken;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -19,6 +20,9 @@ import java.util.regex.Pattern;
  * manifest.json（施工方案 §3.2）。字段校验全部硬失败，没有"尽力而为"的分支。
  *
  * <p>{@code id} 的两段与 {@code ui} 的两条路径都拆开存：调用点再去切一次字符串，就会有第二份切法。
+ *
+ * <p>两种来源：{@link #parse} 读包里的 manifest.json，icon 是包内路径；{@link #parseInline} 读 .vue 里的 {@code <manifest>}，
+ * icon 是 data URI（或 null），uiTree / uiStyle / engine 为 null。拿 icon 当路径用之前先看是哪一种。
  */
 public record Manifest(
         int format,
@@ -58,21 +62,73 @@ public record Manifest(
         return namespace + ":" + path;
     }
 
+    /** .vue 内联 manifest 的 icon 前缀（§11.2）。 */
+    public static final String INLINE_ICON_PREFIX = "data:image/png;base64,";
+
+    /** 内联 icon 的 base64 部分上限，§11.2 的 8 KiB。 */
+    public static final int MAX_INLINE_ICON = 8 * 1024;
+
+    /** 真解一遍：只看字符集的话 "="、"A" 这种解不开的串也能过，要等客户端画图标时才失败。 */
+    private static boolean decodes(String base64) {
+        try {
+            return Base64.getDecoder().decode(base64).length > 0;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     /** 解析并校验。任何一条不过就抛，不返回半个 Manifest。 */
     public static Manifest parse(String json) {
-        strictScan(json);
+        JsonObject root = strictObject(json);
+        Head h = head(root);
+        String description = text(root, "description", MAX_DESCRIPTION);
 
-        JsonObject root;
+        String icon = requirePath(root, "icon", "icon");
+
+        JsonObject ui = requireObject(root, "ui");
+        String uiTree = requirePath(ui, "tree", "ui.tree");
+        String uiStyle = requirePath(ui, "style", "ui.style");
+
+        String engine = requireString(root, "engine");
+        if (!ENGINE.equals(engine)) {
+            throw PackageError.of(PackageError.Code.E_PKG_BAD_ENGINE, engine);
+        }
+
+        return new Manifest(h.format, h.namespace, h.path, h.version, h.name, h.author, description,
+                icon, uiTree, uiStyle, engine);
+    }
+
+    /**
+     * .vue 里的内联 {@code <manifest>}（§9.2、§11.2）：界面就在同一个文件里，所以没有 ui 与 engine；description 可省；
+     * icon 可省，写了就得是 data URI。返回值的 uiTree / uiStyle / engine 为 null，其余判据与 {@link #parse} 同一份。
+     */
+    public static Manifest parseInline(String json) {
+        JsonObject root = strictObject(json);
+        Head h = head(root);
+        String description = root.has("description") ? text(root, "description", MAX_DESCRIPTION) : null;
+        String icon = root.has("icon") ? inlineIcon(root) : null;
+        return new Manifest(h.format, h.namespace, h.path, h.version, h.name, h.author, description,
+                icon, null, null, null);
+    }
+
+    private record Head(int format, String namespace, String path, String version, String name, String author) {
+    }
+
+    private static JsonObject strictObject(String json) {
+        strictScan(json);
         try {
             JsonElement parsed = JsonParser.parseString(json);
             if (!parsed.isJsonObject()) {
                 throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_NOT_OBJECT);
             }
-            root = parsed.getAsJsonObject();
+            return parsed.getAsJsonObject();
         } catch (JsonParseException e) {
             throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_SYNTAX, String.valueOf(e.getMessage()));
         }
+    }
 
+    /** 两种清单共有的那几条，顺序即报错顺序。 */
+    private static Head head(JsonObject root) {
         int format = requireInt(root, "format");
         if (format != FORMAT) {
             throw PackageError.of(PackageError.Code.E_PKG_BAD_FORMAT, format);
@@ -99,25 +155,27 @@ public record Manifest(
 
         String name = text(root, "name", MAX_NAME);
         String author = text(root, "author", MAX_AUTHOR);
-        String description = text(root, "description", MAX_DESCRIPTION);
+        return new Head(format, namespace, path, version, name, author);
+    }
 
-        String icon = requirePath(root, "icon", "icon");
-
-        JsonObject ui = requireObject(root, "ui");
-        String uiTree = requirePath(ui, "tree", "ui.tree");
-        String uiStyle = requirePath(ui, "style", "ui.style");
-
-        String engine = requireString(root, "engine");
-        if (!ENGINE.equals(engine)) {
-            throw PackageError.of(PackageError.Code.E_PKG_BAD_ENGINE, engine);
+    private static String inlineIcon(JsonObject root) {
+        String v = requireString(root, "icon");
+        if (!v.startsWith(INLINE_ICON_PREFIX)) {
+            String head = v.length() > 32 ? v.substring(0, 32) + "…" : v;
+            throw PackageError.of(PackageError.Code.E_PKG_BAD_ICON, MAX_INLINE_ICON, "'" + head + "'");
         }
-
-        return new Manifest(format, namespace, path, version, name, author, description,
-                icon, uiTree, uiStyle, engine);
+        String payload = v.substring(INLINE_ICON_PREFIX.length());
+        if (payload.length() > MAX_INLINE_ICON || !decodes(payload)) {
+            throw PackageError.of(PackageError.Code.E_PKG_BAD_ICON, MAX_INLINE_ICON,
+                    payload.length() + " 字符" + (payload.length() > MAX_INLINE_ICON ? "" : "，解不出字节"));
+        }
+        return v;
     }
 
     /** manifest 指到的三个文件都得真在包里，否则装上是个空壳。 */
     public void requireEntries(Collection<String> entryPaths) {
+        // 内联清单的 icon 是 data URI、没有 ui：拿它对包查只会报出「'icon' 指向 'null'」这种误导的错
+        if (uiTree == null) throw new IllegalStateException("内联 manifest 没有 ui 与包内 icon，不能对着包里的条目查");
         requireEntry(entryPaths, "icon", icon);
         requireEntry(entryPaths, "ui.tree", uiTree);
         requireEntry(entryPaths, "ui.style", uiStyle);
