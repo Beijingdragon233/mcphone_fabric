@@ -8,7 +8,7 @@ package com.november.mcphone.core.script.layout;
  * 接口只收字符串、只还整数，纯计算层不因此沾上客户端类型。
  *
  * <p>{@link LayoutEngine#layout} 在建完树、开测之前把整棵树里的图问一遍，之后整趟 layout 都用那一份答案。
- * 不是测到哪张问哪张：定高 list 的项是滚到了才测的，现问的话"哪些图问得到"就取决于玩家往哪儿滚过。
+ * 不是测到哪张问哪张：定高 list 的项是滚到了才测的（{@link LayoutEngine#layoutItem}），那个入口拿不到包。
  */
 public interface ImageSizes {
 

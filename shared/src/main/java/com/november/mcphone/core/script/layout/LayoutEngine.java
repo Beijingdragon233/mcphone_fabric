@@ -47,8 +47,9 @@ public final class LayoutEngine {
      * 页面根的 align / justify / 背景按屏宽生效，要占满高就写 height: fill。
      * 根本身被 showIf 或 hidden 藏起来时，返回一个 0×0、没有子节点的根。
      *
-     * <p>{@code images} 是图片原始尺寸的来源（§5.2）。建完树之后、开测之前按树序问一遍，整趟 layout 用同一份答案；
-     * 藏起来的子树不问 —— 它们连节点都没建，也就不占 §28.2 #13 的每 App 16 张名额。
+     * <p>{@code images} 是图片原始尺寸的来源（§5.2）。建完树之后、开测之前问一遍，整趟 layout 用同一份答案。
+     * 有包的时候请给 {@code AppTextures.sizes(pkg)}；给 {@link ImageSizes#NONE} 编得过、跑得起来，
+     * 而所有 image 都会按 {@link #MISSING_IMAGE} 排成小方块，且不报错。
      */
     public static LayoutNode layout(Node root, Stylesheet sheet, UiState state, int availW, int availH,
                                     TextMeasure tm, ImageSizes images) {
@@ -128,10 +129,9 @@ public final class LayoutEngine {
     /**
      * 把整棵树里 image 的原始尺寸一次问完，问到的答案挂到每个节点上。
      *
-     * <p>一次问完是硬要求：{@link #layoutItem} 是滚到了才测，而尺寸那头的名额按"第一次被问到"的先后扣
-     * （§28.2 #13，每个 App 16 张）。测到哪张问哪张的话，同一棵树因滚动历史不同会排出不同的几何。
-     *
-     * <p>问的是建完之后的树，所以被 showIf / hidden 藏起来的图不占名额 —— 它们这一趟压根没进树。
+     * <p>两个理由。一是 {@link #layoutItem} 只有 {@code list} 那个节点，拿不到包，现问也没处问；
+     * 二是一趟 layout 里同一个 src 必须给同一个答案 —— 尺寸那头的判定会在画的时候就地变
+     * （头合法、像素解不开的图画过一次就没有尺寸了），现问的话同一棵树里先测的和后测的会对不上。
      */
     private static void resolveImages(LayoutNode root, ImageSizes images) {
         Map<String, int[]> found = new LinkedHashMap<>();

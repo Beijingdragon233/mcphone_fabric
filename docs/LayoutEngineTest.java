@@ -68,13 +68,15 @@ public class LayoutEngineTest {
     };
 
     /**
-     * §5.2 的假实现：名字里带 "big" 的是 100×60，带 "gone" 的与空 src 是用不了的图
-     * （不在包里 / 超限 / 坏文件），其余一律 40×20。真的那份读 PNG 头，见 client/tex/AppTextures。
+     * §5.2 的假实现。真的那份读 PNG 头，见 client/tex/AppTextures。
      */
-    static final ImageSizes IMAGES = src ->
-            src.isEmpty() || src.contains("gone")
-                    ? null
-                    : new int[]{src.contains("big") ? 100 : 40, src.contains("big") ? 60 : 20};
+    static final ImageSizes IMAGES = src -> switch (src) {
+        case "" -> null;                                   // 没写 src
+        case "assets/gone.png" -> null;                    // 不在包里 / 超限 / 坏文件
+        case "assets/big.png" -> new int[]{100, 60};
+        case "assets/over.png" -> new int[]{128, 128};     // 边长顶格，比 w 的值域上限 120 还大
+        default -> new int[]{40, 20};
+    };
 
     public static void main(String[] a) {
         skeleton();
@@ -298,6 +300,13 @@ public class LayoutEngineTest {
         eq(size(nd(IMAGE, "k", Map.of())), List.of(16, 16), "没有 src 也按占位尺寸");
         eq(size(nd(IMAGE, "k", Map.of("src", "assets/gone.png", "w", 30, "h", 20))), List.of(30, 20),
            "作者写了尺寸的，用不了也按作者写的留位置");
+        // 原始尺寸能到 128（AppTextures.MAX_SIDE），而 image 的 w 值域是 1–120（§5.2）：
+        // 顶格的图在 120 宽的手机上被夹成 120，高不夹，于是横向压掉 6%。这是方案自己的两个数打架，
+        // 先把行为钉住 —— 别让它哪天悄悄变成溢出或者 0
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/over.png"))), List.of(120, 128),
+           "128 宽的图在 120 宽的页面上夹到 120，高照旧 128");
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/over.png", "w", 120))), List.of(120, 128),
+           "作者自己写满 120 也是同一个结果");
         eq(size(nd(BADGE, "k", Map.of("count", 5))), List.of(10, 9), "badge 文字宽 + 4，高一行");
         eq(size(nd(BADGE, "k", Map.of("count", 120))), List.of(22, 9), "badge 超过 99 显示 99+");
         eq(size(nd(SPACER, "k", Map.of("size", 7))), List.of(0, 7), "定长 spacer 在 column 里只占主轴，交叉轴 0");
