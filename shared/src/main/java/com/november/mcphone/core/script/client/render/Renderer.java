@@ -168,12 +168,15 @@ public final class Renderer {
         switch (type) {
             case TEXT, BUTTON -> drawLines(g, font, n.lines(), s, px, py, innerW, fg);
             case IMAGE -> {
-                ResourceLocation tex = AppTextures.of(f.pkg, n.node.str("src", ""));
-                if (tex == null) {
+                String src = n.node.str("src", "");
+                ResourceLocation tex = AppTextures.of(f.pkg, src);
+                int[] size = AppTextures.size(f.pkg, src);
+                if (tex == null || size == null) {
                     drawPlaceholder(g, p, px, py, innerW, innerH);
                 } else {
-                    // 直接 g.blit 不开混合，半透明像素会画成实心
-                    GuiUtil.drawTexture(g, tex, px, py, innerW, innerH, innerW, innerH);
+                    // 直接 g.blit 不开混合，半透明像素会画成实心。
+                    // 末两个参数是 UV 的分母，给贴图的真实尺寸：整张铺满 innerW×innerH
+                    GuiUtil.drawTexture(g, tex, px, py, innerW, innerH, size[0], size[1]);
                 }
             }
             case ICON -> IconAtlas.draw(g, n.node.str("name", "info"), px, py, n.node.num("size", 8), fg);

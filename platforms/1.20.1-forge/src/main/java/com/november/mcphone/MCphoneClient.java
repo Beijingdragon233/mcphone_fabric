@@ -10,6 +10,7 @@ import com.november.mcphone.core.client.PhoneScreenOnSync;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
 import com.november.mcphone.core.client.PhoneSession;
 import com.november.mcphone.core.client.PhoneSkin;
+import com.november.mcphone.core.script.client.tex.AppTextures;
 import com.november.mcphone.core.client.PhoneContainerScreen;
 import com.november.mcphone.core.menu.ModMenus;
 import com.november.mcphone.feature.camera.client.CameraFlash;
@@ -183,11 +184,15 @@ public final class MCphoneClient {
      *
      * 相机那条模糊后处理链一并扔掉：着色器程序跟着资源走，重载之后旧的那份要么黑屏
      * 要么直接崩，而且同样不报错。下次拍照时会重新建一条。
+     *
+     * App 包里的图片一并还回去：它们是 DynamicTexture，重载之后未必还在，
+     * 而且 AppTextures 的 epoch 要跟着前进，页面才会重排（§7.6）。
      */
     @SubscribeEvent
     static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
         event.registerReloadListener((ResourceManagerReloadListener) manager -> {
             PhoneSkin.clearCache();
+            AppTextures.clearCache();
             CameraFlash.dispose();
         });
     }

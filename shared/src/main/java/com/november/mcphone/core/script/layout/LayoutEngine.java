@@ -7,7 +7,9 @@ import com.november.mcphone.core.script.layout.Style.SizeSpec;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -34,6 +36,8 @@ public final class LayoutEngine {
     private static final int TAB_ICON = 8;
     private static final int MIN_BUTTON_W = 16;
     private static final int MIN_BUTTON_H = 12;
+    /** 没有原始尺寸的 image 占多大。作者写了 w / h 就按作者的，这个数只在两个都没写时用得上。 */
+    static final int MISSING_IMAGE = 16;
 
     private LayoutEngine() {
     }
@@ -42,12 +46,17 @@ public final class LayoutEngine {
      * 排一页。根节点放在 (0, 0)，宽占满可用宽（写死宽度时按写死的），高只有内容那么高（§7.8）：
      * 页面根的 align / justify / 背景按屏宽生效，要占满高就写 height: fill。
      * 根本身被 showIf 或 hidden 藏起来时，返回一个 0×0、没有子节点的根。
+     *
+     * <p>{@code images} 是图片原始尺寸的来源（§5.2）。建完树之后、开测之前按树序问一遍，整趟 layout 用同一份答案；
+     * 藏起来的子树不问 —— 它们连节点都没建，也就不占 §28.2 #13 的每 App 16 张名额。
      */
-    public static LayoutNode layout(Node root, Stylesheet sheet, UiState state, int availW, int availH, TextMeasure tm) {
+    public static LayoutNode layout(Node root, Stylesheet sheet, UiState state, int availW, int availH,
+                                    TextMeasure tm, ImageSizes images) {
         Objects.requireNonNull(root, "root");
         Objects.requireNonNull(sheet, "sheet");
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(tm, "tm");
+        Objects.requireNonNull(images, "images");
         Style style = sheet.resolve(root);
         String key = root.id() != null ? "#" + root.id() : "";
         if (!visible(root, style, state)) {
@@ -60,6 +69,7 @@ public final class LayoutEngine {
         int[] budget = {MAX_LAYOUT_NODES - 1};
         LayoutNode ln = build(root, style, sheet, state, key, 1, budget);
         ln.truncated = budget[0] < 0;
+        resolveImages(ln, images);
         measure(ln, w, h, tm);
         arrange(ln, 0, 0, style.width().kind() == SizeSpec.Kind.FIXED ? ln.measuredW : w, ln.measuredH);
         return ln;
@@ -115,6 +125,33 @@ public final class LayoutEngine {
         return ln;
     }
 
+    /**
+     * 把整棵树里 image 的原始尺寸一次问完，问到的答案挂到每个节点上。
+     *
+     * <p>一次问完是硬要求：{@link #layoutItem} 是滚到了才测，而尺寸那头的名额按"第一次被问到"的先后扣
+     * （§28.2 #13，每个 App 16 张）。测到哪张问哪张的话，同一棵树因滚动历史不同会排出不同的几何。
+     *
+     * <p>问的是建完之后的树，所以被 showIf / hidden 藏起来的图不占名额 —— 它们这一趟压根没进树。
+     */
+    private static void resolveImages(LayoutNode root, ImageSizes images) {
+        Map<String, int[]> found = new LinkedHashMap<>();
+        collectImages(root, images, found);
+        applyImages(root, found);
+    }
+
+    private static void collectImages(LayoutNode n, ImageSizes images, Map<String, int[]> found) {
+        if (n.node.type() == NodeType.IMAGE) {
+            String src = n.node.str("src", "");
+            if (!found.containsKey(src)) found.put(src, images.size(src));
+        }
+        for (LayoutNode c : n.children) collectImages(c, images, found);
+    }
+
+    private static void applyImages(LayoutNode n, Map<String, int[]> found) {
+        n.imageSizes = found;
+        for (LayoutNode c : n.children) applyImages(c, found);
+    }
+
     /** 不显示的节点完全不参与布局：不占空间、不计 gap、不接收输入（§4.4）。 */
     private static boolean visible(Node node, Style style, UiState state) {
         return !style.hidden() && (node.showIf() == null || state.test(node.showIf()));
@@ -143,9 +180,11 @@ public final class LayoutEngine {
                 contentH = (long) n.lines.size() * tm.lineHeight();
             }
             case IMAGE -> {
-                // 原始尺寸在贴图里，布局这层读不到：没写 w / h 就按 0 算，实例化时要把原始尺寸填进 w / h
-                contentW = n.node.num("w", 0);
-                contentH = n.node.num("h", 0);
+                int[] px = n.imageSizes == null ? null : n.imageSizes.get(n.node.str("src", ""));
+                // 用不了的图（不在包里、超限、坏文件）没有原始尺寸，按占位尺寸排：
+                // 按 0 排的话 Renderer 的 sized 判定不成立，连占位图都不画，作者看到的是"图没了"
+                contentW = n.node.num("w", px == null ? MISSING_IMAGE : px[0]);
+                contentH = n.node.num("h", px == null ? MISSING_IMAGE : px[1]);
             }
             case ICON -> contentW = contentH = n.node.num("size", 8);
             case ITEM -> contentW = contentH = n.node.num("size", 16);
