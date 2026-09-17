@@ -2,6 +2,7 @@ package com.november.mcphone.core.script.layout;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 一个节点的布局结果（施工方案 §7.3）。坐标相对页面内容区；scroll / list 的子节点在内容坐标系里，画的时候再减 scrollY。
@@ -17,6 +18,16 @@ public final class LayoutNode {
      */
     public final String key;
     public final List<LayoutNode> children = new ArrayList<>();
+
+    // build 之后、measure 之前填
+    /**
+     * 这一趟 layout 问到的图片原始尺寸，{@code src → {宽, 高}}，用不了的图值是 null（见 {@link ImageSizes}）。
+     * 建完树、开测之前一次问完，整棵树共用这一份 —— 之后不再改。
+     *
+     * <p>存下来而不是 measure 时现问：定高 list 的项是滚到了才测的（{@link LayoutEngine#layoutItem}），
+     * 而那个入口只有 list 这个节点、拿不到包。一趟 layout 用同一份答案，先测的和后测的才不会对不上。
+     */
+    Map<String, int[]> imageSizes;
 
     // measure 阶段填
     int measuredW;

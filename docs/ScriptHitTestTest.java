@@ -1,6 +1,7 @@
 package com.november.mcphone.core.script.client.render;
 
 import com.november.mcphone.api.client.ui.PhoneCanvas;
+import com.november.mcphone.core.script.layout.ImageSizes;
 import com.november.mcphone.core.script.layout.LayoutEngine;
 import com.november.mcphone.core.script.layout.LayoutNode;
 import com.november.mcphone.core.script.layout.MssParser;
@@ -300,7 +301,7 @@ public class ScriptHitTestTest {
     static Page page(String body, String state, String mss) {
         NodeParser.Ui ui = NodeParser.parse("{\"state\":" + state + ",\"pages\":{\"main\":" + body + "},\"entry\":\"main\"}");
         UiState s = UiState.of(ui.state());
-        return new Page(LayoutEngine.layout(ui.root(), MssParser.parse(mss), s, W, H, FAKE), s);
+        return new Page(LayoutEngine.layout(ui.root(), MssParser.parse(mss), s, W, H, FAKE, ImageSizes.NONE), s);
     }
 
     static LayoutNode root(String body, String mss) {

@@ -11,6 +11,7 @@ import com.november.mcphone.core.client.PhoneScreenRegistry;
 import com.november.mcphone.core.client.PhoneSession;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.menu.ModMenus;
+import com.november.mcphone.core.script.client.tex.AppTextures;
 import com.november.mcphone.feature.camera.client.CameraFlash;
 import com.november.mcphone.feature.camera.client.CameraHandler;
 import com.november.mcphone.feature.camera.client.CameraMode;
@@ -116,7 +117,8 @@ public class MCphoneClient implements ClientModInitializer {
         // S2C 的接收器注册：共享阶段只登记编解码，这里（确认在客户端）才真正挂上
         com.november.mcphone.core.client.ClientNetworking.register();
 
-        // 皮肤与相机闪光这些跟着资源包重载走
+        // 皮肤、App 包里的图片与相机闪光这些跟着资源包重载走。
+        // 图片是 DynamicTexture，重载之后未必还在
         ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(
                 new SimpleSynchronousResourceReloadListener() {
                     @Override
@@ -127,6 +129,7 @@ public class MCphoneClient implements ClientModInitializer {
                     @Override
                     public void onResourceManagerReload(ResourceManager manager) {
                         PhoneSkin.clearCache();
+                        AppTextures.clearCache();
                         CameraFlash.dispose();
                     }
                 });

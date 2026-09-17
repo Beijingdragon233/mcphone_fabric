@@ -67,6 +67,17 @@ public class LayoutEngineTest {
         }
     };
 
+    /**
+     * §5.2 的假实现。真的那份读 PNG 头，见 client/tex/AppTextures。
+     */
+    static final ImageSizes IMAGES = src -> switch (src) {
+        case "" -> null;                                   // 没写 src
+        case "assets/gone.png" -> null;                    // 不在包里 / 超限 / 坏文件
+        case "assets/big.png" -> new int[]{100, 60};
+        case "assets/over.png" -> new int[]{128, 128};     // 边长顶格，比 w 的值域上限 120 还大
+        default -> new int[]{40, 20};
+    };
+
     public static void main(String[] a) {
         skeleton();
         wrapping();
@@ -159,7 +170,7 @@ public class LayoutEngineTest {
         check(!child(big, 0).measured && !child(big, 2047).measured, "定高 list 的子节点在 layout 时一个都没测");
         Node bigTree = listNode(2048, 12);
         long layoutOnly = System.nanoTime();
-        LayoutEngine.layout(bigTree, MssParser.parse(""), UiState.empty(), 120, 176, FAKE);
+        LayoutEngine.layout(bigTree, MssParser.parse(""), UiState.empty(), 120, 176, FAKE, IMAGES);
         check((System.nanoTime() - layoutOnly) / 1_000_000 < 50, "只算 layout 本身，定高 list 2048 项也在 50ms 内");
 
         // ---- showIf 隐藏的节点完全不参与布局 ----
@@ -279,7 +290,23 @@ public class LayoutEngineTest {
         eq(size(nd(ICON, "k", Map.of("size", 12))), List.of(12, 12), "icon 的 size 字段");
         eq(size(nd(ITEM, "k", Map.of())), List.of(16, 16), "item 默认 16");
         eq(size(nd(IMAGE, "k", Map.of("w", 30, "h", 20))), List.of(30, 20), "image 取 w / h");
-        eq(size(nd(IMAGE, "k", Map.of())), List.of(0, 0), "image 没写 w / h 时按 0");
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/a.png"))), List.of(40, 20),
+           "image 没写 w / h 时按原始尺寸（§5.2）");
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/big.png"))), List.of(100, 60), "原始尺寸按 src 分别问");
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/a.png", "w", 30))), List.of(30, 20),
+           "写了的按写的，没写的那一边才用原始尺寸");
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/gone.png"))), List.of(16, 16),
+           "用不了的图按占位尺寸排 —— 按 0 排的话连占位图都画不出来");
+        eq(size(nd(IMAGE, "k", Map.of())), List.of(16, 16), "没有 src 也按占位尺寸");
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/gone.png", "w", 30, "h", 20))), List.of(30, 20),
+           "作者写了尺寸的，用不了也按作者写的留位置");
+        // 原始尺寸能到 128（AppTextures.MAX_SIDE），而 image 的 w 值域是 1–120（§5.2）：
+        // 顶格的图在 120 宽的手机上被夹成 120，高不夹，于是横向压掉 6%。这是方案自己的两个数打架，
+        // 先把行为钉住 —— 别让它哪天悄悄变成溢出或者 0
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/over.png"))), List.of(120, 128),
+           "128 宽的图在 120 宽的页面上夹到 120，高照旧 128");
+        eq(size(nd(IMAGE, "k", Map.of("src", "assets/over.png", "w", 120))), List.of(120, 128),
+           "作者自己写满 120 也是同一个结果");
         eq(size(nd(BADGE, "k", Map.of("count", 5))), List.of(10, 9), "badge 文字宽 + 4，高一行");
         eq(size(nd(BADGE, "k", Map.of("count", 120))), List.of(22, 9), "badge 超过 99 显示 99+");
         eq(size(nd(SPACER, "k", Map.of("size", 7))), List.of(0, 7), "定长 spacer 在 column 里只占主轴，交叉轴 0");
@@ -626,7 +653,7 @@ public class LayoutEngineTest {
 
         // 预热：类加载与 JIT 不算进单棵耗时
         for (int i = 0; i < 50; i++) {
-            LayoutEngine.layout(randomTree(rnd), sheets[i % sheets.length], randomState(rnd), 120, 176, FAKE);
+            LayoutEngine.layout(randomTree(rnd), sheets[i % sheets.length], randomState(rnd), 120, 176, FAKE, IMAGES);
         }
 
         int exceptions = 0;
@@ -641,7 +668,7 @@ public class LayoutEngineTest {
             try {
                 long t0 = System.nanoTime();
                 LayoutNode ln = LayoutEngine.layout(root, sheets[rnd.nextInt(sheets.length)], randomState(rnd),
-                        rnd.nextInt(200), rnd.nextInt(300), FAKE);
+                        rnd.nextInt(200), rnd.nextInt(300), FAKE, IMAGES);
                 maxMs = Math.max(maxMs, (System.nanoTime() - t0) / 1e6);
                 layoutAllItems(ln);   // 画之前可见的定高 list 项都会被排，这里全排上一起查
                 negatives += badGeometry(ln);
@@ -667,7 +694,7 @@ public class LayoutEngineTest {
             try {
                 long t0 = System.nanoTime();
                 LayoutNode ln = LayoutEngine.layout(root, sheets[rnd.nextInt(sheets.length)], randomState(rnd),
-                        avails[rnd.nextInt(avails.length)], avails[rnd.nextInt(avails.length)], FAKE);
+                        avails[rnd.nextInt(avails.length)], avails[rnd.nextInt(avails.length)], FAKE, IMAGES);
                 extremeMaxMs = Math.max(extremeMaxMs, (System.nanoTime() - t0) / 1e6);
                 layoutAllItems(ln);
                 extremeBad += badGeometry(ln);
@@ -802,7 +829,7 @@ public class LayoutEngineTest {
 
     static LayoutNode layout(String ui, String mss, int w, int h) {
         NodeParser.Ui parsed = NodeParser.parse(ui);
-        return LayoutEngine.layout(parsed.root(), MssParser.parse(mss), UiState.of(parsed.state()), w, h, FAKE);
+        return LayoutEngine.layout(parsed.root(), MssParser.parse(mss), UiState.of(parsed.state()), w, h, FAKE, IMAGES);
     }
 
     static LayoutNode layoutWith(String mss) {
@@ -810,7 +837,7 @@ public class LayoutEngineTest {
     }
 
     static LayoutNode run(Node root, String mss, int w, int h) {
-        return LayoutEngine.layout(root, MssParser.parse(mss), UiState.empty(), w, h, FAKE);
+        return LayoutEngine.layout(root, MssParser.parse(mss), UiState.empty(), w, h, FAKE, IMAGES);
     }
 
     static LayoutNode child(LayoutNode n, int i) {

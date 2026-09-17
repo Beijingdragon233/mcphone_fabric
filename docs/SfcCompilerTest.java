@@ -771,7 +771,8 @@ public class SfcCompilerTest {
         Node keyed = inst("<column><scroll v-for=\"k in ka\" :key=\"k\"><box/></scroll><scroll v-for=\"k in kb\" :key=\"k\"><box/></scroll></column>",
                 keyState);
         com.november.mcphone.core.script.layout.LayoutNode laid = com.november.mcphone.core.script.layout.LayoutEngine.layout(
-                keyed, com.november.mcphone.core.script.layout.MssParser.parse(""), keyState, 120, 176, FAKE_TEXT);
+                keyed, com.november.mcphone.core.script.layout.MssParser.parse(""), keyState, 120, 176, FAKE_TEXT,
+                com.november.mcphone.core.script.layout.ImageSizes.NONE);
         List<String> paths = new ArrayList<>();
         collectKeys(laid, paths);
         eq(new TreeSet<>(paths).size(), paths.size(), "布局路径两两不同：" + paths);
