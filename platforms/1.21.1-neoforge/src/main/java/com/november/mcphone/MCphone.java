@@ -47,6 +47,19 @@ public class MCphone {
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 com.november.mcphone.feature.chat.ChatImageStore::onServerStarted);
 
+        // 脚本 worker 的生死跟着服务器走（§15.5）。【停必须有】：单人游戏里服务器会在同一个
+        // JVM 里停掉再起来，不关的话线程池连同排队中的求值会带着上一个世界的引用活到下一个
+        // 世界，而那些求值回调到主线程时拿到的是一个已经死掉的 MinecraftServer。
+        // setDaemon(true) 是"万一这里漏了别挂住 JVM"的兜底，不是关闭方案本身
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.event.server.ServerStartedEvent e) ->
+                        com.november.mcphone.core.script.server.ScriptWorkers.start());
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.event.server.ServerStoppingEvent e) -> {
+                    com.november.mcphone.core.script.server.ScriptWorkers.stop();
+                    com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
+                });
+
         // SERVER 而非 COMMON：必须由服主一份说了算，且 NeoForge 会同步给客户端供界面藏按钮
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER,
                 com.november.mcphone.core.ServerConfig.SPEC, "mcphone-server.toml");

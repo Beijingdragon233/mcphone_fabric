@@ -122,6 +122,10 @@ public final class NetworkHandler {
                 OpenWaystoneSelectionPacket::decode,
                 NetworkHandler::handleOpenWaystoneSelection
         );
+
+        // 【最末尾】脚本 RPC 的三个包（§15.3）。追加在全部现有包之后，所以不动
+        // 协议版本号；插在中间是能编过的，代价是老客户端把 A 包当 B 包解码
+        com.november.mcphone.core.script.net.ScriptNetworking.register();
     }
 
     /**

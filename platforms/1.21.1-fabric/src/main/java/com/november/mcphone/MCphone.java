@@ -62,6 +62,16 @@ public class MCphone implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             com.november.mcphone.feature.chat.ChatImageStore.onServerStarted(server);
             com.november.mcphone.core.ServerConfig.load(server);
+            com.november.mcphone.core.script.server.ScriptWorkers.start();
+        });
+
+        // 脚本 worker 的生死跟着服务器走（§15.5）。【停必须有】：单人游戏里服务器会在同一个
+        // JVM 里停掉再起来，不关的话线程池连同排队中的求值会带着上一个世界的引用活到下一个
+        // 世界，而那些求值回调到主线程时拿到的是一个已经死掉的 MinecraftServer。
+        // setDaemon(true) 是"万一这里漏了别挂住 JVM"的兜底，不是关闭方案本身
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            com.november.mcphone.core.script.server.ScriptWorkers.stop();
+            com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
         });
 
         // 手机替卡槽里的终端供电。漏了它的症状是"终端在手机里会没电"，见 TerminalCharger。
