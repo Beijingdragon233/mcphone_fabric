@@ -414,3 +414,6 @@ idea {
 // 各平台共用的构建校验（SPI 服务文件、dist 隔离、断言测试、Java 17 兼容、旧 jar 清理）。
 // 只写一次，见那个文件顶上的说明。
 apply from: "${projectDir}/../../gradle/mcphone-checks.gradle"
+
+// 「打包并签名」（§12.6）。仓库级约定，三个目标共用一份；不挂 check/build —— 签名要私钥
+apply from: "${projectDir}/../../gradle/mcphone-sign.gradle"

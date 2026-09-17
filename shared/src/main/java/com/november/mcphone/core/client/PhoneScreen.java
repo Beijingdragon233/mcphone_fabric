@@ -58,7 +58,7 @@ import java.util.UUID;
 /** 手机主屏幕 GUI：管理各页面之间的导航（{@link Mode}）、分发输入、兜住附属页面的异常 */
 public final class PhoneScreen extends PhoneScreenBase {
 
-    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT }
+    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT, AUTHOR_KEY }
 
     private final long openTimeMs;
     private boolean animationDone;
@@ -77,6 +77,10 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 保险箱口令页（§17.4.4）。口令只在它里面、只在内存里 */
     private final com.november.mcphone.core.script.client.VaultPage vaultPage =
             new com.november.mcphone.core.script.client.VaultPage();
+
+    /** 「设置 → 开发者 → 我的签名密钥」（§12.6）。只显示指纹，一个私钥字节都不显示 */
+    private final com.november.mcphone.feature.settings.client.AuthorKeyPage authorKeyPage =
+            new com.november.mcphone.feature.settings.client.AuthorKeyPage();
 
     private final AppManagerDetail appManagerDetail = new AppManagerDetail();
 
@@ -244,6 +248,9 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 离开保险箱页就把口令抹掉 —— 那是它在内存里存在的全部时间
         if (this.mode == Mode.VAULT) vaultPage.close();
         if (target == Mode.VAULT) vaultPage.open();
+
+        if (this.mode == Mode.AUTHOR_KEY) authorKeyPage.close();
+        if (target == Mode.AUTHOR_KEY) authorKeyPage.open();
 
         if (this.mode == Mode.CHAT) chatList.close();
         if (target == Mode.CHAT) chatList.open();
@@ -640,6 +647,11 @@ public final class PhoneScreen extends PhoneScreenBase {
             return true;
         }
 
+        if (mode == Mode.AUTHOR_KEY) {
+            navigateTo(Mode.SETTINGS);
+            return true;
+        }
+
         // 放大看的那张图先关掉：那不是一页，但它盖住了整块内容区，返回键该先收它
         if (mode == Mode.CHAT_CONVERSATION && chatConversation.dismissViewer()) return true;
 
@@ -901,6 +913,9 @@ public final class PhoneScreen extends PhoneScreenBase {
             case VAULT             -> vaultPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
+            case AUTHOR_KEY        -> authorKeyPage.render(g, phoneLeft, phoneTop,
+                    sw, sh, statusH, navH,
+                    mouseX, mouseY, font);
             case CHAT              -> chatList.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
@@ -983,6 +998,10 @@ public final class PhoneScreen extends PhoneScreenBase {
         settingItems.add(new SettingsList.Item(
                 Component.translatable("mcphone.settings.vault").getString(),
                 () -> navigateTo(Mode.VAULT)));
+        // 开发者那一档（§12.6 原文的路径：设置 → 开发者 → 我的签名密钥）
+        settingItems.add(new SettingsList.Item(
+                Component.translatable("mcphone.settings.author_key").getString(),
+                () -> navigateTo(Mode.AUTHOR_KEY)));
         settingItems.add(new SettingsList.Item(
                 Component.translatable("mcphone.gui.about").getString(),
                 () -> navigateTo(Mode.ABOUT)));
@@ -1273,6 +1292,10 @@ public final class PhoneScreen extends PhoneScreenBase {
                 vaultPage.mouseClicked(mx, my, button);
                 yield true;
             }
+            case AUTHOR_KEY -> {
+                authorKeyPage.mouseClicked(mx, my, button);
+                yield true;
+            }
             case CHAT -> {
                 chatList.mouseClicked(mx, my, button);
                 // 点了传送就关机，包由列表自己发
@@ -1467,6 +1490,8 @@ public final class PhoneScreen extends PhoneScreenBase {
             return true;
         }
 
+        if (mode == Mode.APP_DETAIL && appDetail.keyPressed(keyCode, scanCode, modifiers)) return true;
+
         if (mode == Mode.VAULT) {
             vaultPage.keyPressed(keyCode, scanCode, modifiers);
             if (vaultPage.consumeBackRequest()) navigateTo(Mode.SETTINGS);
@@ -1515,6 +1540,8 @@ public final class PhoneScreen extends PhoneScreenBase {
                 && callPage(p -> p.charTyped(c, modifiers))) return true;
         if (mode == Mode.DEVICE_NAME && deviceNameEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.VAULT && vaultPage.charTyped(c, modifiers)) return true;
+        // 「作者密钥变了」那一档要抄指纹（§12.4）
+        if (mode == Mode.APP_DETAIL && appDetail.charTyped(c, modifiers)) return true;
         if (mode == Mode.CHAT_CONVERSATION && chatConversation.charTyped(c, modifiers)) return true;
         if (mode == Mode.NOTE_EDIT && noteEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.READER && bookList.charTyped(c, modifiers)) return true;

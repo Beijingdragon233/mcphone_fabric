@@ -169,3 +169,6 @@ processResources {
 // 各平台共用一份。
 
 apply from: "${projectDir}/../../gradle/mcphone-checks.gradle"
+
+// 「打包并签名」（§12.6）。仓库级约定，三个目标共用一份；不挂 check/build —— 签名要私钥
+apply from: "${projectDir}/../../gradle/mcphone-sign.gradle"

@@ -18,6 +18,7 @@ public final class AppInfo {
     private final String description;
     private final ResourceLocation sourceId;
     private final Component blockedReason;
+    private final Signature signature;
 
     private AppInfo(Builder b) {
         this.id = b.id;
@@ -28,6 +29,7 @@ public final class AppInfo {
         this.description = b.description;
         this.sourceId = b.sourceId;
         this.blockedReason = b.blockedReason;
+        this.signature = b.signature;
     }
 
     /** 与 {@link IPhoneApp#getId()} 对应 */
@@ -57,6 +59,27 @@ public final class AppInfo {
      * SDK 版本（§23.4）走的就是这条，将来"需要 xxx 货币"（§22.8）同理。
      */
     public Component blockedReason() { return blockedReason; }
+
+    /**
+     * 这个包的签名状态（§12.4），没有就是 null（比如内建 App）。
+     *
+     * <p><b>判定不在这里做，也不在界面里做</b>：它由来源算好了带过来（§12.4 的判定只有一处实现）。
+     * 界面里再判一遍就会有两份判据，而它们迟早对不上 —— 表现是"界面说能装，装下去被拒"。
+     *
+     * <p>字段都是纯字符串：{@code api} 不该依赖 {@code core.script.pkg}。
+     *
+     * @param stateKey       四档文案的本地化键
+     * @param fingerprint    作者指纹；未签名时为 null，界面上那一格写「无」
+     * @param previous       上次见到的指纹，只有「作者密钥变了」那一档非 null
+     * @param requiredPhrase 要输入什么才放行；不需要确认短语时为 null
+     * @param hardRejected   硬拒绝（只有「签名无效」一档）。true 时<b>不许画「仍然继续」</b>
+     */
+    public record Signature(String stateKey, String fingerprint, String previous,
+                            String requiredPhrase, boolean hardRejected) {
+    }
+
+    /** 见 {@link Signature}。 */
+    public Signature signature() { return signature; }
 
     /** 三个必填项从这里给，其余可选 */
     public static Builder builder(ResourceLocation id, Component displayName,
@@ -94,6 +117,7 @@ public final class AppInfo {
         private String author = "";
         private String description = "";
         private Component blockedReason = null;
+        private Signature signature = null;
 
         private Builder(ResourceLocation id, Component displayName, ResourceLocation sourceId) {
             this.id = id;
@@ -125,6 +149,12 @@ public final class AppInfo {
         /** 给了就是"装不了"，商店把按钮画灰并显示它。 */
         public Builder blocked(Component reason) {
             this.blockedReason = reason;
+            return this;
+        }
+
+        /** 来源把 §12.4 判好的结果带过来。 */
+        public Builder signature(Signature signature) {
+            this.signature = signature;
             return this;
         }
 

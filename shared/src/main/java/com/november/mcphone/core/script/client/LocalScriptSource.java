@@ -5,6 +5,7 @@ import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
 import com.november.mcphone.api.sdk.SdkGate;
+import com.november.mcphone.core.script.pkg.SigCopy;
 import com.november.mcphone.core.script.pkg.TrustState;
 import com.november.mcphone.core.script.pkg.TrustStore;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
@@ -64,7 +65,14 @@ public final class LocalScriptSource implements IAppSource {
             // 放在下面那个 continue 之后就永远走不到 —— 换过的包恰好是"已经在目录里"的那些
             ScriptAppAdapter adapter = adapter(app);
             if (PhoneScreenRegistry.getApp(app.id()) != null) continue;   // 已经在目录里，交给 LocalAppSource
-            out.add(AppInfo.of(adapter, ID, blockedReason(app)));
+            out.add(AppInfo.builder(adapter.getId(), adapter.getDisplayName(), ID)
+                    .icon(adapter.getIconTexture())
+                    .version(adapter.getVersion())
+                    .author(adapter.getAuthor())
+                    .description(adapter.getDescription())
+                    .blocked(blockedReason(app))
+                    .signature(signatureOf(app))
+                    .build());
         }
         callback.accept(out);
     }
@@ -115,6 +123,17 @@ public final class LocalScriptSource implements IAppSource {
     public static TrustState.Verdict trustOf(ScriptApp app) {
         if (app.pkg() == null) return new TrustState.Verdict(TrustState.State.UNSIGNED, null, null, "");
         return TrustState.of(app.pkg(), app.id().toString(), TRUST);
+    }
+
+    /** 把 §12.4 判好的结果整理成界面要的那几格。<b>界面不再判一遍。</b> */
+    private static AppInfo.Signature signatureOf(ScriptApp app) {
+        TrustState.Verdict v = trustOf(app);
+        return new AppInfo.Signature(
+                SigCopy.keyFor(v.state()),
+                v.fingerprint(),
+                v.knownFingerprint(),
+                v.state().needsPhrase() ? SigCopy.requiredPhrase(v.fingerprint()) : null,
+                !v.state().installable);
     }
 
     private static Component blockedReason(ScriptApp app) {

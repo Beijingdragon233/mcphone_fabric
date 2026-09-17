@@ -45,12 +45,19 @@ public final class AppDetail {
     /** 装成功了，商店首页需要刷新列表 */
     private boolean installedRequest = false;
 
+    /**
+     * 「作者密钥变了」那一档要输入的东西（§12.4：<b>要输入确认短语，不是点一下</b>）。
+     * 用 {@code char[]} 没必要 —— 这不是口令，是一串公开的指纹。
+     */
+    private String typedPhrase = "";
+
     public void open(AppInfo target) {
         this.info = target;
         this.message = null;
         this.lastState = null;
         this.backRequest = false;
         this.installedRequest = false;
+        this.typedPhrase = "";
     }
 
     public boolean consumeBackRequest() {
@@ -150,6 +157,8 @@ public final class AppDetail {
             y += font.lineHeight + 1;
         }
 
+        y = renderSignature(g, font, x, y, w, bodyBottom);
+
         if (message != null) {
             g.drawString(font, GuiUtil.truncate(font, message.getString(), w),
                     x, bodyBottom, FontPalette.notice(), false);
@@ -167,7 +176,9 @@ public final class AppDetail {
         btnX = x;
         btnY = bottom - BUTTON_H - 1;
         btnW = w;
-        btnEnabled = s == State.BUY || s == State.DOWNLOAD;
+        // 【签名无效】那一档由 blockedReason 走 BLOCKED，本来就画不出按钮；
+        // 【作者密钥变了】要抄对新指纹才放行 —— 不然按钮画灰，不给"点一下就走"
+        btnEnabled = (s == State.BUY || s == State.DOWNLOAD) && phraseSatisfied();
         btnHovered = btnEnabled && mouseX >= btnX && mouseX <= btnX + btnW
                 && mouseY >= btnY && mouseY <= btnY + BUTTON_H;
 
@@ -188,6 +199,95 @@ public final class AppDetail {
                 btnY + (BUTTON_H - font.lineHeight) / 2 + 1,
                 btnEnabled ? PhoneTheme.FONT_COLOR_BUTTON : PhoneTheme.FONT_COLOR_BUTTON_DISABLED,
                 false);
+    }
+
+    /**
+     * 签名那一段（§12.4 / §12.5）。四档提示 + 作者指纹 + <b>每次都显示的 INSTALL_NOTE</b>。
+     *
+     * <p><b>这里不判签名</b>：状态是来源算好带过来的（{@link AppInfo#signature()}）。
+     * 界面里再判一遍就会有两份判据。
+     *
+     * <p><b>「已签名」处不画对勾</b>：签名确认的是"谁做的、有没有被改过"，不是"内容安不安全"。
+     * 一个绿色对勾会把那个区分抹掉，而 INSTALL_NOTE 正是为了讲清这件事才每次都显示。
+     */
+    private int renderSignature(GuiGraphics g, Font font, int x, int y, int w, int bodyBottom) {
+        AppInfo.Signature sig = info.signature();
+        if (sig == null) return y;                       // 内建 App 没有包，也就没有签名这一说
+
+        y += 3;
+
+        // 四档提示。参数按各档的文案填：密钥变了要新旧两个，陌生作者要指纹，已信任要名字与指纹
+        String line = switch (sig.stateKey()) {
+            case "mcphone.sig.key_changed" -> Component.translatable(sig.stateKey(),
+                    String.valueOf(sig.previous()), String.valueOf(sig.fingerprint())).getString();
+            case "mcphone.sig.unknown" -> Component.translatable(sig.stateKey(),
+                    String.valueOf(sig.fingerprint())).getString();
+            case "mcphone.sig.trusted" -> Component.translatable(sig.stateKey(),
+                    info.author(), String.valueOf(sig.fingerprint())).getString();
+            default -> Component.translatable(sig.stateKey()).getString();
+        };
+        int colour = sig.hardRejected() || "mcphone.sig.key_changed".equals(sig.stateKey())
+                ? FontPalette.notice() : FontPalette.subtle();
+        for (var l : font.split(Component.literal(line), w)) {
+            if (y + font.lineHeight > bodyBottom) return y;
+            g.drawString(font, l, x, y, colour, false);
+            y += font.lineHeight;
+        }
+
+        // 指纹。【身份是它，不是 author】。未签名时这一格写「无」
+        String fp = sig.fingerprint() == null
+                ? Component.translatable("mcphone.sig.fingerprint_none").getString()
+                : sig.fingerprint();
+        if (y + font.lineHeight <= bodyBottom) {
+            g.drawString(font, GuiUtil.truncate(font, fp, w), x, y, FontPalette.subtle(), false);
+            y += font.lineHeight + 1;
+        }
+
+        // 要抄指纹的那一档：把输入框画出来
+        if (sig.requiredPhrase() != null && y + font.lineHeight * 2 <= bodyBottom) {
+            g.drawString(font, GuiUtil.truncate(font,
+                            Component.translatable("mcphone.sig.confirm_prompt").getString(), w),
+                    x, y, FontPalette.subtle(), false);
+            y += font.lineHeight;
+            g.fill(x, y, x + w, y + font.lineHeight + 2, PhoneTheme.COLOR_BUTTON_DISABLED);
+            g.drawString(font, GuiUtil.truncate(font, typedPhrase, w - 4), x + 2, y + 2,
+                    phraseSatisfied() ? FontPalette.body() : FontPalette.notice(), false);
+            y += font.lineHeight + 4;
+        }
+
+        // INSTALL_NOTE —— 【每次安装都显示】。它把「签名 ≠ 安全」讲给玩家
+        for (var l : font.split(Component.translatable("mcphone.sig.install_note"), w)) {
+            if (y + font.lineHeight > bodyBottom) break;
+            g.drawString(font, l, x, y, FontPalette.subtle(), false);
+            y += font.lineHeight;
+        }
+        return y;
+    }
+
+    /** 不需要确认短语的档位恒为真；需要的那一档要抄对新指纹。 */
+    private boolean phraseSatisfied() {
+        AppInfo.Signature sig = info == null ? null : info.signature();
+        if (sig == null || sig.requiredPhrase() == null) return true;
+        return typedPhrase.trim().equalsIgnoreCase(sig.requiredPhrase().trim());
+    }
+
+    /** 抄指纹用。只有那一档收键盘。 */
+    public boolean charTyped(char c, int modifiers) {
+        AppInfo.Signature sig = info == null ? null : info.signature();
+        if (sig == null || sig.requiredPhrase() == null) return false;
+        if (c < ' ' || typedPhrase.length() >= 64) return true;
+        typedPhrase += c;
+        return true;
+    }
+
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        AppInfo.Signature sig = info == null ? null : info.signature();
+        if (sig == null || sig.requiredPhrase() == null) return false;
+        if (keyCode == 259 && !typedPhrase.isEmpty()) {          // backspace
+            typedPhrase = typedPhrase.substring(0, typedPhrase.length() - 1);
+            return true;
+        }
+        return false;
     }
 
     public boolean mouseClicked(double mx, double my, int button) {
