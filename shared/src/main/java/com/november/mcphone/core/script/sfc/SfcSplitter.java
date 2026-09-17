@@ -27,7 +27,16 @@ public final class SfcSplitter {
     private SfcSplitter() {
     }
 
+    /** 单文件形态（§11.2 形态一）：四个块里 manifest 与 template 必须有。 */
     public static Map<String, Block> split(String src) throws SfcError {
+        return split(src, true);
+    }
+
+    /**
+     * @param requireManifest 要不要有 {@code <manifest>} 块。zip 形态（§11.2 形态二）的 app.vue 与 pages/*.vue
+     *                        没有这个块 —— 清单是包里独立的 manifest.json，写在每个页面里只会有两份、还可能互相矛盾
+     */
+    public static Map<String, Block> split(String src, boolean requireManifest) throws SfcError {
         Objects.requireNonNull(src, "src");
         if (!src.isEmpty() && src.charAt(0) == BOM) src = src.substring(1);
         String[] lines = src.split("\n", -1);
@@ -81,7 +90,7 @@ public final class SfcSplitter {
         }
         // 报开标签那一行：跳到文件末尾看不出是哪个块没收尾
         if (open != null) throw SfcError.at(Code.E_SFC_UNCLOSED_BLOCK, openLine + 1, 1, open);
-        if (!out.containsKey("manifest")) throw SfcError.at(Code.E_SFC_NO_MANIFEST, 1, 0);
+        if (requireManifest && !out.containsKey("manifest")) throw SfcError.at(Code.E_SFC_NO_MANIFEST, 1, 0);
         if (!out.containsKey("template")) throw SfcError.at(Code.E_SFC_NO_TEMPLATE, 1, 0);
         return out;
     }

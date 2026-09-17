@@ -53,6 +53,7 @@
   "mcphone.gui.app_mod_absent": "没装",
   "mcphone.gui.system_app": "[系统]",
   "mcphone.store.source.local": "本机",
+  "mcphone.store.source.local_script": "本机脚本 App",
   "mcphone.store.empty": "暂无可下载的App",
   "mcphone.store.install": "↓ 安装",
   "mcphone.store.installed": "已安装 %s",

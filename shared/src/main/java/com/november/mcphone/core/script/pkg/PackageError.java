@@ -110,8 +110,13 @@ public final class PackageError extends RuntimeException {
         /** 目录深度上限：a/b/c/d/file.json 恰好到顶。 */
         public static final int MAX_DEPTH = 4;
 
-        /** 允许的扩展名（P1 加 .js）。 */
-        public static final Set<String> ALLOWED_EXT = Set.of("json", "mss", "png", "txt");
+        /**
+         * 允许的扩展名（P1 加 .js）。
+         *
+         * <p>{@code vue} 是作者真正写的那个格式（§11.1）：zip 形态里入口是 {@code app.vue}、
+         * 别的页在 {@code pages/} 下（§11.2）。不收它的话，§11.2 的 zip 形态一个都装不进来。
+         */
+        public static final Set<String> ALLOWED_EXT = Set.of("json", "mss", "png", "txt", "vue");
 
         /**
          * 禁止的扩展名。它是「不在允许清单里」的真子集，留着只为报得准：收到 evil.class 时

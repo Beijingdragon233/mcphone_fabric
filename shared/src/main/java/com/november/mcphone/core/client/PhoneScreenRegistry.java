@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.app.RequiredMod;
+import com.november.mcphone.core.script.client.LocalScriptSource;
 import com.november.mcphone.feature.store.AppPriceRegistry;
 import com.november.mcphone.feature.store.net.StoreClientCache;
 import com.november.mcphone.util.SpiLoader;
@@ -80,6 +81,26 @@ public final class PhoneScreenRegistry {
         CATALOG.put(app.getId(), app);
         MCphone.LOGGER.info("[MCphone] App 已登记: {} v{} by {}",
                 app.getId(), app.getVersion(), app.getAuthor());
+        return true;
+    }
+
+    /**
+     * 把目录里同 id 的实例换成新的 —— 覆盖安装同一个脚本包时走这条（§19.10 更新链的铺垫）。
+     *
+     * <p>{@code expected} 是调用方自己登记过的那个旧实例：只有目录里那个<b>正是它</b>时才换。
+     * 不认这一条的话，一个包就能把同 id 的别人家 App 顶下去 —— 而 {@link #register} 的语义是
+     * "先注册者胜"，这个方法不许把它绕开。
+     *
+     * <p>只换实例，不碰安装状态：{@code INSTALLED} 里存的是 id，主屏下一帧画的就是新的那个。
+     * 旧实例的贴图与回调由调用方撤（它才知道那是什么东西）。
+     */
+    public static boolean replace(IPhoneApp expected, IPhoneApp app) {
+        if (expected == null || app == null || app.getId() == null) return false;
+        if (!app.getId().equals(expected.getId())) return false;
+        if (CATALOG.get(app.getId()) != expected) return false;
+
+        CATALOG.put(app.getId(), app);
+        MCphone.LOGGER.info("[MCphone] App 实例已换新: {} v{}", app.getId(), app.getVersion());
         return true;
     }
 
@@ -301,6 +322,21 @@ public final class PhoneScreenRegistry {
                 MCphone.LOGGER.error("[MCphone] App {} 登记时抛异常，已跳过",
                         app.getClass().getName(), t);
             }
+        }
+
+        // 玩家自己放进 mcphone/apps/ 的脚本 App：登记进目录，不改安装状态。
+        //
+        // 【必须在这儿，不能等商店打开】：脚本 App 的目录条目是运行时登记的、不跟着 jar 走，
+        // 而 loadState() 只把「目录里存在的 id」装回已安装集合，末尾又按当前集合覆写存档。
+        // 晚一步的后果不是"这次没显示"，是重启之后它从主屏消失、并且被从存档里抹掉，
+        // 玩家再装回来也回不到原来的位置。loadForCurrentWorld() 第一句就是 ensureLoaded()，
+        // 所以挂在这里一定早于那一次读取。
+        try {
+            int scripts = LocalScriptSource.registerAll();
+            if (scripts > 0) MCphone.LOGGER.info("[MCphone] 脚本 App 已登记 {} 个", scripts);
+        } catch (Throwable t) {
+            // 读盘、编译都在这条路上，坏包已经在里面各自跳过了；真出了别的事也不能连内建 App 一起拖垮
+            MCphone.LOGGER.error("[MCphone] 扫描脚本 App 目录时出错，本次跳过", t);
         }
 
         // 扫出东西了才落锁；一个都没有就留给下次，除非已经试到上限

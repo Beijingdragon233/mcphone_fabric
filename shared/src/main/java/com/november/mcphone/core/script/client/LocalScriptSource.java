@@ -1,0 +1,115 @@
+package com.november.mcphone.core.script.client;
+
+import com.november.mcphone.MCphone;
+import com.november.mcphone.api.client.app.IPhoneApp;
+import com.november.mcphone.api.client.store.AppInfo;
+import com.november.mcphone.api.client.store.IAppSource;
+import com.november.mcphone.core.client.PhoneScreenRegistry;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+
+/**
+ * 本地脚本来源（施工方案 §14.1）：玩家放进 {@code mcphone/apps/} 的 {@code .vue} 与 zip。
+ *
+ * <p>两个方法都同步回调 —— 读的是本机磁盘，没有等的必要，而回调契约只要求在客户端主线程。
+ *
+ * <p><b>只列不在目录里的</b>：脚本 App 装过一次就进了 {@code CATALOG}，此后卸载再装走的是既有的
+ * {@code LocalAppSource}（它列的正是"目录里未安装的"）。这里不再列一遍，否则商店里会出现两条一模一样的。
+ *
+ * <p><b>只认 {@code deploy: "client"}</b>（§14.2）：P0 的清单里根本没有 {@code deploy} 与
+ * {@code capabilities} 字段，也没有后端通道 —— 包里就算带了 {@code server.js} 也只是一个不会被执行的文件。
+ * 判据因此天然成立，不需要额外的检查。
+ */
+public final class LocalScriptSource implements IAppSource {
+
+    public static final ResourceLocation ID =
+            ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "local_script");
+
+    /** id → 适配器。同一个包只有一个实例：注册表里那个与商店里那个必须是同一个。 */
+    private static final Map<ResourceLocation, ScriptAppAdapter> ADAPTERS = new HashMap<>();
+
+    @Override
+    public ResourceLocation getId() {
+        return ID;
+    }
+
+    @Override
+    public Component getDisplayName() {
+        return Component.translatable("mcphone.store.source.local_script");
+    }
+
+    @Override
+    public void listAvailable(Consumer<List<AppInfo>> callback) {
+        List<AppInfo> out = new ArrayList<>();
+        for (ScriptApp app : ScriptAppFolder.scan()) {
+            if (PhoneScreenRegistry.getApp(app.id()) != null) continue;   // 已经在目录里，交给 LocalAppSource
+            out.add(AppInfo.of(adapter(app), ID));
+        }
+        callback.accept(out);
+    }
+
+    @Override
+    public void install(AppInfo info, Consumer<IPhoneApp> onSuccess, Consumer<Component> onError) {
+        ScriptAppAdapter adapter = null;
+        for (ScriptApp app : ScriptAppFolder.scan()) {
+            if (app.id().equals(info.id())) {
+                adapter = adapter(app);
+                break;
+            }
+        }
+        if (adapter == null) {
+            // 玩家在商店开着的时候把文件删了
+            onError.accept(Component.translatable("mcphone.store.error.not_found", info.id().toString()));
+            return;
+        }
+        if (!PhoneScreenRegistry.install(adapter)) {
+            onError.accept(Component.translatable("mcphone.store.error.install_failed", info.id().toString()));
+            return;
+        }
+        onSuccess.accept(adapter);
+    }
+
+    /**
+     * 启动恢复（§3.2）：把目录里的脚本 App 全部登记进目录，<b>不改安装状态</b>。
+     *
+     * <p>必须早于读存档状态：{@code loadState()} 只把"目录里存在的 id"装回已安装集合，
+     * 末尾又按当前集合覆写存档。不先登记的话，重启之后已安装的脚本 App 会从主屏消失，
+     * 而且那一次覆写会把它从存档里也抹掉 —— 玩家再也装不回原来的位置。
+     *
+     * @return 这一次新登记了几个
+     */
+    public static int registerAll() {
+        int n = 0;
+        for (ScriptApp app : ScriptAppFolder.scan()) {
+            if (ADAPTERS.containsKey(app.id())) continue;   // 登记过了，别让重试路径重复报 id 冲突
+            if (PhoneScreenRegistry.register(adapter(app))) n++;
+        }
+        return n;
+    }
+
+    /**
+     * 同一个 id 只造一个适配器；玩家把文件换成新版本之后（重新编过），换上新的那个。
+     *
+     * <p>换的时候是原子的：先把旧实例从目录里换下来，成了才撤它的贴图。反过来的话，
+     * 换失败时那个 App 会留在目录里而贴图已经没了 —— 主屏上一个点开是白图的 App。
+     */
+    private static ScriptAppAdapter adapter(ScriptApp app) {
+        ScriptAppAdapter known = ADAPTERS.get(app.id());
+        if (known != null && known.script() == app) return known;
+
+        ScriptAppAdapter fresh = new ScriptAppAdapter(app);
+        ADAPTERS.put(app.id(), fresh);
+        if (known != null && PhoneScreenRegistry.replace(known, fresh)) {
+            known.onUninstall();   // 旧那份的图标与包内贴图，这时候才还
+            MCphone.LOGGER.info("[MCphone] 脚本 App {} 换成了 {}（{}）",
+                    app.id(), app.manifest().version(), app.file());
+        }
+        return fresh;
+    }
+}

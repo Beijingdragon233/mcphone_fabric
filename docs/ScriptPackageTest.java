@@ -189,6 +189,10 @@ public class ScriptPackageTest {
         eq(codeOf(() -> PathRules.require("a/b/c/d/e/f.json")), Code.E_PKG_TOO_DEEP, "深度超限报 TOO_DEEP");
         eq(codeOf(() -> PathRules.require("evil.class")), Code.E_PKG_BANNED_EXT, "禁止扩展名报 BANNED_EXT");
         eq(codeOf(() -> PathRules.require("a.yaml")), Code.E_PKG_BAD_EXT, "不在白名单报 BAD_EXT");
+        // .vue 是作者真正写的那个格式（§11.1）：不收它的话 §11.2 的 zip 形态一个都装不进来
+        eq(codeOf(() -> PathRules.require("app.vue")), null, "收 .vue");
+        eq(codeOf(() -> PathRules.require("pages/detail.vue")), null, "pages/ 下的 .vue 也收");
+        eq(codeOf(() -> PathRules.require("evil.js")), Code.E_PKG_BAD_EXT, "P0 还不收 .js");
         eq(codeOf(() -> PathRules.require("../x.json")), Code.E_PKG_BAD_PATH, "形状不对报 BAD_PATH");
         eq(codeOf(() -> PathRules.requireAll(List.of("Icon.png", "icon.PNG"))), Code.E_PKG_DUP_PATH,
            "撞车报 DUP_PATH");
@@ -293,8 +297,14 @@ public class ScriptPackageTest {
         // §3.2 的表头是「全部硬失败，不宽容」—— 表里的字段一个都不能缺
         eq(codeOf(() -> Manifest.parse(without("description"))), Code.E_PKG_MISSING_FIELD, "description 必填");
         eq(codeOf(() -> Manifest.parse(without("name"))), Code.E_PKG_MISSING_FIELD, "name 必填");
-        eq(codeOf(() -> Manifest.parse(without("ui"))), Code.E_PKG_MISSING_FIELD, "ui 必填");
         eq(codeOf(() -> Manifest.parse(without("engine"))), Code.E_PKG_MISSING_FIELD, "engine 必填");
+
+        // ui 是那一列里唯一可省的：省了就是 §11.2 的 zip 形态，入口是 app.vue、样式在它的 <style> 块里。
+        // 原来这里断言「ui 必填」，那是照 §3.2 的 ui.json 写的；§11.2 之后作者写的是 .vue，包里根本没有 ui.json
+        Manifest noUi = Manifest.parse(without("ui"));
+        eq(noUi.uiTree(), Manifest.DEFAULT_ENTRY, "不写 ui 时入口是 app.vue");
+        eq(noUi.uiStyle(), null, "不写 ui 时没有单独的样式文件");
+        eq(Manifest.parse(GOOD_MANIFEST).uiStyle(), "ui.mss", "写了 ui 的照旧");
 
         // Gson 默认是宽容的，清单不能跟着宽容
         eq(codeOf(() -> Manifest.parse("{format:1}")), Code.E_PKG_MANIFEST_SYNTAX, "拒绝无引号的键");
