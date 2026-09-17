@@ -1,5 +1,7 @@
 package com.november.mcphone.core.client;
 
+import com.november.mcphone.feature.store.client.AppSourceRegistry;
+
 /**
  * 共用代码里"每客户端 tick 要做一次"的那些事，<b>汇到这一个入口</b>。
  *
@@ -39,5 +41,8 @@ public final class ClientTicks {
     public static void tick() {
         // 「这会儿开着的是哪一台设备」每 tick 算一次，变了才发包
         PhoneScreenOnSync.tick();
+
+        // 商店那边有没有哪个来源列到一半不吭声了（§14.1 的超时）
+        AppSourceRegistry.tick();
     }
 }

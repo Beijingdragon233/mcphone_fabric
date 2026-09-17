@@ -122,7 +122,8 @@ public final class Renderer {
         return n.node.type() == NodeType.LIST ? visibleRange(n, scrollY) : new int[]{0, n.children.size() - 1};
     }
 
-    static boolean isScroller(LayoutNode n) {
+    /** 这个节点自己滚不滚。页面按它挑出要保留滚动位置的那些节点（§7.7）。 */
+    public static boolean isScroller(LayoutNode n) {
         return n.node.type() == NodeType.SCROLL || n.node.type() == NodeType.LIST;
     }
 

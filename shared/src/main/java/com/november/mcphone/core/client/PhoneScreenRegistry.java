@@ -83,6 +83,26 @@ public final class PhoneScreenRegistry {
         return true;
     }
 
+    /**
+     * 把目录里同 id 的实例换成新的 —— 覆盖安装同一个脚本包时走这条（§19.10 更新链的铺垫）。
+     *
+     * <p>{@code expected} 是调用方自己登记过的那个旧实例：只有目录里那个<b>正是它</b>时才换。
+     * 不认这一条的话，一个包就能把同 id 的别人家 App 顶下去 —— 而 {@link #register} 的语义是
+     * "先注册者胜"，这个方法不许把它绕开。
+     *
+     * <p>只换实例，不碰安装状态：{@code INSTALLED} 里存的是 id，主屏下一帧画的就是新的那个。
+     * 旧实例的贴图与回调由调用方撤（它才知道那是什么东西）。
+     */
+    public static boolean replace(IPhoneApp expected, IPhoneApp app) {
+        if (expected == null || app == null || app.getId() == null) return false;
+        if (!app.getId().equals(expected.getId())) return false;
+        if (CATALOG.get(app.getId()) != expected) return false;
+
+        CATALOG.put(app.getId(), app);
+        MCphone.LOGGER.info("[MCphone] App 实例已换新: {} v{}", app.getId(), app.getVersion());
+        return true;
+    }
+
     /** 运行时登记并立即安装，供附属模组动态注册 */
     public static boolean install(IPhoneApp app) {
         if (!register(app)) return false;
@@ -293,7 +313,9 @@ public final class PhoneScreenRegistry {
 
         // 走 SpiLoader 而不是直接 for-each ServiceLoader：一个附属构造失败不该中断整个扫描
         int count = 0;
+        boolean found = false;
         for (IPhoneApp app : SpiLoader.loadSafely(IPhoneApp.class, "App")) {
+            found = true;
             // register 会调第三方的 getId()/isAvailable()，同样要兜
             try {
                 if (register(app)) count++;
@@ -303,8 +325,12 @@ public final class PhoneScreenRegistry {
             }
         }
 
-        // 扫出东西了才落锁；一个都没有就留给下次，除非已经试到上限
-        if (!CATALOG.isEmpty() || scanAttempts >= MAX_SCAN_ATTEMPTS) {
+        // 扫出东西了才落锁；一个都没有就留给下次，除非已经试到上限。
+        //
+        // 判的是【这一趟 SPI 扫出东西没有】，不是 CATALOG 空不空：动态登记的 App（玩家自己放进
+        // mcphone/apps/ 的那些，见 LocalScriptSource）也在 CATALOG 里，拿它当判据的话，
+        // 目录里有一个 .vue 就会让"内建 App 一个都没扫到"的重试永远不再发生
+        if (found || scanAttempts >= MAX_SCAN_ATTEMPTS) {
             loaded = true;
         }
 
@@ -345,6 +371,31 @@ public final class PhoneScreenRegistry {
         }
     }
 
+    /**
+     * 存档里记着装了哪些 —— 还没读进来的那一份。
+     *
+     * <p>给动态来源做启动恢复用（见 {@code LocalScriptSource.registerAll}）：**只恢复玩家真的装过的那些**。
+     * 把磁盘上全部的包都登记进目录的话，它们就全都成了"目录里未安装的"，于是改由既有的 LocalAppSource
+     * 列出来 —— 玩家会看到同一个 App 重连一次就从「本机脚本」跳到「本机」那一组。
+     *
+     * <p>这里自己读一遍状态文件而不是等 {@link #loadState()}：恢复登记必须发生在它之前。
+     * 读不出来就当没有 —— 那时本来也没什么可恢复的。
+     */
+    public static Set<ResourceLocation> savedInstalledIds() {
+        Path file = STATE_DIR.resolve(currentWorldKey() + ".json");
+        if (!Files.isRegularFile(file)) return Set.of();
+        try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            State s = GSON.fromJson(r, State.class);
+            if (s == null) return Set.of();
+            Set<ResourceLocation> out = new LinkedHashSet<>();
+            parseStoredIds(s.installed, out);
+            return out;
+        } catch (Exception e) {
+            MCphone.LOGGER.warn("[MCphone] 读 {} 失败，启动恢复按「没装过」处理: {}", file, e.toString());
+            return Set.of();
+        }
+    }
+
     /** 把没买过的付费 App 从主屏摘掉，收到服务端购买记录后调用。不摘的话它既用不了也不在商店里，买不回来 */
     public static void enforcePurchases() {
         if (stateFile == null) return;   // 还没进世界，此时的 INSTALLED 不代表任何存档
@@ -363,7 +414,15 @@ public final class PhoneScreenRegistry {
                 revoked.size(), revoked);
     }
 
-    /** 进世界时调用（客户端登录事件）：读当前存档自己那份状态 */
+    /**
+     * 进世界时调用（客户端登录事件）：读当前存档自己那份状态。
+     *
+     * <p><b>动态登记的 App 必须在这之前登记好</b>（玩家放进 {@code mcphone/apps/} 的脚本 App
+     * 走的是 {@code LocalScriptSource.registerAll()}，挂在各目标登录事件里这一句的前面）。
+     * {@link #loadState()} 只把目录里存在的 id 装回已安装集合，末尾又按当前集合 {@link #saveState()}，
+     * 而那一次写盘会把还没登记上的 App 同时从 {@code installed} 与 {@code known} 里抹掉 ——
+     * 后果不是"这次没显示"，是重启之后它从主屏消失、再装回来也回不到原来的位置。
+     */
     public static void loadForCurrentWorld() {
         ensureLoaded();
 

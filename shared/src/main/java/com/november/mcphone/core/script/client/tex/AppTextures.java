@@ -116,6 +116,19 @@ public final class AppTextures {
     /** key 是包摘要：同一个包换个 AppPackage 实例装进来，贴图不必重传。 */
     private static final Map<String, App> APPS = new HashMap<>();
 
+    /**
+     * App 图标，key 是 App id。值为 null 表示判过了、用不了（商店画占位方块）。
+     *
+     * <p>单独一张表，不进上面那套每帧 16 张的名额：图标是主屏与商店画的，那条路上没有
+     * {@code Frame}，也就没人调 {@link #beginFrame}，混进去会被页面里的图挤掉、然后每帧重传。
+     *
+     * <p><b>这张表不淘汰</b>，只由 {@link #releaseIcon} 与 {@link #clearCache} 清。试过按访问序封顶，
+     * 但那是错的：{@code AppInfo} 会把 {@code getIconTexture()} 的返回值<b>存进对象</b>，商店画的是存住的
+     * 那个 ResourceLocation、不会再问一次 —— 在它背后把贴图还掉，画出来就是紫黑格。
+     * 条数的上限是"目录里有几个包"，每张 ≤ {@link #MAX_BYTES}；真要限量得先让 AppInfo 改成画的时候再问。
+     */
+    private static final Map<String, ImageCodec.Texture> ICONS = new LinkedHashMap<>();
+
     private static int epoch;
 
     /**
@@ -217,6 +230,42 @@ public final class AppTextures {
     }
 
     /**
+     * App 图标的贴图，用不了返回 null（商店与主屏画占位方块）。
+     *
+     * <p>{@code png} 是原始字节：zip 形态是包里那张图，单文件形态是清单里 data URI 解出来的
+     * （§11.2 的 8 KiB 上限由 {@code Manifest} 把着）。判据与包内图片同一套 —— 得是真 PNG、
+     * 边长不超 {@link #MAX_SIDE}、字节数不超 {@link #MAX_BYTES}。
+     *
+     * <p>判完就记住，包括"用不了"：主屏每帧问一次图标，不记的话每帧重判一次。
+     */
+    public static ResourceLocation icon(String appId, byte[] png) {
+        if (appId == null) return null;
+        if (ICONS.containsKey(appId)) {
+            ImageCodec.Texture known = ICONS.get(appId);
+            return known == null ? null : known.location();
+        }
+
+        ImageCodec.Texture tex = null;
+        int[] size = png == null ? null : PngHeader.size(png);
+        if (png != null && png.length <= MAX_BYTES && size != null
+                && size[0] <= MAX_SIDE && size[1] <= MAX_SIDE) {
+            tex = uploader.upload(png);
+        }
+        ICONS.put(appId, tex);
+        if (tex == null) {
+            MCphone.LOGGER.warn("[MCphone] App {} 的图标用不了，商店画占位方块", appId);
+        }
+        return tex == null ? null : tex.location();
+    }
+
+    /** 还回这个 App 图标占的显存。卸载、覆盖安装时调。 */
+    public static void releaseIcon(String appId) {
+        if (appId == null) return;
+        if (!ICONS.containsKey(appId)) return;
+        uploader.release(ICONS.remove(appId));
+    }
+
+    /**
      * 还回这个包占的显存。关页面、卸包时调 —— 不调的话贴图会一直挂在 TextureManager 上，
      * 开关两百次就是两百份（§8.8）。
      *
@@ -242,6 +291,8 @@ public final class AppTextures {
      * 一个包至多 16 张 64 KiB 的图，重传的代价是一帧里几毫秒，而赌输的代价是整页白图。
      */
     public static void clearCache() {
+        for (ImageCodec.Texture tex : ICONS.values()) uploader.release(tex);
+        ICONS.clear();
         for (App app : APPS.values()) {
             for (Entry e : app.live.values()) {
                 uploader.release(e.texture);
@@ -275,6 +326,11 @@ public final class AppTextures {
     static int liveCount(AppPackage pkg) {
         App app = pkg == null ? null : APPS.get(pkg.digest());
         return app == null ? 0 : app.live.size();
+    }
+
+    /** 图标表里有几条，只给测试用。 */
+    static int cachedIcons() {
+        return ICONS.size();
     }
 
     /** 表里攒了多少条判定，只给测试用：装卸两百次之后它必须回到装之前的数（§8.8）。 */

@@ -27,6 +27,10 @@ public final class SfcCompiler {
     public record App(Manifest manifest, Stylesheet stylesheet, CompiledTemplate template) {
     }
 
+    /** 一页的编译产物，没有清单。zip 形态（§11.2 形态二）的 app.vue 与 pages/*.vue 走这条。 */
+    public record Page(Stylesheet stylesheet, CompiledTemplate template) {
+    }
+
     private static final Pattern GSON_POSITION = Pattern.compile("line (\\d+) column (\\d+)");
 
     private SfcCompiler() {
@@ -36,37 +40,51 @@ public final class SfcCompiler {
     public static App compile(String file, String src) {
         Objects.requireNonNull(file, "file");
         try {
-            Map<String, Block> blocks = SfcSplitter.split(src);
-
-            Block manifestBlock = blocks.get("manifest");
-            Manifest manifest = manifest(manifestBlock);
-
-            Block styleBlock = blocks.get("style");
-            Stylesheet sheet;
-            try {
-                sheet = MssParser.parse(styleBlock == null ? "" : styleBlock.content());
-            } catch (MssError e) {
-                throw e.shift(styleBlock.startLine() - 1);
-            }
-
-            Block scriptBlock = blocks.get("script");
-            Map<String, Object> state;
-            try {
-                state = scriptBlock == null ? Map.of() : ScriptParser.parse(scriptBlock.content());
-            } catch (SfcError e) {
-                throw e.shift(scriptBlock.startLine() - 1);
-            }
-
-            Block templateBlock = blocks.get("template");
-            CompiledTemplate template;
-            try {
-                template = TemplateCompiler.compile(templateBlock.content(), state, templateBlock.startLine() - 1);
-            } catch (SfcError e) {
-                throw e.shift(templateBlock.startLine() - 1);
-            }
-            return new App(manifest, sheet, template);
+            Map<String, Block> blocks = SfcSplitter.split(src, true);
+            Manifest manifest = manifest(blocks.get("manifest"));
+            return new App(manifest, style(blocks), template(blocks));
         } catch (SfcError e) {
             throw e.inFile(file);
+        }
+    }
+
+    /**
+     * 编一页，不要 {@code <manifest>} 块（§11.2 形态二：清单是包里独立的 manifest.json）。
+     * 有 {@code <manifest>} 块照样收下但不读它 —— 拒掉的话，作者把单文件 App 塞进 zip 时会看到一条他改不明白的错。
+     */
+    public static Page compilePage(String file, String src) {
+        Objects.requireNonNull(file, "file");
+        try {
+            Map<String, Block> blocks = SfcSplitter.split(src, false);
+            return new Page(style(blocks), template(blocks));
+        } catch (SfcError e) {
+            throw e.inFile(file);
+        }
+    }
+
+    private static Stylesheet style(Map<String, Block> blocks) {
+        Block styleBlock = blocks.get("style");
+        try {
+            return MssParser.parse(styleBlock == null ? "" : styleBlock.content());
+        } catch (MssError e) {
+            throw e.shift(styleBlock.startLine() - 1);
+        }
+    }
+
+    private static CompiledTemplate template(Map<String, Block> blocks) {
+        Block scriptBlock = blocks.get("script");
+        Map<String, Object> state;
+        try {
+            state = scriptBlock == null ? Map.of() : ScriptParser.parse(scriptBlock.content());
+        } catch (SfcError e) {
+            throw e.shift(scriptBlock.startLine() - 1);
+        }
+
+        Block templateBlock = blocks.get("template");
+        try {
+            return TemplateCompiler.compile(templateBlock.content(), state, templateBlock.startLine() - 1);
+        } catch (SfcError e) {
+            throw e.shift(templateBlock.startLine() - 1);
         }
     }
 

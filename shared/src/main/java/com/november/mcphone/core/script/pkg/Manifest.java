@@ -23,6 +23,9 @@ import java.util.regex.Pattern;
  *
  * <p>两种来源：{@link #parse} 读包里的 manifest.json，icon 是包内路径；{@link #parseInline} 读 .vue 里的 {@code <manifest>}，
  * icon 是 data URI（或 null），uiTree / uiStyle / engine 为 null。拿 icon 当路径用之前先看是哪一种。
+ *
+ * <p>{@link #uiTree} 是前端入口，两种写法在这里收敛成一个字段：写了 {@code ui} 就是它指的那个文件
+ * （§4.2 的 ui.json），没写就是 {@link #DEFAULT_ENTRY}（§11.2 的 app.vue）。{@code uiStyle} 只有前一种才有。
  */
 public record Manifest(
         int format,
@@ -62,6 +65,9 @@ public record Manifest(
         return namespace + ":" + path;
     }
 
+    /** 不写 {@code ui} 时的前端入口（§11.2：zip 形态的前端入口必须是 app.vue）。 */
+    public static final String DEFAULT_ENTRY = "app.vue";
+
     /** .vue 内联 manifest 的 icon 前缀（§11.2）。 */
     public static final String INLINE_ICON_PREFIX = "data:image/png;base64,";
 
@@ -85,9 +91,11 @@ public record Manifest(
 
         String icon = requirePath(root, "icon", "icon");
 
-        JsonObject ui = requireObject(root, "ui");
-        String uiTree = requirePath(ui, "tree", "ui.tree");
-        String uiStyle = requirePath(ui, "style", "ui.style");
+        // ui 可省（§11.2 的 zip 形态）：省了就是 app.vue 当入口，样式在那个文件的 <style> 块里。
+        // §4.2 的 ui.json / ui.mss 那一对仍然认 —— 写了就按写的走，两种入口在这里收敛成一个 uiTree
+        JsonObject ui = root.has("ui") ? requireObject(root, "ui") : null;
+        String uiTree = ui == null ? DEFAULT_ENTRY : requirePath(ui, "tree", "ui.tree");
+        String uiStyle = ui == null ? null : requirePath(ui, "style", "ui.style");
 
         String engine = requireString(root, "engine");
         if (!ENGINE.equals(engine)) {
@@ -178,7 +186,8 @@ public record Manifest(
         if (uiTree == null) throw new IllegalStateException("内联 manifest 没有 ui 与包内 icon，不能对着包里的条目查");
         requireEntry(entryPaths, "icon", icon);
         requireEntry(entryPaths, "ui.tree", uiTree);
-        requireEntry(entryPaths, "ui.style", uiStyle);
+        // 没写 ui 的包样式在 app.vue 的 <style> 块里，没有单独的样式文件可查
+        if (uiStyle != null) requireEntry(entryPaths, "ui.style", uiStyle);
     }
 
     private void requireEntry(Collection<String> entryPaths, String field, String value) {
