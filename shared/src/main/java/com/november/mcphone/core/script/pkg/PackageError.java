@@ -58,7 +58,17 @@ public final class PackageError extends RuntimeException {
         E_PKG_CENTRAL_MISMATCH("ZIP 的中央目录与本地头对不上：%s"),
 
         // ── META/（§12.4）
-        E_PKG_META_EXTRA("META/ 下只许有 sig.json，还出现了 '%s'");
+        E_PKG_META_EXTRA("META/ 下只许有 sig.json 与 rotate.json，还出现了 '%s'"),
+
+        // ---- §12 签名与信任。只增不减 ----
+        E_SIG_BAD_JSON("META/sig.json 不是合法 JSON：%s"),
+        E_SIG_MISSING_FIELD("META/sig.json 缺少必填字段 '%s'"),
+        E_SIG_BAD_FORMAT("META/sig.json 的 format 必须是 1，收到 %s"),
+        E_SIG_UNKNOWN_ALG("不认识的签名算法 '%s' —— 拒绝，【不回退成「未签名」】：那是两档不同的状态"),
+        E_SIG_BAD_KEY("密钥不合法：%s"),
+        E_SIG_BAD_BASE64("字段 '%s' 不是合法的 base64"),
+        E_SIG_DIGEST_MISMATCH("签名里写的摘要与包内容算出来的不符：声称 %s，实际 %s"),
+        E_SIG_ROTATE_BAD("密钥轮换声明无效：%s");
 
         private final String text;
 

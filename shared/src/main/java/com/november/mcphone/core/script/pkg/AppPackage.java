@@ -19,9 +19,10 @@ public final class AppPackage {
     private final Manifest manifest;
     private final Map<String, byte[]> entries;
     private final byte[] signature;
+    private final byte[] rotate;
     private final String digest;
 
-    AppPackage(Manifest manifest, Map<String, byte[]> entries, byte[] signature) {
+    AppPackage(Manifest manifest, Map<String, byte[]> entries, byte[] signature, byte[] rotate) {
         // 连内容一起拷：只拷 map 的话，造包的人手里还攥着同一批数组，改一个字节就能让
         // entry() 与 digest() 对不上。
         Map<String, byte[]> copy = new LinkedHashMap<>();
@@ -29,6 +30,7 @@ public final class AppPackage {
         this.manifest = manifest;
         this.entries = Collections.unmodifiableMap(copy);
         this.signature = signature == null ? null : signature.clone();
+        this.rotate = rotate == null ? null : rotate.clone();
         this.digest = PackageDigest.of(this.entries);
     }
 
@@ -65,6 +67,11 @@ public final class AppPackage {
     }
 
     /** {@code META/sig.json} 的原始字节，没有则 null。 */
+    /** {@code META/rotate.json} 的内容，没有就是 null（§12.6）。同样不进摘要。 */
+    public byte[] rotate() {
+        return rotate == null ? null : rotate.clone();
+    }
+
     public byte[] signature() {
         return signature == null ? null : signature.clone();
     }
