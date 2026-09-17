@@ -48,16 +48,17 @@ public class SignCopyTest {
             {SigCopy.SIG_UNSIGNED, "未签名。无法确认是谁做的、有没有被改过。"},
             {SigCopy.SIG_UNKNOWN, "签名有效。作者指纹 %s —— 你还没装过这个作者的 App。"},
             {SigCopy.SIG_TRUSTED, "来自 %s（%s）"},
+            {SigCopy.SIG_REMOVED, "这个 App 上次是签过名的，这一份没有签名。不是同一个人做的，就是中途被换过。"},
     };
 
     /** 逐字比对。§12.5 的措辞是设计的一部分，不是随手写的说明文字。 */
     static void copyVerbatim() {
         JsonObject zh = lang("zh_cn.json");
-        if (zh == null) {
-            // 资源不在类路径上时不红：那是打包方式的问题，不是文案错了
-            System.out.println("（lang 资源不在类路径上，跳过逐字比对）");
-            return;
-        }
+        // 【读不到就红】。原先这里是静默 return，于是 lang 一旦不在类路径上，
+        // 这一节连同下面那条「不许写安全」会少跑二十多条断言，退出码照样是 0 ——
+        // 一条哪天改坏了也没人知道。读不到本身就是要修的事
+        check(zh != null, "lang/zh_cn.json 要在类路径上（否则下面的逐字比对全部落空）");
+        if (zh == null) return;
         for (String[] pair : EXPECTED_ZH) {
             check(zh.has(pair[0]), "lang 里要有 " + pair[0]);
             if (zh.has(pair[0])) eq(zh.get(pair[0]).getAsString(), pair[1], pair[0] + " 要与 §12.5 逐字一致");
@@ -80,32 +81,46 @@ public class SignCopyTest {
      */
     static void noSafetyClaim() {
         JsonObject zh = lang("zh_cn.json");
-        if (zh == null) return;
-        for (String[] pair : EXPECTED_ZH) {
-            if (!zh.has(pair[0])) continue;
-            String v = zh.get(pair[0]).getAsString();
-            check(!v.contains("安全"), pair[0] + " 里不许出现「安全」，实际：" + v);
-        }
+        check(zh != null, "lang/zh_cn.json 要在类路径上");
         JsonObject en = lang("en_us.json");
-        if (en != null) {
-            for (String[] pair : EXPECTED_ZH) {
-                if (!en.has(pair[0])) continue;
-                String v = en.get(pair[0]).getAsString().toLowerCase(java.util.Locale.ROOT);
-                check(!v.contains("safe") && !v.contains("secure"),
-                        pair[0] + " 的英文里也不许出现 safe/secure，实际：" + v);
-            }
+        check(en != null, "lang/en_us.json 要在类路径上");
+        if (zh == null || en == null) return;
+
+        // 【扫全部 mcphone.sig.*，不是只扫 EXPECTED_ZH 那几条】。
+        // 只扫那几条的话，confirm_prompt 与那一串 key_* 都在铁律之外 ——
+        // 往里面写「安全」测试照样绿，而那正是这条铁律要拦的事
+        int scanned = 0;
+        for (String k : zh.keySet()) {
+            if (!k.startsWith("mcphone.sig.")) continue;
+            scanned++;
+            if (k.equals(SigCopy.INSTALL_NOTE)) continue;        // 它就是用来说「不是内容安不安全」的
+            String v = zh.get(k).getAsString();
+            check(!v.contains("安全"), k + " 里不许出现「安全」，实际：" + v);
         }
+        check(scanned >= 19, "签名文案至少 19 条，实际扫到 " + scanned + " —— 少了说明键名前缀变了，铁律就空转了");
+
+        int scannedEn = 0;
+        for (String k : en.keySet()) {
+            if (!k.startsWith("mcphone.sig.")) continue;
+            scannedEn++;
+            if (k.equals(SigCopy.INSTALL_NOTE)) continue;
+            String v = en.get(k).getAsString().toLowerCase(java.util.Locale.ROOT);
+            check(!v.contains("safe") && !v.contains("secure"),
+                    k + " 的英文里也不许出现 safe/secure，实际：" + v);
+        }
+        eq(scannedEn, scanned, "中英两边的签名文案条数要一样");
     }
 
-    /** 四档 → 文案的映射。UI 查这张表，不自己判。 */
+    /** 每一档 → 文案的映射。UI 查这张表，不自己判。 */
     static void stateToCopy() {
         eq(SigCopy.keyFor(TrustState.State.INVALID), SigCopy.SIG_INVALID, "无效");
         eq(SigCopy.keyFor(TrustState.State.KEY_CHANGED), SigCopy.SIG_KEY_CHANGED, "密钥变了");
         eq(SigCopy.keyFor(TrustState.State.UNSIGNED), SigCopy.SIG_UNSIGNED, "未签名");
         eq(SigCopy.keyFor(TrustState.State.UNKNOWN_AUTHOR), SigCopy.SIG_UNKNOWN, "陌生作者");
         eq(SigCopy.keyFor(TrustState.State.TRUSTED), SigCopy.SIG_TRUSTED, "已信任");
+        eq(SigCopy.keyFor(TrustState.State.SIGNATURE_REMOVED), SigCopy.SIG_REMOVED, "签名被摘掉了");
 
-        // 五档都映射得出来，一个不落
+        // 每一档都映射得出来，一个不落
         for (TrustState.State s : TrustState.State.values()) {
             check(SigCopy.keyFor(s) != null && !SigCopy.keyFor(s).isEmpty(), s + " 要有文案");
         }

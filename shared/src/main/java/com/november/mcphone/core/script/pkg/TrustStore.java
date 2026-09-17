@@ -19,7 +19,12 @@ import java.util.Map;
  * TOFU 信任库（施工方案 §12.3），照 SSH 主机密钥那个模型：<b>首次见到即记录</b>。
  *
  * <pre>config/mcphone/authors.json
- * 指纹 → { 显示名, 首次见到时间, 装过的 App 列表, trusted, blocked }</pre>
+ * authors: 指纹 → { 显示名, 首次见到时间, 装过的 App 列表, trusted, blocked, 公钥 }
+ * pins:    appId  → 指纹</pre>
+ *
+ * <p>{@code pins} 是钉扎，<b>单独一段</b>，不从 {@code authors[].apps} 重建 ——
+ * 那张列表有 {@link #MAX_APPS_PER_AUTHOR} 的上限，重建会让第 65 个 App 把第 1 个的钉扎挤掉。
+ * 没有 {@code pins} 段的旧文件仍然按 {@code apps} 重建，读得回来。
  *
  * <p>{@code blocked} 是 §12.7 的吊销：标了之后该作者所有包一律拒绝安装。
  * 服务端那一侧的白名单/黑名单是另一层（{@code mcphone-server.toml} 的 {@code [authors]}），
@@ -27,7 +32,13 @@ import java.util.Map;
  */
 public final class TrustStore {
 
-    /** 一个作者的记录里最多记几个 appId。只是给人看的，不必无限长。 */
+    /**
+     * 一个作者的记录里最多记几个 appId。<b>只是给人看的那张列表</b>，不必无限长。
+     *
+     * <p>钉扎（{@link #appAuthor}）<b>不受它约束、也单独落盘</b>。
+     * 从这张列表重建钉扎的话，装到第 65 个 App 就会把第 1 个的钉扎挤掉 ——
+     * 那个 App 换一把密钥重签就从 KEY_CHANGED（要抄指纹）掉回 UNKNOWN_AUTHOR（点一下就装）。
+     */
     public static final int MAX_APPS_PER_AUTHOR = 64;
 
     /** 一条记录。 */
@@ -146,7 +157,16 @@ public final class TrustStore {
                         a.has("trusted") && a.get("trusted").getAsBoolean(),
                         a.has("blocked") && a.get("blocked").getAsBoolean(),
                         a.has("pubkey") ? a.get("pubkey").getAsString() : ""));
-                for (String appId : apps) store.appAuthor.put(appId, fp);
+            }
+            // 钉扎单独读。旧版的文件没有这一段，退回按 apps 列表重建
+            if (root.has("pins")) {
+                JsonObject pins = root.getAsJsonObject("pins");
+                for (String appId : pins.keySet()) store.appAuthor.put(appId, pins.get(appId).getAsString());
+            } else {
+                for (String fp : authors.keySet()) {
+                    Author a = store.byFingerprint.get(fp);
+                    if (a != null) for (String appId : a.apps()) store.appAuthor.put(appId, fp);
+                }
             }
         } catch (IOException | RuntimeException e) {
             com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 信任库读不了 {}: {}", file, e.toString());
@@ -169,8 +189,11 @@ public final class TrustStore {
             o.add("apps", apps);
             authors.add(a.fingerprint(), o);
         }
+        JsonObject pins = new JsonObject();
+        for (Map.Entry<String, String> e : appAuthor.entrySet()) pins.addProperty(e.getKey(), e.getValue());
         JsonObject root = new JsonObject();
         root.add("authors", authors);
+        root.add("pins", pins);
         try {
             Files.createDirectories(file.getParent());
             try (Writer w = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {

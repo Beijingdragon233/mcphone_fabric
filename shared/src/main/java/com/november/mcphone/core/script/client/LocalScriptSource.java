@@ -6,12 +6,14 @@ import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
 import com.november.mcphone.api.sdk.SdkGate;
 import com.november.mcphone.core.script.pkg.SigCopy;
+import com.november.mcphone.core.script.pkg.SigManifest;
 import com.november.mcphone.core.script.pkg.TrustState;
 import com.november.mcphone.core.script.pkg.TrustStore;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -98,9 +100,28 @@ public final class LocalScriptSource implements IAppSource {
             onError.accept(blocked);
             return;
         }
+
+        // §12.4 的二次确认与确认短语。【判据在这儿，不在按钮的 enabled 上】——
+        // IAppSource 是对外接口，任何拿到 AppInfo 的调用方都能直接调 install()，
+        // 只把闸写在 AppDetail 里等于没有闸
+        TrustState.Verdict v = trustOf(adapter.script());
+        if (v.state() != TrustState.State.TRUSTED
+                && !CONFIRMED.contains(confirmKey(info.id().toString(), v.fingerprint()))) {
+            onError.accept(Component.translatable(SigCopy.keyFor(v.state())));
+            return;
+        }
+
         if (!PhoneScreenRegistry.install(adapter)) {
             onError.accept(Component.translatable("mcphone.store.error.install_failed", info.id().toString()));
             return;
+        }
+
+        // 装成了才记：TOFU 的「首次见到即记录」记的是玩家真的接受了这个作者
+        if (v.fingerprint() != null && adapter.script().pkg() != null) {
+            SigManifest sig = SigManifest.parse(adapter.script().pkg().signature());
+            trust().record(v.fingerprint(), sig.author(), sig.pubkey(), System.currentTimeMillis());
+            trust().trust(v.fingerprint(), info.id().toString());
+            trust().save(trustFile());
         }
         onSuccess.accept(adapter);
     }
@@ -113,16 +134,78 @@ public final class LocalScriptSource implements IAppSource {
      * <p><b>这是 UX，不是边界</b>（§13.8）：这一段整个删掉也只是让商店的按钮不灰，
      * 真正的判定在服务端审批部署那一侧，调的是同一个 {@link SdkGate}。
      */
+    /** 信任库落盘的位置（§12.3）。 */
+    private static final String TRUST_FILE = "config/mcphone/authors.json";
+
     /**
-     * 这一局的信任库（§12.3 的 TOFU）。真正的落盘路径是 {@code config/mcphone/authors.json}，
-     * 由界面那一步接上；本步先有一个空的，好让「签名无效」这一档当场生效。
+     * 这一局的信任库（§12.3 的 TOFU）。<b>惰性从盘上读，改完立刻写回。</b>
+     *
+     * <p>不落盘的话 TRUSTED / KEY_CHANGED / 封禁三档全是不可达分支 —— 库永远是空的，
+     * 判定就只剩 UNSIGNED / UNKNOWN_AUTHOR / INVALID，而前两档都是点一下就装。
      */
-    private static final TrustStore TRUST = new TrustStore();
+    private static TrustStore trust;
+
+    private static Path trustFile() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        Path game = mc == null || mc.gameDirectory == null ? Path.of(".") : mc.gameDirectory.toPath();
+        return game.resolve(TRUST_FILE);
+    }
+
+    private static TrustStore trust() {
+        if (trust == null) trust = TrustStore.load(trustFile());
+        return trust;
+    }
+
+    /**
+     * 玩家在界面上确认过的 {@code "appId 指纹"}。
+     *
+     * <p><b>放行的判据在这儿，不在按钮的 enabled 上。</b>界面那一层只负责把玩家输入的东西
+     * 交给 {@link #confirm}；忘了交的调用方装不上 —— 失败的方向是"装不了"，不是"随便装"。
+     */
+    private static final Set<String> CONFIRMED = new HashSet<>();
+
+    private static String confirmKey(String appId, String fingerprint) {
+        return appId + " " + fingerprint;
+    }
+
+    /**
+     * 界面确认一次（§12.4 的二次确认与确认短语）。
+     *
+     * <p>短语对不对由 {@link SigCopy#canProceed} 判 —— <b>判据只有那一份</b>，
+     * 界面自己再写一份 {@code equalsIgnoreCase} 的话两份迟早对不上。
+     *
+     * @param typedPhrase 玩家输入的东西；不需要短语的那几档传什么都行
+     * @return 确认成功了没有
+     */
+    @Override
+    public boolean confirmSignature(AppInfo info, String typedPhrase) {
+        return confirm(info.id(), typedPhrase);
+    }
+
+    public static boolean confirm(ResourceLocation appId, String typedPhrase) {
+        ScriptApp app = find(appId);
+        if (app == null) return false;
+        TrustState.Verdict v = trustOf(app);
+        if (!SigCopy.canProceed(v, typedPhrase)) return false;
+        CONFIRMED.add(confirmKey(appId.toString(), v.fingerprint()));
+        return true;
+    }
+
+    private static ScriptApp find(ResourceLocation appId) {
+        for (ScriptApp app : ScriptAppFolder.scan()) if (app.id().equals(appId)) return app;
+        return null;
+    }
 
     /** 给界面用：判这个包属于哪一档（§12.4）。<b>UI 只渲染，不再判一遍。</b> */
     public static TrustState.Verdict trustOf(ScriptApp app) {
-        if (app.pkg() == null) return new TrustState.Verdict(TrustState.State.UNSIGNED, null, null, "");
-        return TrustState.of(app.pkg(), app.id().toString(), TRUST);
+        if (app.pkg() == null) {
+            // .vue 单文件没有包，也就没有签名。但它同样会被钉扎顶替，判据与 zip 那条一致
+            String pinned = trust().fingerprintFor(app.id().toString());
+            return pinned != null
+                    ? new TrustState.Verdict(TrustState.State.SIGNATURE_REMOVED, null, pinned, "")
+                    : new TrustState.Verdict(TrustState.State.UNSIGNED, null, null, "");
+        }
+        return TrustState.of(app.pkg(), app.id().toString(), trust());
     }
 
     /** 把 §12.4 判好的结果整理成界面要的那几格。<b>界面不再判一遍。</b> */
@@ -133,12 +216,13 @@ public final class LocalScriptSource implements IAppSource {
                 v.fingerprint(),
                 v.knownFingerprint(),
                 v.state().needsPhrase() ? SigCopy.requiredPhrase(v.fingerprint()) : null,
-                !v.state().installable);
+                !v.state().installable,
+                v.state().needsConfirm());
     }
 
     private static Component blockedReason(ScriptApp app) {
-        // 「签名无效」是唯一的硬拒绝（§12.4）：不给"仍然继续"。
-        // 其余四档都要走确认路径，那是安装界面的事，不在这里拦
+        // 硬拒绝有两档（§12.4）：「签名无效」与「签名被摘掉了」，都不给"仍然继续"。
+        // 其余几档要走确认路径，那一道在 install() 里
         TrustState.Verdict v = trustOf(app);
         if (!v.state().installable) {
             MCphone.LOGGER.warn("[MCphone] 拒绝安装 {}：签名无效（指纹 {}）", app.id(), v.fingerprint());
@@ -177,6 +261,14 @@ public final class LocalScriptSource implements IAppSource {
             ScriptAppAdapter adapter = adapter(app);
             if (!installed.contains(app.id())) continue;
             if (!TRIED.add(app.id())) continue;   // 这一局试过了，别让每次进世界都重报一次 id 冲突
+            // 【装过一次不等于以后都算数】：判的是磁盘上现在这一份。少了这一道，
+            // 把 mcphone/apps/ 里的包换成同 id 的另一份，下次进世界就直接跑起来了
+            TrustState.Verdict v = trustOf(app);
+            if (!v.state().installable || v.state().needsPhrase()) {
+                MCphone.LOGGER.warn("[MCphone] 不恢复 {}：磁盘上这一份是「{}」，要去商店重新确认",
+                        app.id(), v.state());
+                continue;
+            }
             if (PhoneScreenRegistry.register(adapter)) n++;
         }
         return n;
@@ -195,6 +287,16 @@ public final class LocalScriptSource implements IAppSource {
         ScriptAppAdapter fresh = new ScriptAppAdapter(app);
         ADAPTERS.put(app.id(), fresh);
         if (known == null) return fresh;
+
+        // 热替换走的是同一条判据：商店开一次就会把注册表里那份换成磁盘上现在这份，
+        // 不判的话「换包」这条路绕开了 registerAll 那一道
+        TrustState.Verdict v = trustOf(app);
+        if (!v.state().installable || v.state().needsPhrase()) {
+            MCphone.LOGGER.warn("[MCphone] 不换 {}：磁盘上这一份是「{}」，留着原来那份",
+                    app.id(), v.state());
+            ADAPTERS.put(app.id(), known);
+            return known;
+        }
 
         if (PhoneScreenRegistry.replace(known, fresh)) {
             known.onUninstall();   // 旧那份的图标与包内贴图，这时候才还

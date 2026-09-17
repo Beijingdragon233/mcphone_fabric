@@ -16,7 +16,7 @@ public final class SigCopy {
     private SigCopy() {
     }
 
-    // ---------------------------------------------------------------- 五档文案（§12.5）
+    // ---------------------------------------------------------------- 六档文案（§12.5）
 
     public static final String SIG_INVALID = "mcphone.sig.invalid";
     public static final String SIG_KEY_CHANGED = "mcphone.sig.key_changed";
@@ -24,11 +24,14 @@ public final class SigCopy {
     public static final String SIG_UNKNOWN = "mcphone.sig.unknown";
     public static final String SIG_TRUSTED = "mcphone.sig.trusted";
 
+    /** 「上次签过、这次没签」。§12.5 没有这一条，是补 sig.json 降级那个洞时加的。 */
+    public static final String SIG_REMOVED = "mcphone.sig.removed";
+
     /**
      * <b>每次安装都显示</b>（§12.5 最后一段）。
      *
      * <p>它把 §12.1 那个区分讲给玩家，而不是让玩家误以为绿色对勾等于无害。
-     * 少了它，四档提示反而会帮倒忙：玩家看到绿色就放心了。
+     * 少了它，那几档提示反而会帮倒忙：玩家看到绿色就放心了。
      */
     public static final String INSTALL_NOTE = "mcphone.sig.install_note";
 
@@ -49,6 +52,7 @@ public final class SigCopy {
             case UNSIGNED -> SIG_UNSIGNED;
             case UNKNOWN_AUTHOR -> SIG_UNKNOWN;
             case TRUSTED -> SIG_TRUSTED;
+            case SIGNATURE_REMOVED -> SIG_REMOVED;
         };
     }
 
@@ -82,7 +86,7 @@ public final class SigCopy {
      * @param typed 玩家输入的东西；不需要确认短语的档位传什么都行
      */
     public static boolean canProceed(TrustState.Verdict verdict, String typed) {
-        if (!verdict.state().installable) return false;                 // 「签名无效」唯一的硬拒绝
+        if (!verdict.state().installable) return false;                 // 两档硬拒绝，不给"仍然继续"
         if (!verdict.state().needsPhrase()) return true;
         return phraseAccepted(typed, verdict.fingerprint());
     }

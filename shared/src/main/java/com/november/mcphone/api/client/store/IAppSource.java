@@ -38,4 +38,17 @@ public interface IAppSource {
 
     /** 返回 false 时商店把此来源标记为不可用（离线、未登录、加载中）。默认 true */
     default boolean isReady() { return true; }
+
+    /**
+     * 玩家在安装界面上确认了一次签名（§12.4 的二次确认与确认短语）。
+     *
+     * <p>界面在调 {@link #install} 之前调它，把玩家输入的东西交过来；<b>放行与否由来源自己判</b>。
+     * 界面那一层只负责收集输入 —— 判据写在界面里的话，任何不走界面的调用方都能绕开。
+     *
+     * <p>默认返回 true：没有签名这一说的来源（内建、附属自己的商店）不受影响。
+     *
+     * @param typedPhrase 玩家输入的东西；不需要短语的档位传什么都行
+     * @return 确认成功了没有。false 时界面不该继续调 {@link #install}
+     */
+    default boolean confirmSignature(AppInfo info, String typedPhrase) { return true; }
 }
