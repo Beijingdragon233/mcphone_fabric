@@ -7,6 +7,14 @@ import com.november.mcphone.core.script.server.store.KvBackend;
 import com.november.mcphone.core.script.server.store.SealedBackend;
 import com.november.mcphone.core.script.server.store.SealedRecord;
 import com.november.mcphone.core.script.server.store.StoreQuota;
+import com.november.mcphone.api.economy.Balances;
+import com.november.mcphone.api.economy.EscrowId;
+import com.november.mcphone.api.economy.HoldResult;
+import com.november.mcphone.api.economy.ICurrencyProvider;
+import com.november.mcphone.api.economy.TxnReason;
+import com.november.mcphone.api.economy.TxnResult;
+import com.november.mcphone.core.script.server.economy.Amounts;
+import com.november.mcphone.core.script.server.economy.CurrencyRegistry;
 import com.november.mcphone.core.script.server.PlayerSnapshot;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Scriptable;
@@ -50,11 +58,17 @@ public final class CtxBuilder {
 
     /** 能接上的后端。为 null 的那一项<b>整个不挂</b>。 */
     public record Backends(SharedState shared, ItemView item, Cycle cycle,
-                           KvBackend store, SealedBackend sealed) {
+                           KvBackend store, SealedBackend sealed, CurrencyRegistry currencies) {
 
         /** 只有 S13 那几样的旧写法。 */
         public Backends(SharedState shared, ItemView item, Cycle cycle) {
-            this(shared, item, cycle, null, null);
+            this(shared, item, cycle, null, null, null);
+        }
+
+        /** S14 那一版。 */
+        public Backends(SharedState shared, ItemView item, Cycle cycle,
+                        KvBackend store, SealedBackend sealed) {
+            this(shared, item, cycle, store, sealed, null);
         }
     }
 
@@ -204,6 +218,89 @@ public final class CtxBuilder {
             ScriptableObject.putProperty(ctx, "sealed", sealed);
         }
 
+        // ---- ctx.currency（§22.5）。金额进出都是 BigInt（勘误 E18），宿主在边界切 BigInt ↔ long
+        if (backends.currencies() != null) {
+            CurrencyRegistry reg = backends.currencies();
+            ScriptableObject cur = HostFn.obj(cx, scope);
+
+            // App 不许写死货币 id（§22.8）：没有默认货币时【返回 null，不抛】，App 该 ctx.fail 而不是崩
+            HostFn.put(cur, scope, "default", 0, (c, s, a) -> reg.defaultCurrency());
+            HostFn.put(cur, scope, "list", 0, (c, s, a) -> {
+                java.util.List<Object> out = new java.util.ArrayList<>();
+                for (var m : reg.list()) {
+                    ScriptableObject o = HostFn.obj(c, s);
+                    ScriptableObject.putProperty(o, "id", m.id().toString());
+                    ScriptableObject.putProperty(o, "symbol", m.symbol());
+                    ScriptableObject.putProperty(o, "decimals", m.decimals());
+                    o.sealObject();
+                    out.add(o);
+                }
+                return c.newArray(s, out.toArray());
+            });
+
+            // balance 只能读自己（§22.5）。读别人是 currency.read.other，granted 档，本步不给
+            HostFn.put(cur, scope, "balance", 1, (c, s, a) -> {
+                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.balance"));
+                return Amounts.toScript(prov.balance(player.uuid()));
+            });
+
+            // format 必须用宿主（§22.5）：自己拼小数点，负数与不足位就各错各的
+            HostFn.put(cur, scope, "format", 2, (c, s, a) -> {
+                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.format"));
+                long v = Amounts.toLong(a.length > 1 ? a[1] : null, "currency.format");
+                return Balances.format(v, prov.currency().decimals()) + " " + prov.currency().symbol();
+            });
+
+            // parse 收字符串，回 BigInt
+            HostFn.put(cur, scope, "parse", 2, (c, s, a) -> {
+                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.parse"));
+                try {
+                    return Amounts.toScript(Balances.parse(HostFn.str(a, 1, "currency.parse"),
+                            prov.currency().decimals()));
+                } catch (NumberFormatException e) {
+                    throw new ScriptAbort(ScriptAbort.Reason.HOST, "currency.parse: " + e.getMessage());
+                }
+            });
+
+            // pay 的 from 恒为调用者（§22.6：这样它才是 plain 档）
+            HostFn.put(cur, scope, "pay", 4, (c, s, a) -> {
+                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.pay"));
+                java.util.UUID to = java.util.UUID.fromString(HostFn.str(a, 1, "currency.pay"));
+                long amt = Amounts.toLong(a.length > 2 ? a[2] : null, "currency.pay");
+                TxnResult r = prov.transfer(player.uuid(), to, amt, reason(a, 3, "pay"));
+                return r.name();
+            });
+
+            HostFn.put(cur, scope, "hold", 4, (c, s, a) -> {
+                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.hold"));
+                java.util.UUID to = java.util.UUID.fromString(HostFn.str(a, 1, "currency.hold"));
+                long amt = Amounts.toLong(a.length > 2 ? a[2] : null, "currency.hold");
+                HoldResult h = prov.hold(player.uuid(), to, amt, reason(a, 3, "hold"));
+                return h.result() == TxnResult.OK ? h.id().value().toString() : h.result().name();
+            });
+
+            HostFn.put(cur, scope, "release", 3, (c, s, a) -> {
+                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.release"));
+                EscrowId id = new EscrowId(java.util.UUID.fromString(HostFn.str(a, 1, "currency.release")));
+                return prov.release(id, reason(a, 2, "release")).name();
+            });
+
+            HostFn.put(cur, scope, "refund", 3, (c, s, a) -> {
+                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.refund"));
+                EscrowId id = new EscrowId(java.util.UUID.fromString(HostFn.str(a, 1, "currency.refund")));
+                return prov.refund(id, reason(a, 2, "refund")).name();
+            });
+
+            // mint / burn 是 granted 档（§22.6）。本步没有能力表，一律 NOT_AUTHORIZED ——
+            // 【不静默降级】：没批就明说没批，别让 App 以为成功了
+            for (String granted : new String[]{"mint", "burn"}) {
+                HostFn.put(cur, scope, granted, 3, (c, s, a) -> TxnResult.NOT_AUTHORIZED.name());
+            }
+
+            cur.sealObject();
+            ScriptableObject.putProperty(ctx, "currency", cur);
+        }
+
         // ---- ctx.ok / ctx.fail / ctx.log
         HostFn.put(ctx, scope, "ok", 1, (c, s, a) -> {
             result.code = ScriptErrorCode.OK;
@@ -225,6 +322,19 @@ public final class CtxBuilder {
 
         ctx.sealObject();
         return ctx;
+    }
+
+    /** 认不出的货币 id 当场中断，不返回一个"看着像成功"的东西。 */
+    private static ICurrencyProvider require(CurrencyRegistry reg, String id) {
+        ICurrencyProvider p = reg.get(id);
+        if (p == null) throw new ScriptAbort(ScriptAbort.Reason.HOST, "没有这种货币: " + id);
+        return p;
+    }
+
+    /** {@code reason} 里没有 appId 这一格 —— 由宿主盖章（§22.10）。 */
+    private static TxnReason reason(Object[] args, int i, String kind) {
+        String ref = HostFn.present(args, i) ? HostFn.str(args, i, "currency." + kind) : "";
+        return new TxnReason(kind, ref);
     }
 
     /** 认不出的码一律 INTERNAL —— 不让脚本自己编一个码出来。 */
