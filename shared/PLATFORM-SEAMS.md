@@ -292,7 +292,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（73）
+#### 共用代码引用了的（74）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -314,6 +314,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.net.MCphoneNetwork`　—— 加载器导入
 - `core.net.NetworkHandler`
 - `core.net.PhoneScreenOnPacket`
+- `core.script.server.economy.Scores`
 - `feature.camera.client.CameraFlash`
 - `feature.chat.ChatMessage`
 - `feature.chat.ImageBody`

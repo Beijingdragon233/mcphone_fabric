@@ -53,6 +53,12 @@
     "layers/ 放层的代码与资源，versions/ 放声明（targets.json 与这个文件）。",
     "加载器层与 Minecraft 版本无关，摆在 versions/ 下名不副实。"
   ],
+  "1.20.3+": {
+    "since": "1.20.3",
+    "populated": true,
+    "note": "1.20.3 起计分板换成了 ScoreHolder / ScoreAccess：getOrCreatePlayerScore 从收 String 改成收 ScoreHolder，返回的 Score 换成了 ScoreAccess（get/set 而非 getScore/setScore），addObjective 也多了两个参数。这条边界与 1.20.5+ 那条【不是同一条】——它比后者早两个版本，塞进去的话将来一个 1.20.3/1.20.4 的目标就拿不到这批代码，而它那儿这套 API 是有的。眼下没有 1.20.3/1.20.4 目标，所以这一层的实际挂载者与 1.20.5+ 相同；分开写是为了那天到来时不用把代码从层里捞出来。",
+    "note2": "层里只有 core.script.server.economy.Scores 一个门面（§18.6）。共用代码只依赖它，不碰 ScoreHolder / ScoreAccess —— 透出去就把版本差异漏进调用方了，1.20.1 那边当场编不过。"
+  },
   "1.20.5+": {
     "since": "1.20.5",
     "note": "1.20.5 起原版才有 net.minecraft.network.codec（StreamCodec / ByteBufCodecs）、CustomPacketPayload 与数据组件。手写编解码与各类网络包都在这一层：它们与加载器无关，同版本的三个加载器逐字共用一份。",
