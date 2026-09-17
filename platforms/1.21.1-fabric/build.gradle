@@ -88,6 +88,18 @@ dependencies {
     // include（fabric-loader 的 jar-in-jar）而不是 implementation：只写
     // implementation 的话开发环境跑得起来、发出去的 jar 一放 mp3 就
     // NoClassDefFoundError。对应 NeoForge 侧的 jarJar。
+
+    // Rhino —— 脚本 App 的后端引擎（施工方案 §16）。纯 Java、不碰 Minecraft API，三个目标共用一份。
+    //
+    // 【不 relocate】：KubeJS 用的 fork 是 dev.latvian.mods.rhino，包名与这个（org.mozilla.javascript）
+    // 不同 —— 两个 Context 是两个类，静态字段与 ThreadLocal 各自独立，不会 split package。
+    // relocate 的经典理由在这里不成立，引一个 shadow 插件只是白加一层。
+    //
+    // ⚠ 这个 jar 带 module-info.class（module org.mozilla.rhino，requires java.base /
+    // java.compiler / jdk.dynalink / java.desktop）。随 jar-in-jar 原样带着不剥；
+    // java.desktop 那一条意味着【裁剪过 runtime image 的专用服务器会模块解析失败】。
+    include implementation("org.mozilla:rhino:${rhino_version}")
+
     include implementation("fr.delthas:javamp3:${javamp3_version}")
 
     // FlatLaf —— 文件选择器（ImagePicker）的观感，同样 include 内嵌。
