@@ -6,6 +6,7 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.music.DiscState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
+import com.november.mcphone.core.script.server.store.ScriptEconomy;
 import com.november.mcphone.core.script.server.store.ScriptGuards;
 import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
@@ -172,6 +173,17 @@ public final class PhonePlayerData {
 
     public void setScriptGuards(ScriptGuards value) {
         player.setAttached(ModAttachments.SCRIPT_GUARDS, value);
+    }
+    /**
+     * builtin 货币提供者的余额（§22.7）。<b>与 scriptKv() 分开</b> ——
+     * 脚本写得到 scriptKv，余额塞进去等于让脚本改自己的钱。
+     */
+    public ScriptEconomy economy() {
+        return player.getAttachedOrCreate(ModAttachments.SCRIPT_ECONOMY);
+    }
+
+    public void setEconomy(ScriptEconomy value) {
+        player.setAttached(ModAttachments.SCRIPT_ECONOMY, value);
     }
 
 

@@ -5,6 +5,7 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
 import com.november.mcphone.feature.terminal.TerminalSlot;
+import com.november.mcphone.core.script.server.store.ScriptEconomy;
 import com.november.mcphone.core.script.server.store.ScriptGuards;
 import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
@@ -110,6 +111,16 @@ public final class ModAttachments {
                     "script_guards",
                     () -> AttachmentType.builder(() -> ScriptGuards.DEFAULT)
                             .serialize(ScriptGuards.CODEC)
+                            .copyOnDeath()
+                            .build()
+            );
+
+    /** builtin 货币的余额（§22.7）。<b>copyOnDeath 必须有</b>：不带的话死一次钱就没了 */
+    public static final Supplier<AttachmentType<ScriptEconomy>> SCRIPT_ECONOMY =
+            ATTACHMENT_TYPES.register(
+                    "script_economy",
+                    () -> AttachmentType.builder(() -> ScriptEconomy.DEFAULT)
+                            .serialize(ScriptEconomy.CODEC)
                             .copyOnDeath()
                             .build()
             );
