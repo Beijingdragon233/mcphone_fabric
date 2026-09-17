@@ -5,6 +5,8 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
 import com.november.mcphone.feature.terminal.TerminalSlot;
+import com.november.mcphone.core.script.server.store.ScriptGuards;
+import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
 import com.november.mcphone.feature.music.DiscState;
 import net.minecraft.world.item.ItemStack;
@@ -82,6 +84,32 @@ public final class ModAttachments {
                     "purchased_apps",
                     () -> AttachmentType.builder(() -> PurchasedApps.EMPTY)
                             .serialize(PurchasedApps.CODEC)
+                            .copyOnDeath()
+                            .build()
+            );
+
+    /** 脚本 App 的 shared 档 KV（§17.3）。死亡保留：死一次就丢进度是不能接受的 */
+    public static final Supplier<AttachmentType<ScriptKv>> SCRIPT_KV =
+            ATTACHMENT_TYPES.register(
+                    "script_kv",
+                    () -> AttachmentType.builder(() -> ScriptKv.DEFAULT)
+                            .serialize(ScriptKv.CODEC)
+                            .copyOnDeath()
+                            .build()
+            );
+
+    /**
+     * 脚本 App 的守卫计数（§17.3、§20.2）。<b>与 SCRIPT_KV 分开，脚本写不到</b>——
+     * 放一起脚本就能把「只能领一次」清零。
+     *
+     * <p><b>copyOnDeath 是必须的</b>：不带的话死一次就能重领，而死亡在 Minecraft 里
+     * 是随时可以自己安排的事。
+     */
+    public static final Supplier<AttachmentType<ScriptGuards>> SCRIPT_GUARDS =
+            ATTACHMENT_TYPES.register(
+                    "script_guards",
+                    () -> AttachmentType.builder(() -> ScriptGuards.DEFAULT)
+                            .serialize(ScriptGuards.CODEC)
                             .copyOnDeath()
                             .build()
             );

@@ -5,6 +5,8 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.music.DiscState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
+import com.november.mcphone.core.script.server.store.ScriptGuards;
+import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
@@ -53,6 +55,8 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
     private static final String KEY_DISC = "phone_disc";
     private static final String KEY_TERMINAL = "phone_terminal";
     private static final String KEY_PURCHASED = "purchased_apps";
+    private static final String KEY_SCRIPT_KV = "script_kv";
+    private static final String KEY_SCRIPT_GUARDS = "script_guards";
 
     private WallpaperData wallpaper = WallpaperData.DEFAULT;
     private NoteList notes = NoteList.EMPTY;
@@ -60,6 +64,8 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
     private DiscState disc = DiscState.EMPTY;
     private ItemStack terminal = ItemStack.EMPTY;
     private PurchasedApps purchasedApps = PurchasedApps.EMPTY;
+    private ScriptKv scriptKv = ScriptKv.DEFAULT;
+    private ScriptGuards scriptGuards = ScriptGuards.DEFAULT;
 
     public WallpaperData wallpaper() {
         return wallpaper;
@@ -116,6 +122,32 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         this.purchasedApps = value;
     }
 
+    // ---- 脚本 App 的存储（§17.3）----
+
+    /**
+     * shared 档的 KV。<b>不另立第二个门面</b>：§17.3 / §20.2 / §22.7 引的那个旧门面
+     * §10.4.1 早已删掉。
+     */
+    public ScriptKv scriptKv() {
+        return scriptKv;
+    }
+
+    public void setScriptKv(ScriptKv value) {
+        this.scriptKv = value;
+    }
+
+    /**
+     * 守卫计数。<b>与 {@link #scriptKv()} 是两块，脚本写不到这一块</b> ——
+     * 放一起脚本就能把「只能领一次」清零（§19.2、§20.2）。
+     */
+    public ScriptGuards scriptGuards() {
+        return scriptGuards;
+    }
+
+    public void setScriptGuards(ScriptGuards value) {
+        this.scriptGuards = value;
+    }
+
     /** 把 other 的内容整个拷过来。玩家重生/换维度时由 ModCapabilities 调用 */
     public void copyFrom(PhonePlayerData other) {
         this.wallpaper = other.wallpaper;
@@ -124,6 +156,8 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         this.disc = other.disc;
         this.terminal = other.terminal;
         this.purchasedApps = other.purchasedApps;
+        this.scriptKv = other.scriptKv;
+        this.scriptGuards = other.scriptGuards;
     }
 
     /**
@@ -140,6 +174,10 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
      *   terminal        标了                     → 拷（和唱片仓同一个道理，手机里的东西
      *                                                 不该因为死一次就没）
      *   purchasedApps   标了                     → 拷（买过的东西不能因为死一次就没了）
+     *   scriptKv        标了                     → 拷（App 的进度不该因为死一次就没）
+     *   scriptGuards    标了                     → 拷【必须】：不拷的话死一次就能重领，
+     *                                                 而死亡在 Minecraft 里是随时可以自己
+     *                                                 安排的事（§20.2 铁规 2 的延伸）
      */
     public void copyDeathPersistentFrom(PhonePlayerData other) {
         this.notes = other.notes;
@@ -147,6 +185,8 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         this.disc = other.disc;
         this.terminal = other.terminal;
         this.purchasedApps = other.purchasedApps;
+        this.scriptKv = other.scriptKv;
+        this.scriptGuards = other.scriptGuards;
     }
 
     @Override
@@ -170,6 +210,12 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         PurchasedApps.CODEC.encodeStart(NbtOps.INSTANCE, purchasedApps)
                 .resultOrPartial(err -> MCphone.LOGGER.error("已购 App 写入存档失败: {}", err))
                 .ifPresent(encoded -> tag.put(KEY_PURCHASED, encoded));
+        ScriptKv.CODEC.encodeStart(NbtOps.INSTANCE, scriptKv)
+                .resultOrPartial(err -> MCphone.LOGGER.error("脚本 KV 写入存档失败: {}", err))
+                .ifPresent(encoded -> tag.put(KEY_SCRIPT_KV, encoded));
+        ScriptGuards.CODEC.encodeStart(NbtOps.INSTANCE, scriptGuards)
+                .resultOrPartial(err -> MCphone.LOGGER.error("脚本守卫写入存档失败: {}", err))
+                .ifPresent(encoded -> tag.put(KEY_SCRIPT_GUARDS, encoded));
         return tag;
     }
 
@@ -184,6 +230,22 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         disc = DiscState.EMPTY;
         terminal = ItemStack.EMPTY;
         purchasedApps = PurchasedApps.EMPTY;
+        scriptKv = ScriptKv.DEFAULT;
+        scriptGuards = ScriptGuards.DEFAULT;
+
+        Tag skv = tag.get(KEY_SCRIPT_KV);
+        if (skv != null) {
+            ScriptKv.CODEC.parse(NbtOps.INSTANCE, skv)
+                    .resultOrPartial(err -> MCphone.LOGGER.warn("脚本 KV 读取失败，已退回空: {}", err))
+                    .ifPresent(value -> scriptKv = value);
+        }
+
+        Tag sg = tag.get(KEY_SCRIPT_GUARDS);
+        if (sg != null) {
+            ScriptGuards.CODEC.parse(NbtOps.INSTANCE, sg)
+                    .resultOrPartial(err -> MCphone.LOGGER.warn("脚本守卫读取失败，已退回空: {}", err))
+                    .ifPresent(value -> scriptGuards = value);
+        }
 
         Tag wp = tag.get(KEY_WALLPAPER);
         if (wp != null) {

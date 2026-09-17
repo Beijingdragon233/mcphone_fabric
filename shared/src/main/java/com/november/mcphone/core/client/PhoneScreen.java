@@ -58,7 +58,7 @@ import java.util.UUID;
 /** 手机主屏幕 GUI：管理各页面之间的导航（{@link Mode}）、分发输入、兜住附属页面的异常 */
 public final class PhoneScreen extends PhoneScreenBase {
 
-    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK }
+    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT }
 
     private final long openTimeMs;
     private boolean animationDone;
@@ -73,6 +73,10 @@ public final class PhoneScreen extends PhoneScreenBase {
     private final List<SettingsList.Item> settingItems = new ArrayList<>();
 
     private final AppManagerPage appManagerPage = new AppManagerPage();
+
+    /** 保险箱口令页（§17.4.4）。口令只在它里面、只在内存里 */
+    private final com.november.mcphone.core.script.client.VaultPage vaultPage =
+            new com.november.mcphone.core.script.client.VaultPage();
 
     private final AppManagerDetail appManagerDetail = new AppManagerDetail();
 
@@ -236,6 +240,10 @@ public final class PhoneScreen extends PhoneScreenBase {
 
         if (this.mode == Mode.DEVICE_NAME) deviceNameEditor.close();
         if (target == Mode.DEVICE_NAME) deviceNameEditor.open(location);
+
+        // 离开保险箱页就把口令抹掉 —— 那是它在内存里存在的全部时间
+        if (this.mode == Mode.VAULT) vaultPage.close();
+        if (target == Mode.VAULT) vaultPage.open();
 
         if (this.mode == Mode.CHAT) chatList.close();
         if (target == Mode.CHAT) chatList.open();
@@ -627,6 +635,11 @@ public final class PhoneScreen extends PhoneScreenBase {
             return true;
         }
 
+        if (mode == Mode.VAULT) {
+            navigateTo(Mode.SETTINGS);
+            return true;
+        }
+
         // 放大看的那张图先关掉：那不是一页，但它盖住了整块内容区，返回键该先收它
         if (mode == Mode.CHAT_CONVERSATION && chatConversation.dismissViewer()) return true;
 
@@ -885,6 +898,9 @@ public final class PhoneScreen extends PhoneScreenBase {
             case DEVICE_NAME       -> deviceNameEditor.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, partialTick, font);
+            case VAULT             -> vaultPage.render(g, phoneLeft, phoneTop,
+                    sw, sh, statusH, navH,
+                    mouseX, mouseY, font);
             case CHAT              -> chatList.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
@@ -964,6 +980,9 @@ public final class PhoneScreen extends PhoneScreenBase {
                 Component.translatable("mcphone.app.app_manager").getString(),
                 () -> navigateTo(Mode.APP_MANAGER),
                 () -> String.valueOf(PhoneScreenRegistry.getAppCount())));
+        settingItems.add(new SettingsList.Item(
+                Component.translatable("mcphone.settings.vault").getString(),
+                () -> navigateTo(Mode.VAULT)));
         settingItems.add(new SettingsList.Item(
                 Component.translatable("mcphone.gui.about").getString(),
                 () -> navigateTo(Mode.ABOUT)));
@@ -1250,6 +1269,10 @@ public final class PhoneScreen extends PhoneScreenBase {
                 if (deviceNameEditor.mouseClicked(mx, my, button)) navigateTo(Mode.SETTINGS);
                 yield true;
             }
+            case VAULT -> {
+                vaultPage.mouseClicked(mx, my, button);
+                yield true;
+            }
             case CHAT -> {
                 chatList.mouseClicked(mx, my, button);
                 // 点了传送就关机，包由列表自己发
@@ -1443,6 +1466,12 @@ public final class PhoneScreen extends PhoneScreenBase {
             if (deviceNameEditor.consumeBackRequest()) navigateTo(Mode.SETTINGS);
             return true;
         }
+
+        if (mode == Mode.VAULT) {
+            vaultPage.keyPressed(keyCode, scanCode, modifiers);
+            if (vaultPage.consumeBackRequest()) navigateTo(Mode.SETTINGS);
+            return true;
+        }
         if (mode == Mode.CHAT_CONVERSATION) {
             chatConversation.keyPressed(keyCode, scanCode, modifiers);
             return true;
@@ -1485,6 +1514,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.ADDON_PAGE
                 && callPage(p -> p.charTyped(c, modifiers))) return true;
         if (mode == Mode.DEVICE_NAME && deviceNameEditor.charTyped(c, modifiers)) return true;
+        if (mode == Mode.VAULT && vaultPage.charTyped(c, modifiers)) return true;
         if (mode == Mode.CHAT_CONVERSATION && chatConversation.charTyped(c, modifiers)) return true;
         if (mode == Mode.NOTE_EDIT && noteEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.READER && bookList.charTyped(c, modifiers)) return true;

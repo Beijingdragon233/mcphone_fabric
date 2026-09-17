@@ -5,6 +5,8 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
 import com.november.mcphone.feature.terminal.TerminalSlot;
+import com.november.mcphone.core.script.server.store.ScriptGuards;
+import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
 import com.november.mcphone.feature.music.DiscState;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
@@ -81,6 +83,27 @@ public final class ModAttachments {
                     .persistent(PurchasedApps.CODEC)
                     .copyOnDeath()
                     .buildAndRegister(id("purchased_apps"));
+
+    /** 脚本 App 的 shared 档 KV（§17.3）。死亡保留：死一次就丢进度是不能接受的 */
+    public static final AttachmentType<ScriptKv> SCRIPT_KV =
+            AttachmentRegistry.<ScriptKv>builder()
+                    .initializer(() -> ScriptKv.DEFAULT)
+                    .persistent(ScriptKv.CODEC)
+                    .copyOnDeath()
+                    .buildAndRegister(id("script_kv"));
+
+    /**
+     * 脚本 App 的守卫计数（§17.3、§20.2）。<b>与 SCRIPT_KV 分开，脚本写不到</b>——
+     * 放一起脚本就能把「只能领一次」清零。
+     *
+     * <p><b>copyOnDeath 是必须的</b>：不带的话死一次就能重领。
+     */
+    public static final AttachmentType<ScriptGuards> SCRIPT_GUARDS =
+            AttachmentRegistry.<ScriptGuards>builder()
+                    .initializer(() -> ScriptGuards.DEFAULT)
+                    .persistent(ScriptGuards.CODEC)
+                    .copyOnDeath()
+                    .buildAndRegister(id("script_guards"));
 
     private static ResourceLocation id(String path) {
         return ResourceLocation.fromNamespaceAndPath(MCphone.MODID, path);
