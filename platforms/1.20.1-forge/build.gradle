@@ -318,3 +318,6 @@ tasks.named('jar', Jar).configure {
 // 留着就是两份长得像但会各自长歪的东西，而闸不响正是最难发现的那种坏。
 
 apply from: "${projectDir}/../../gradle/mcphone-checks.gradle"
+
+// 「打包并签名」（§12.6）。仓库级约定，三个目标共用一份；不挂 check/build —— 签名要私钥
+apply from: "${projectDir}/../../gradle/mcphone-sign.gradle"
