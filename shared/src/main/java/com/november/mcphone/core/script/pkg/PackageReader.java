@@ -48,8 +48,19 @@ public final class PackageReader {
     public static final String MANIFEST = "manifest.json";
     /** 不计入摘要的那个目录（§12.4）。 */
     public static final String META_DIR = "META/";
-    /** META/ 下唯一允许的文件。 */
+    /**
+     * META/ 下允许的文件，<b>封闭列举</b>。
+     *
+     * <p>§12.3 原文写的是"除 sig.json 外任何文件即拒绝"，而 §12.6 又要求把轮换声明放
+     * {@code META/rotate.json} —— 两条直接打架，照 §12.3 写死的话轮换功能永远进不来。
+     * 裁定是封闭列举这两个：<b>都不进摘要，都必须自带签名</b>。
+     *
+     * <p>不留"摘要不覆盖"的自由空间，是这条白名单存在的全部理由。
+     */
     public static final String SIG = "META/sig.json";
+
+    /** 密钥轮换声明（§12.6）。同样不进摘要、同样要自带旧密钥的签名。 */
+    public static final String ROTATE = "META/rotate.json";
 
     private static final long SIG_EOCD = 0x06054b50L;
     private static final long SIG_CENTRAL = 0x02014b50L;
@@ -97,7 +108,7 @@ public final class PackageReader {
 
         Map<String, byte[]> content = new LinkedHashMap<>();
         List<String> contentPaths = new ArrayList<>();
-        byte[] signature = walk(zip, records, cdOffset, content, contentPaths);
+        MetaFiles meta = walk(zip, records, cdOffset, content, contentPaths);
 
         // 撞车要整组一起看：逐条查的时候还不知道后面有没有一个只差大小写的。
         String[] collision = PackageError.PathRules.firstCollision(allPaths(records));
@@ -112,7 +123,7 @@ public final class PackageReader {
         Manifest manifest = Manifest.parse(new String(manifestBytes, StandardCharsets.UTF_8));
         manifest.requireEntries(contentPaths);
 
-        return new AppPackage(manifest, content, signature);
+        return new AppPackage(manifest, content, meta.signature(), meta.rotate());
     }
 
     // ============================================================
@@ -239,12 +250,17 @@ public final class PackageReader {
      * <p>这一条同时挡住三样：中央目录没列的条目、EOCD 少数了的条目、STORED 条目把后面的
      * 字节吃进自己的内容。返回 {@code META/sig.json} 的内容，没有则 null。
      */
-    private static byte[] walk(byte[] zip, List<Central> records, long cdOffset,
+    /** {@code META/} 下那两个文件的内容，没有就是 null。 */
+    record MetaFiles(byte[] signature, byte[] rotate) {
+    }
+
+    private static MetaFiles walk(byte[] zip, List<Central> records, long cdOffset,
                                Map<String, byte[]> content, List<String> contentPaths) {
         List<Central> ordered = new ArrayList<>(records);
         ordered.sort(Comparator.comparingLong(Central::localOffset));
 
         byte[] signature = null;
+        byte[] rotate = null;
         long pos = 0;
         long totalInflated = 0;
 
@@ -264,10 +280,13 @@ public final class PackageReader {
             if (cd.directory()) continue;
 
             if (cd.name.startsWith(META_DIR)) {
-                if (!SIG.equals(cd.name)) {
+                if (SIG.equals(cd.name)) {
+                    signature = ex.data;
+                } else if (ROTATE.equals(cd.name)) {
+                    rotate = ex.data;
+                } else {
                     throw PackageError.of(PackageError.Code.E_PKG_META_EXTRA, cd.name);
                 }
-                signature = ex.data;
                 continue;
             }
             contentPaths.add(cd.name);
@@ -278,7 +297,7 @@ public final class PackageReader {
             throw PackageError.of(PackageError.Code.E_PKG_BAD_ZIP,
                     "中央目录之前有 " + (cdOffset - pos) + " 个字节不属于任何条目");
         }
-        return signature;
+        return new MetaFiles(signature, rotate);
     }
 
     private record Extracted(byte[] data, long compressed) {

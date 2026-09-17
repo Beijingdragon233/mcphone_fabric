@@ -5,6 +5,8 @@ import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
 import com.november.mcphone.api.sdk.SdkGate;
+import com.november.mcphone.core.script.pkg.TrustState;
+import com.november.mcphone.core.script.pkg.TrustStore;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -103,7 +105,27 @@ public final class LocalScriptSource implements IAppSource {
      * <p><b>这是 UX，不是边界</b>（§13.8）：这一段整个删掉也只是让商店的按钮不灰，
      * 真正的判定在服务端审批部署那一侧，调的是同一个 {@link SdkGate}。
      */
+    /**
+     * 这一局的信任库（§12.3 的 TOFU）。真正的落盘路径是 {@code config/mcphone/authors.json}，
+     * 由界面那一步接上；本步先有一个空的，好让「签名无效」这一档当场生效。
+     */
+    private static final TrustStore TRUST = new TrustStore();
+
+    /** 给界面用：判这个包属于哪一档（§12.4）。<b>UI 只渲染，不再判一遍。</b> */
+    public static TrustState.Verdict trustOf(ScriptApp app) {
+        if (app.pkg() == null) return new TrustState.Verdict(TrustState.State.UNSIGNED, null, null, "");
+        return TrustState.of(app.pkg(), app.id().toString(), TRUST);
+    }
+
     private static Component blockedReason(ScriptApp app) {
+        // 「签名无效」是唯一的硬拒绝（§12.4）：不给"仍然继续"。
+        // 其余四档都要走确认路径，那是安装界面的事，不在这里拦
+        TrustState.Verdict v = trustOf(app);
+        if (!v.state().installable) {
+            MCphone.LOGGER.warn("[MCphone] 拒绝安装 {}：签名无效（指纹 {}）", app.id(), v.fingerprint());
+            return Component.translatable(v.state().messageKey);
+        }
+
         Map<String, Integer> missing = SdkGate.unsatisfied(app.manifest().sdk());
         if (missing.isEmpty()) return null;
         MCphone.LOGGER.info("[MCphone] 脚本 App {} 要的 SDK 本机给不了: {}（本机 {}）",
