@@ -401,5 +401,8 @@
   "mcphone.picker.title": "选择一张图片",
   "mcphone.picker.filter.image": "图片文件",
   "mcphone.picker.preview.none": "未选择",
-  "mcphone.picker.preview.loading": "载入中…"
+  "mcphone.picker.preview.loading": "载入中…",
+  "mcphone.economy.scoreboard.no_server": "服务器还没起来，这本账现在读不了。",
+  "mcphone.economy.scoreboard.off_thread": "这笔操作不在服务端主线程上，计分板改不了。",
+  "mcphone.economy.scoreboard.no_objective": "计分板上没有这本账的目标，建不出来。"
 }

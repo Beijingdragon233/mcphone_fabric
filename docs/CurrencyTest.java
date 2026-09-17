@@ -8,6 +8,8 @@ import com.november.mcphone.core.script.server.economy.Amounts;
 import com.november.mcphone.core.script.server.economy.BalanceStore;
 import com.november.mcphone.core.script.server.economy.BuiltinProvider;
 import com.november.mcphone.core.script.server.economy.CurrencyRegistry;
+import com.november.mcphone.core.script.server.economy.CurrencySpec;
+import com.november.mcphone.core.script.server.economy.ScoreboardProvider;
 import com.november.mcphone.core.script.server.economy.EconomyAudit;
 import com.november.mcphone.core.script.server.economy.LegacyWalletProvider;
 import com.november.mcphone.core.script.server.economy.EscrowLedger;
@@ -567,6 +569,230 @@ public class CurrencyTest {
         eq(TxnLog.MAX_FILE_BYTES, 64L * 1024 * 1024, "§22.10 单日 64 MiB");
     }
 
+
+    // ================================================================ §22.7 scoreboard 档
+
+    private static Currency coin(String path, int decimals) {
+        return new Currency(ResourceLocation.tryParse("myserver:" + path),
+                Component.literal("金币"), "G", decimals, null);
+    }
+
+    /**
+     * 分值是 32 位整数，金额是 long —— 上限必须压到 int，越界一律 LIMIT。
+     *
+     * <p>这一条是这一档最容易踩的地方：靠 {@code add} 的回绕"看起来成功"的话，
+     * 一次入账就能把余额从二十亿翻成负二十亿，而 §22.9 说不许回绕。
+     */
+    static void scoreboardCeiling() {
+        eq(ScoreboardProvider.SCORE_MAX, (long) Integer.MAX_VALUE, "上限就是 int 的上限");
+        eq(ScoreboardProvider.clampMax(Long.MAX_VALUE), (long) Integer.MAX_VALUE,
+                "配多大都压到 int");
+        eq(ScoreboardProvider.clampMax(1000L), 1000L, "配得比 int 小就按配的来");
+        eq(ScoreboardProvider.clampMax(0L), (long) Integer.MAX_VALUE, "0 表示用这一档自己的上限");
+
+        long max = ScoreboardProvider.clampMax(Long.MAX_VALUE);
+        eq(ScoreboardProvider.checkCreditInt(Integer.MAX_VALUE - 5L, 5L, max), TxnResult.OK,
+                "刚好到顶，可以");
+        eq(ScoreboardProvider.checkCreditInt(Integer.MAX_VALUE - 5L, 6L, max), TxnResult.LIMIT,
+                "再多一个就越界 → LIMIT");
+        eq(ScoreboardProvider.checkCreditInt(Integer.MAX_VALUE - 5L, Long.MAX_VALUE, max),
+                TxnResult.LIMIT, "long 级的入账也是 LIMIT，不是溢出成负数");
+        eq(ScoreboardProvider.checkCreditInt(0, Long.MAX_VALUE, max), TxnResult.LIMIT,
+                "加法本身会溢出 —— Math.addExact 接住，仍是 LIMIT");
+
+        // 允许负余额时，下限同样是 int 的下限
+        eq(ScoreboardProvider.checkDebitInt(Integer.MIN_VALUE + 5L, 5L, true), TxnResult.OK,
+                "刚好到底，可以");
+        eq(ScoreboardProvider.checkDebitInt(Integer.MIN_VALUE + 5L, 6L, true), TxnResult.LIMIT,
+                "再扣一个就越过 int 下限 → LIMIT");
+        eq(ScoreboardProvider.checkDebitInt(100, 101, false), TxnResult.INSUFFICIENT,
+                "不许负余额时不够就是 INSUFFICIENT，不是 LIMIT");
+    }
+
+    /** amount <= 0 一律 INVALID —— 负数转账等于从对方账上偷钱（§22.9）。 */
+    static void scoreboardAmounts() {
+        long max = ScoreboardProvider.clampMax(0);
+        for (long bad : new long[]{0L, -1L, -1000L, Long.MIN_VALUE}) {
+            eq(ScoreboardProvider.checkCreditInt(100, bad, max), TxnResult.INVALID,
+                    "入账 " + bad + " → INVALID");
+            eq(ScoreboardProvider.checkDebitInt(100, bad, false), TxnResult.INVALID,
+                    "扣款 " + bad + " → INVALID");
+            eq(ScoreboardProvider.checkDebitInt(100, bad, true), TxnResult.INVALID,
+                    "允许负余额也不许 " + bad);
+        }
+    }
+
+    /**
+     * 货币的 objective 必须落在脚本写不到的命名空间（§18.6）。
+     *
+     * <p>落进 {@code myapp_*} 的话 App 直接写那个数，§22.9 的五条不变量整条绕过去。
+     */
+    static void scoreboardObjectiveNamespace() {
+        String o = ScoreboardProvider.objectiveFor(coin("coin", 2));
+        check(o.startsWith("mcphone_eco_myserver_coin_"), "objective 名带 namespace，实际 " + o);
+
+        // 【两种货币不许落到同一本账上】：只取 path 的话 server:coin 与 shop:coin 会撞，
+        // 那就是在便宜的那种上 mint、在贵的那种上花掉
+        java.util.Map<String, String> seen = new HashMap<>();
+        for (String id : new String[]{"server:coin", "shop:coin", "a:coin", "a:b_c", "a_b:c",
+                "server:coin_x", "server:coin-x", "server:coin.x", "server:coin/x"}) {
+            Currency c = new Currency(ResourceLocation.tryParse(id),
+                    Component.literal("x"), "", 0, null);
+            String obj = ScoreboardProvider.objectiveFor(c);
+            check(!seen.containsKey(obj), id + " 与 " + seen.get(obj) + " 撞到了同一个 objective " + obj);
+            seen.put(obj, id);
+        }
+        eq(seen.size(), 9, "九种 id 要落到九个不同的 objective");
+
+        // 字符集：/scoreboard 的参数是不带引号的 word，超出就得加引号
+        for (char c : o.toCharArray()) {
+            check((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_',
+                    "objective 名只许 [_a-z0-9]，出现了 '" + c + "'");
+        }
+        // ResourceLocation 的 path 本来就不许大写，但 . - / 是合法的，而 objective 名不收它们
+        check(ScoreboardProvider.objectiveFor(coin("gold-coin.v2", 0))
+                        .startsWith("mcphone_eco_myserver_gold_coin_v2_"), ". 与 - 归一成下划线");
+        check(ScoreboardProvider.objectiveFor(coin("a/b", 0)).startsWith("mcphone_eco_myserver_a_b_"),
+                "斜杠也归一 —— 否则 objective 名里出现 / ，服主敲命令要加引号");
+
+        // 隔离：任何脚本命名空间都写不到它
+        for (String ns : new String[]{"myapp", "mcphone", "mcphone_eco", "a", "shop"}) {
+            check(!ScoreboardProvider.scriptWritable(o, ns),
+                    "命名空间 " + ns + " 的脚本不许写货币 objective " + o);
+        }
+        check(ScoreboardProvider.scriptWritable("myapp_score", "myapp"),
+                "脚本写自己那些照旧可以");
+        // 光有「只许写 <命名空间>_ 开头的」不够：命名空间取名叫 mcphone 就前缀命中了
+        check(!ScoreboardProvider.scriptWritable("mcphone_anything", "mcphone"),
+                "宿主保留的前缀谁都写不到，哪怕命名空间正好叫 mcphone");
+        check(!ScoreboardProvider.scriptWritable("myapp_score", null), "命名空间为 null 一律不许");
+        check(!ScoreboardProvider.scriptWritable(null, "myapp"), "objective 为 null 一律不许");
+        check(!ScoreboardProvider.scriptWritable("myapp_score", ""), "空命名空间不许 —— "
+                + "否则前缀判定退化成「任何以下划线分隔的名字都能写」");
+    }
+
+    /** §22.7 的七个字段：读得出来，不认识的 provider 拒掉而不是静默退回 builtin。 */
+    static void scoreboardSpec() {
+        Map<String, Object> t = new HashMap<>();
+        t.put("id", "server:coin");
+        t.put("name", "金币");
+        t.put("symbol", "G");
+        t.put("decimals", 2);
+        t.put("provider", "scoreboard");
+        t.put("default", true);
+        t.put("max", 5_000_000_000L);
+
+        CurrencySpec spec = CurrencySpec.from(t);
+        eq(spec.provider(), "scoreboard", "provider 读得出来");
+        eq(spec.isDefault(), true, "default 读得出来");
+        eq(spec.decimals(), 2, "decimals 读得出来");
+        eq(spec.effectiveMax(), (long) Integer.MAX_VALUE,
+                "scoreboard 档把 max 压到 int —— 配了五十亿也不行");
+        eq(spec.toCurrency().id().toString(), "server:coin", "判定按 id（E19）");
+
+        Map<String, Object> b = new HashMap<>(t);
+        b.put("provider", "builtin");
+        eq(CurrencySpec.from(b).effectiveMax(), 5_000_000_000L, "builtin 档不压");
+
+        // 缺省值照 §22.7
+        Map<String, Object> bare = new HashMap<>();
+        bare.put("id", "server:x");
+        CurrencySpec d = CurrencySpec.from(bare);
+        eq(d.provider(), "builtin", "provider 缺省是 builtin");
+        eq(d.isDefault(), false, "default 缺省是 false");
+        eq(d.decimals(), 0, "decimals 缺省是 0");
+
+        // 不认识的一律拒
+        for (String bad : new String[]{"vault", "", "SCOREBOARD2", "builtin2"}) {
+            Map<String, Object> m = new HashMap<>(t);
+            m.put("provider", bad);
+            boolean threw = false;
+            try {
+                CurrencySpec.from(m);
+            } catch (IllegalArgumentException e) {
+                threw = true;
+            }
+            check(threw, "provider='" + bad + "' 要拒掉，不许静默退回 builtin");
+        }
+        eq(CurrencySpec.from(mapWith(t, "provider", "SCOREBOARD")).provider(), "scoreboard",
+                "大小写不敏感");
+
+        // 必填与范围
+        boolean threw = false;
+        try {
+            CurrencySpec.from(new HashMap<>());
+        } catch (IllegalArgumentException e) {
+            threw = true;
+        }
+        check(threw, "缺 id 要拒");
+        threw = false;
+        try {
+            CurrencySpec.from(mapWith(t, "decimals", 9));
+        } catch (IllegalArgumentException e) {
+            threw = true;
+        }
+        check(threw, "decimals 超上限要拒");
+    }
+
+    private static Map<String, Object> mapWith(Map<String, Object> base, String k, Object v) {
+        Map<String, Object> m = new HashMap<>(base);
+        m.put(k, v);
+        return m;
+    }
+
+    /**
+     * 这几条判定必须排在「用不了」之前。
+     *
+     * <p>排在后面的话，一笔本该 INVALID 的调用会在服务器没起来时变成 UNAVAILABLE ——
+     * 调用方以为重试一下就能过，而它永远过不了。
+     */
+    static void scoreboardRejectsBeforeAvailability() {
+        final TxnReason RSN = new TxnReason("test:probe", "r1");
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        EscrowLedger led = new EscrowLedger(() -> 0L);
+        // server supplier 给 null：ready() 一定失败，所以凡是返回 INVALID 的都说明判在前面
+        ScoreboardProvider p = new ScoreboardProvider(coin("coin", 2), () -> null,
+                led, null, () -> 0L, false, 0);
+
+        for (long bad : new long[]{0L, -1L, Long.MIN_VALUE}) {
+            eq(p.transfer(a, b, bad, RSN), TxnResult.INVALID,
+                    "transfer " + bad + " 要 INVALID，不是 UNAVAILABLE");
+            eq(p.mint(a, bad, RSN), TxnResult.INVALID,
+                    "mint " + bad + " 要 INVALID");
+            eq(p.burn(a, bad, RSN), TxnResult.INVALID,
+                    "burn " + bad + " 要 INVALID");
+            eq(p.hold(a, b, bad, RSN).result(), TxnResult.INVALID,
+                    "hold " + bad + " 要 INVALID");
+        }
+
+        // 【自己转给自己就是凭空造币】：两端读的是同一格分值，后一笔写覆盖前一笔
+        eq(p.transfer(a, a, 100, RSN), TxnResult.INVALID,
+                "自己转自己要当场拒，不能让它走到写分值那一步");
+
+        // 【托管号要认货币】：一本 EscrowLedger 管多种货币，不比对就是 A 币换 B 币
+        var eid = led.create(a, b, "other:gold", 100);
+        eq(p.release(eid, RSN), TxnResult.UNKNOWN_ESCROW,
+                "别的货币的托管号 → UNKNOWN_ESCROW，不许放款");
+        eq(p.refund(eid, RSN), TxnResult.UNKNOWN_ESCROW,
+                "退款同理");
+        eq(led.get(eid).settled(), false, "被拒之后那笔托管原封不动");
+    }
+
+    /** 用不了的时候要说得出是哪一条，而且给的是本地化键不是自由文本（E19）。 */
+    static void scoreboardUnavailable() {
+        ScoreboardProvider p = new ScoreboardProvider(coin("coin", 2), () -> null,
+                new EscrowLedger(() -> 0L), null, () -> 0L, false, 0);
+        check(!p.isAvailable(), "没有服务器就是用不了");
+        String key = p.unavailableReasonKey();
+        check(key != null && !key.isEmpty(), "用不了时 reasonKey 不能为空");
+        check(key.startsWith("mcphone."), "要是本地化键，不是自由文本：" + key);
+        check(!key.contains(" "), "本地化键里不该有空格：" + key);
+        check(p.objective().startsWith("mcphone_eco_myserver_coin_"), "objective 在构造时就定死");
+        eq(p.maxBalance(), (long) Integer.MAX_VALUE, "上限压到了 int");
+        eq(p.balance(UUID.randomUUID()), 0L, "服务器不在时余额读成 0，不抛");
+    }
+
     public static void main(String[] args) throws Exception {
         nonPositiveRejected();
         ceilingAndOverflow();
@@ -586,6 +812,12 @@ public class CurrencyTest {
         holdResult();
         distinctCodes();
         conservation();
+        scoreboardCeiling();
+        scoreboardAmounts();
+        scoreboardObjectiveNamespace();
+        scoreboardSpec();
+        scoreboardRejectsBeforeAvailability();
+        scoreboardUnavailable();
 
         System.out.println("断言 " + checks + " 条");
         if (!failures.isEmpty()) {
