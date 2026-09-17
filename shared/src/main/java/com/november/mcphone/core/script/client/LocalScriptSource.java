@@ -10,8 +10,10 @@ import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -34,6 +36,9 @@ public final class LocalScriptSource implements IAppSource {
     /** id → 适配器。同一个包只有一个实例：注册表里那个与商店里那个必须是同一个。 */
     private static final Map<ResourceLocation, ScriptAppAdapter> ADAPTERS = new HashMap<>();
 
+    /** 这一局登记过（或试过）的 id。进世界每次都会扫一遍目录，这张表挡住重复登记的告警。 */
+    private static final Set<ResourceLocation> TRIED = new HashSet<>();
+
     @Override
     public ResourceLocation getId() {
         return ID;
@@ -44,12 +49,19 @@ public final class LocalScriptSource implements IAppSource {
         return Component.translatable("mcphone.store.source.local_script");
     }
 
+    /**
+     * 同步回调，<b>只在客户端主线程调</b>。契约允许来源在后台线程干活（{@link IAppSource}），
+     * 这一份不行：{@link AppInfo#of} 会问 {@code getIconTexture()}，那条路会把图标传进显存。
+     */
     @Override
     public void listAvailable(Consumer<List<AppInfo>> callback) {
         List<AppInfo> out = new ArrayList<>();
         for (ScriptApp app : ScriptAppFolder.scan()) {
+            // 先过一遍 adapter()：玩家把文件换成新版本之后，那一步把注册表里的旧实例换掉。
+            // 放在下面那个 continue 之后就永远走不到 —— 换过的包恰好是"已经在目录里"的那些
+            ScriptAppAdapter adapter = adapter(app);
             if (PhoneScreenRegistry.getApp(app.id()) != null) continue;   // 已经在目录里，交给 LocalAppSource
-            out.add(AppInfo.of(adapter(app), ID));
+            out.add(AppInfo.of(adapter, ID));
         }
         callback.accept(out);
     }
@@ -87,8 +99,10 @@ public final class LocalScriptSource implements IAppSource {
     public static int registerAll() {
         int n = 0;
         for (ScriptApp app : ScriptAppFolder.scan()) {
-            if (ADAPTERS.containsKey(app.id())) continue;   // 登记过了，别让重试路径重复报 id 冲突
-            if (PhoneScreenRegistry.register(adapter(app))) n++;
+            // 同上：换过的包在这一步被换进注册表，所以每次进世界都跟得上磁盘上的版本
+            ScriptAppAdapter adapter = adapter(app);
+            if (!TRIED.add(app.id())) continue;   // 这一局试过了，别让每次进世界都重报一次 id 冲突
+            if (PhoneScreenRegistry.register(adapter)) n++;
         }
         return n;
     }

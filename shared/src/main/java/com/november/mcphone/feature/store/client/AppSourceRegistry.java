@@ -4,13 +4,9 @@ import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
 import com.november.mcphone.util.SpiLoader;
-import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /** 应用来源注册表，通过 SPI 发现所有 {@link IAppSource} */
@@ -58,11 +54,87 @@ public final class AppSourceRegistry {
     public static final long LIST_TIMEOUT_MS = 10_000L;
 
     /**
+     * 正在飞的那一批。同一时刻只有一批 —— 新的一批开始时上一批作废（见 {@link #listAllAvailable}）。
+     */
+    private static Batch pending;
+
+    /**
+     * 一次 listAllAvailable 的现场。
+     *
+     * <p>全部访问都在 {@code this} 上同步：这套加固防的正是<b>不守契约</b>的来源
+     * （{@link IAppSource} 要求回调在客户端主线程，而守规矩的来源本来也不需要这套）。
+     * 一个从后台线程回调的来源会与超时那条路撞在一起，不同步就是一次数据竞争。
+     */
+    private static final class Batch {
+
+        private final Consumer<List<AppInfo>> callback;
+        private final int total;
+        private final long deadline;
+        private final List<AppInfo> merged = new ArrayList<>();
+        private final Set<ResourceLocation> answered = new HashSet<>();
+        private boolean finished;
+
+        Batch(Consumer<List<AppInfo>> callback, int total, long deadline) {
+            this.callback = callback;
+            this.total = total;
+            this.deadline = deadline;
+        }
+
+        /** 一个来源答了。齐了就出列表，并且只出这一次。 */
+        synchronized void answer(ResourceLocation id, List<AppInfo> list) {
+            if (finished) {
+                // 超时之后、或者这一批已经作废之后才回来的：下次进商店会带上它
+                MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调来晚了，这一批已经出过列表", id);
+                return;
+            }
+            if (!answered.add(id)) {
+                // 回调两次的来源：多出来的那次会让同一批 App 在商店里出现两遍
+                MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调了不止一次，后面的已忽略", id);
+                return;
+            }
+            if (list != null) merged.addAll(list);
+            if (answered.size() == total) finish();
+        }
+
+        /** 到点了没有？ */
+        synchronized boolean expired(long now) {
+            return !finished && now >= deadline;
+        }
+
+        /** 还差谁，报进日志用。 */
+        synchronized List<ResourceLocation> missing(List<IAppSource> sources) {
+            List<ResourceLocation> out = new ArrayList<>();
+            for (IAppSource s : sources) {
+                if (!answered.contains(s.getId())) out.add(s.getId());
+            }
+            return out;
+        }
+
+        /** 出列表，只出一次。 */
+        synchronized void finish() {
+            if (finished) return;
+            finished = true;
+            callback.accept(List.copyOf(merged));
+        }
+
+        /** 作废：不出列表，之后来的回调也不算数。 */
+        synchronized void cancel() {
+            finished = true;
+        }
+
+        synchronized boolean done() {
+            return finished;
+        }
+    }
+
+    /**
      * 各来源可能异步返回，全部到齐后才调用 callback 一次；callback 在客户端主线程执行。
      *
      * <p><b>超时与恰好一次</b>（§14.1 ⚠、§14.6）：一个来源不回调、或者回调两次，原来都会让商店
-     * 永远出不来列表 / 出两遍。现在两头都堵上 —— 每个来源的回调只认第一次，整体到
-     * {@link #LIST_TIMEOUT_MS} 还没齐就按已有的出。迟到的那些照收进下一次列表，不再惊动这一次。
+     * 永远出不来列表 / 出两遍。现在三头都堵上 —— 每个来源的回调只认第一次；整体到
+     * {@link #LIST_TIMEOUT_MS} 还没齐就按已有的出（由 {@link #tick()} 盯着）；
+     * <b>新的一批开始时上一批作废</b>，两次重叠的刷新不会互相覆盖（进商店一次、装完一个 App 再刷一次，
+     * 这两下本来就可能叠在一起，而旧那次晚到的结果会把新的冲掉）。
      */
     public static void listAllAvailable(Consumer<List<AppInfo>> callback) {
         List<IAppSource> sources = new ArrayList<>();
@@ -70,61 +142,54 @@ public final class AppSourceRegistry {
             if (s.isReady()) sources.add(s);
         }
 
+        Batch previous = pending;
+        if (previous != null) previous.cancel();
+        pending = null;
+
         if (sources.isEmpty()) {
             callback.accept(List.of());
             return;
         }
 
-        List<AppInfo> merged = new ArrayList<>();
-        Set<ResourceLocation> answered = new HashSet<>();
-        // 一次性闸：超时那条路与最后一个来源可能撞在一起，两边都得认这一个
-        AtomicBoolean done = new AtomicBoolean(false);
-        int total = sources.size();
+        Batch batch = new Batch(callback, sources.size(), System.currentTimeMillis() + LIST_TIMEOUT_MS);
+        pending = batch;
 
         for (IAppSource s : sources) {
             ResourceLocation id = s.getId();
             try {
-                s.listAvailable(list -> {
-                    if (done.get()) {
-                        // 超时之后才回来的：这一次已经出过列表了，下次进商店会带上它
-                        MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调来晚了，本次列表已经出过", id);
-                        return;
-                    }
-                    if (!answered.add(id)) {
-                        // 回调两次的来源：多出来的那次会让同一批 App 在商店里出现两遍
-                        MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调了不止一次，后面的已忽略", id);
-                        return;
-                    }
-                    if (list != null) merged.addAll(list);
-                    if (answered.size() == total && done.compareAndSet(false, true)) {
-                        callback.accept(List.copyOf(merged));
-                    }
-                });
+                s.listAvailable(list -> batch.answer(id, list));
             } catch (Throwable t) {
-                // 列的时候当场抛的来源：当它答过了，否则这一批永远凑不齐，只能等超时
+                // 列的时候当场抛的来源：当它答过了，否则这一批永远凑不齐，只能干等超时
                 MCphone.LOGGER.error("[MCphone] 应用来源 {} 的 listAvailable 抛异常，已跳过", id, t);
-                if (answered.add(id) && answered.size() == total && done.compareAndSet(false, true)) {
-                    callback.accept(List.copyOf(merged));
-                }
+                batch.answer(id, null);
             }
         }
+        if (batch.done()) pending = null;   // 全是同步来源，已经出过了
+    }
 
-        if (done.get()) return;   // 全都是同步来源，已经出过了，不必再挂一个定时器
+    /**
+     * 由 {@code ClientTicks} 每客户端 tick 调一次：在飞的那一批到点还没齐就按已有的出。
+     *
+     * <p>用 tick 泵而不是挂一个定时任务：这个仓库里等待都是这么写的（见 ChatImageCache 的重试），
+     * 而且挂定时任务的话，每开一次商店都留一个十秒后才醒来、醒来发现没事可做的线程任务。
+     */
+    public static void tick() {
+        Batch batch = pending;
+        if (batch == null) return;
+        if (batch.done()) {
+            pending = null;
+            return;
+        }
+        if (!batch.expired(System.currentTimeMillis())) return;
 
-        Minecraft mc = Minecraft.getInstance();
-        CompletableFuture.runAsync(() -> { },
-                        CompletableFuture.delayedExecutor(LIST_TIMEOUT_MS, TimeUnit.MILLISECONDS))
-                // 回到客户端主线程：callback 里会碰注册表与 GUI 状态（IAppSource 的契约）
-                .thenRun(() -> mc.execute(() -> {
-                    if (!done.compareAndSet(false, true)) return;
-                    List<ResourceLocation> late = new ArrayList<>();
-                    for (IAppSource s : sources) {
-                        if (!answered.contains(s.getId())) late.add(s.getId());
-                    }
-                    MCphone.LOGGER.warn("[MCphone] 等了 {} 毫秒还没回来的应用来源: {}，先按已有的出列表",
-                            LIST_TIMEOUT_MS, late);
-                    callback.accept(List.copyOf(merged));
-                }));
+        pending = null;
+        List<IAppSource> sources = new ArrayList<>();
+        for (IAppSource s : getSources()) {
+            if (s.isReady()) sources.add(s);
+        }
+        MCphone.LOGGER.warn("[MCphone] 等了 {} 毫秒还没回来的应用来源: {}，先按已有的出列表",
+                LIST_TIMEOUT_MS, batch.missing(sources));
+        batch.finish();
     }
 
     private static void ensureLoaded() {

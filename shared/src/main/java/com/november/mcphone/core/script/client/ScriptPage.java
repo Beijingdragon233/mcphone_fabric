@@ -32,7 +32,7 @@ import java.util.Map;
  * <p><b>一次编译、每帧只做实例化</b>：模板是装包时编好的（§9.9），这里握着 state 与返回栈，
  * 重排时 {@link TemplateInstance#instantiate} 出一棵普通的 Node 树再交给布局引擎。
  *
- * <p><b>什么时候重排</b>（§7.6）：可用区变了、state 改了、字体变了、语言变了、贴图那头的 epoch 变了。
+ * <p><b>什么时候重排</b>（§7.6）：可用区变了、state 改了、字宽变了、语言变了、贴图那头的 epoch 变了。
  * 主题不在此列 —— 颜色是画的时候才从调色板解析的（见 {@code Renderer.color}），换主题一个几何都不变。
  *
  * <p><b>滚动位置</b>（§7.7）：按节点的 key 存在页面级的表里，重排之后按新的 scrollMax 夹紧，不清零。
@@ -42,7 +42,12 @@ public final class ScriptPage implements IPhonePage {
     /** 返回栈上限（§10）。堆满了就把最老的那层丢掉，不让一个 nav 循环把内存吃干净。 */
     public static final int MAX_NAV = 8;
 
-    /** 字体探针：拿它的宽度看字体或界面缩放变没变。中英混排，换字体时宽度一定跟着变。 */
+    /**
+     * 字体探针：拿它的宽度看字宽变没变。
+     *
+     * <p>它抓的不是界面缩放 —— 手机那档缩放是整体 pose 缩放，布局里没有一个数跟着变（见 PhoneScale）。
+     * 它抓的是「强制 Unicode 字体」那个开关：它当场改字宽，而且不走资源重载，任何 epoch 都看不见。
+     */
     private static final String FONT_PROBE = "MCphone 字体";
 
     private final ScriptApp app;
@@ -51,6 +56,9 @@ public final class ScriptPage implements IPhonePage {
     private String current = "";
     /** 返回栈，存页名。 */
     private final Deque<String> back = new ArrayDeque<>();
+
+    /** 页名 → 那一页的 state。退回来时接着用，不是从初值重来。 */
+    private final Map<String, UiState> states = new HashMap<>();
 
     private UiState state;
     private TemplateInstance instance;
@@ -81,8 +89,13 @@ public final class ScriptPage implements IPhonePage {
     private int ch;
     private Font font;
 
-    /** 这一帧要叠按下色的按钮，以及它什么时候过期。 */
-    private LayoutNode pressed;
+    /**
+     * 刚按下的那个按钮的 key，以及这个高亮什么时候过期。
+     *
+     * <p>存 key 不存节点：点一下几乎一定改 state，下一帧就重排出一整棵新的 LayoutNode 树，
+     * 存节点的话按下色永远比不中 —— 反过来，只有"点了不生效的按钮"才会亮。
+     */
+    private String pressedKey;
     private long pressedUntil;
 
     public ScriptPage(ScriptApp app) {
@@ -110,6 +123,7 @@ public final class ScriptPage implements IPhonePage {
         layout = null;
         tree = null;
         scroll.clear();
+        states.clear();
     }
 
     /** 切到某一页：重建 state 与实例，滚动位置不跨页保留。 */
@@ -120,7 +134,8 @@ public final class ScriptPage implements IPhonePage {
             return;
         }
         current = name;
-        state = UiState.of(page.template().initialState());
+        // 每一页各自的 state：从详情页退回来时，玩家在上一页勾的开关还在
+        state = states.computeIfAbsent(name, k -> UiState.of(page.template().initialState()));
         instance = new TemplateInstance(page.template(), app.id() + (name.isEmpty() ? "" : "/" + name));
         tree = null;
         layout = null;
@@ -188,10 +203,25 @@ public final class ScriptPage implements IPhonePage {
         return mc == null || mc.getLanguageManager() == null ? "" : mc.getLanguageManager().getSelected();
     }
 
-    /** 按下色只留一会儿：不设上限的话，点一下按钮之后它会一直亮着。 */
+    /** 这一帧要叠按下色的那个节点。高亮只留一会儿：不设上限的话，点一下按钮之后它会一直亮着。 */
     private LayoutNode pressedNow() {
-        if (pressed != null && System.currentTimeMillis() > pressedUntil) pressed = null;
-        return pressed;
+        if (pressedKey == null) return null;
+        if (System.currentTimeMillis() > pressedUntil) {
+            pressedKey = null;
+            return null;
+        }
+        return byKey(layout, pressedKey);
+    }
+
+    /** 按 key 在这一棵树里找回那个节点（§7.7 的 key 就是为"重排之后还认得出是同一个"留的）。 */
+    private static LayoutNode byKey(LayoutNode n, String key) {
+        if (n == null) return null;
+        if (key.equals(n.key)) return n;
+        for (LayoutNode c : n.children) {
+            LayoutNode hit = byKey(c, key);
+            if (hit != null) return hit;
+        }
+        return null;
     }
 
     // ============================================================
@@ -248,7 +278,7 @@ public final class ScriptPage implements IPhonePage {
     }
 
     private void press(LayoutNode n) {
-        pressed = n;
+        pressedKey = n.key;
         pressedUntil = System.currentTimeMillis() + 120L;
     }
 

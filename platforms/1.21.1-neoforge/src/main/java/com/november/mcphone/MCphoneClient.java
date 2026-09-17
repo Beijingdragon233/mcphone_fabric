@@ -9,6 +9,7 @@ import com.november.mcphone.core.client.PhoneContainerScreen;
 import com.november.mcphone.core.client.PhoneKeyHandler;
 import com.november.mcphone.core.client.PhoneScreenOnSync;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
+import com.november.mcphone.core.script.client.LocalScriptSource;
 import com.november.mcphone.core.client.PhoneSession;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.menu.ModMenus;
@@ -122,6 +123,10 @@ public class MCphoneClient {
         // 安装状态按存档存，只能在进世界时读——客户端启动时还不知道玩家要进哪个世界
         NeoForge.EVENT_BUS.addListener(
                 (ClientPlayerNetworkEvent.LoggingIn event) -> {
+                    // 【必须在 loadForCurrentWorld 之前】：玩家放进 mcphone/apps/ 的脚本 App 是动态登记的，
+                    // 而那一句读存档时只认目录里已有的 id，读完还会按当前目录覆写存档 —— 晚一步，
+                    // 重启后已装的脚本 App 会从主屏消失，并且被从存档里抹掉
+                    LocalScriptSource.registerAll();
                     PhoneScreenRegistry.loadForCurrentWorld();
                     StoreClientCache.request();
 

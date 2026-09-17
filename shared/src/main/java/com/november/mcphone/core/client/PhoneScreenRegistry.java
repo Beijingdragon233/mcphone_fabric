@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.app.RequiredMod;
-import com.november.mcphone.core.script.client.LocalScriptSource;
 import com.november.mcphone.feature.store.AppPriceRegistry;
 import com.november.mcphone.feature.store.net.StoreClientCache;
 import com.november.mcphone.util.SpiLoader;
@@ -314,7 +313,9 @@ public final class PhoneScreenRegistry {
 
         // 走 SpiLoader 而不是直接 for-each ServiceLoader：一个附属构造失败不该中断整个扫描
         int count = 0;
+        boolean found = false;
         for (IPhoneApp app : SpiLoader.loadSafely(IPhoneApp.class, "App")) {
+            found = true;
             // register 会调第三方的 getId()/isAvailable()，同样要兜
             try {
                 if (register(app)) count++;
@@ -324,23 +325,12 @@ public final class PhoneScreenRegistry {
             }
         }
 
-        // 玩家自己放进 mcphone/apps/ 的脚本 App：登记进目录，不改安装状态。
+        // 扫出东西了才落锁；一个都没有就留给下次，除非已经试到上限。
         //
-        // 【必须在这儿，不能等商店打开】：脚本 App 的目录条目是运行时登记的、不跟着 jar 走，
-        // 而 loadState() 只把「目录里存在的 id」装回已安装集合，末尾又按当前集合覆写存档。
-        // 晚一步的后果不是"这次没显示"，是重启之后它从主屏消失、并且被从存档里抹掉，
-        // 玩家再装回来也回不到原来的位置。loadForCurrentWorld() 第一句就是 ensureLoaded()，
-        // 所以挂在这里一定早于那一次读取。
-        try {
-            int scripts = LocalScriptSource.registerAll();
-            if (scripts > 0) MCphone.LOGGER.info("[MCphone] 脚本 App 已登记 {} 个", scripts);
-        } catch (Throwable t) {
-            // 读盘、编译都在这条路上，坏包已经在里面各自跳过了；真出了别的事也不能连内建 App 一起拖垮
-            MCphone.LOGGER.error("[MCphone] 扫描脚本 App 目录时出错，本次跳过", t);
-        }
-
-        // 扫出东西了才落锁；一个都没有就留给下次，除非已经试到上限
-        if (!CATALOG.isEmpty() || scanAttempts >= MAX_SCAN_ATTEMPTS) {
+        // 判的是【这一趟 SPI 扫出东西没有】，不是 CATALOG 空不空：动态登记的 App（玩家自己放进
+        // mcphone/apps/ 的那些，见 LocalScriptSource）也在 CATALOG 里，拿它当判据的话，
+        // 目录里有一个 .vue 就会让"内建 App 一个都没扫到"的重试永远不再发生
+        if (found || scanAttempts >= MAX_SCAN_ATTEMPTS) {
             loaded = true;
         }
 
@@ -399,7 +389,15 @@ public final class PhoneScreenRegistry {
                 revoked.size(), revoked);
     }
 
-    /** 进世界时调用（客户端登录事件）：读当前存档自己那份状态 */
+    /**
+     * 进世界时调用（客户端登录事件）：读当前存档自己那份状态。
+     *
+     * <p><b>动态登记的 App 必须在这之前登记好</b>（玩家放进 {@code mcphone/apps/} 的脚本 App
+     * 走的是 {@code LocalScriptSource.registerAll()}，挂在各目标登录事件里这一句的前面）。
+     * {@link #loadState()} 只把目录里存在的 id 装回已安装集合，末尾又按当前集合 {@link #saveState()}，
+     * 而那一次写盘会把还没登记上的 App 同时从 {@code installed} 与 {@code known} 里抹掉 ——
+     * 后果不是"这次没显示"，是重启之后它从主屏消失、再装回来也回不到原来的位置。
+     */
     public static void loadForCurrentWorld() {
         ensureLoaded();
 
