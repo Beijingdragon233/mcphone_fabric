@@ -1,5 +1,6 @@
 package com.november.mcphone.core.script.pkg;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
@@ -9,9 +10,11 @@ import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
+import java.security.interfaces.EdECPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Ed25519 签名与验签（施工方案 §12.2、§12.3）。<b>纯 JDK，不分版本，不引第三方。</b>
@@ -53,6 +56,33 @@ public final class Signatures {
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
 
+    /**
+     * 小阶公钥的 y 值（§12.2 的补充判据）。
+     *
+     * <p>Ed25519 上阶整除 8 的点一共 8 个，去掉 x 的符号位之后只剩这 5 个 y。
+     * <b>JDK 的 Ed25519 不查这个</b>：拿恒等点当公钥、签名取 {@code 0x01||0x00*63}，
+     * 对任意消息验签恒为 true —— 不持任何私钥就能造出「验签通过」的包
+     * （JDK 17 与 21 实测各 500/500）。少了这一层，§12.4 的
+     * 「INVALID 是唯一硬拒绝」对这类包永远不成立。
+     */
+    private static final Set<BigInteger> SMALL_ORDER_Y = Set.of(
+            new BigInteger("0", 16),
+            new BigInteger("1", 16),
+            new BigInteger("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffec", 16),
+            new BigInteger("05fc536d880238b13933c6d305acdfd5f098eff289f4c345b027b2c28f95e826", 16),
+            new BigInteger("7a03ac9277fdc74ec6cc392cfa53202a0f67100d760b3cba4fd84d3d706a17c7", 16));
+
+    /**
+     * 这把公钥是不是落在小阶子群里。<b>是就一律当验不过</b>，见 {@link #SMALL_ORDER_Y}。
+     *
+     * <p>取 y 而不是比对 32 字节编码：x 的符号位有两种取值，同一个点两种写法，
+     * 比字节会漏掉一半。非规范编码（y >= p）由 JDK 自己在 initVerify 时拒。
+     */
+    public static boolean smallOrder(PublicKey key) {
+        if (!(key instanceof EdECPublicKey ed)) return false;
+        return SMALL_ORDER_Y.contains(ed.getPoint().getY());
+    }
+
     // ---------------------------------------------------------------- 密钥
 
     /** 新生成一对。 */
@@ -66,11 +96,16 @@ public final class Signatures {
 
     /** X.509 编码的公钥字节 → 公钥。 */
     public static PublicKey publicKey(byte[] x509) {
+        PublicKey key;
         try {
-            return KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(x509));
+            key = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(x509));
         } catch (GeneralSecurityException e) {
             throw PackageError.of(PackageError.Code.E_SIG_BAD_KEY, "公钥读不出来：" + e.getMessage());
         }
+        if (smallOrder(key)) {
+            throw PackageError.of(PackageError.Code.E_SIG_BAD_KEY, "公钥落在小阶子群里");
+        }
+        return key;
     }
 
     /** PKCS8 编码的私钥字节 → 私钥。 */
@@ -121,6 +156,8 @@ public final class Signatures {
 
     /** 验一个包摘要的签名。<b>任何异常都当验不过</b>，不往上抛 —— 验签失败是一种正常结果。 */
     public static boolean verify(PublicKey pub, String digest, byte[] sig) {
+        // publicKey() 已经拦过一道；这里是给直接拿着 PublicKey 进来的调用方兜底
+        if (smallOrder(pub)) return false;
         try {
             Signature s = Signature.getInstance("Ed25519");
             s.initVerify(pub);

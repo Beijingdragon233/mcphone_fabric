@@ -122,7 +122,18 @@ public final class AppSigner {
         System.exit(1);
     }
 
-    /** 目录 → 条目表。路径用 {@code /} 分隔、相对包根，与 zip 里的写法一致。 */
+    /**
+     * 目录 → 条目表。路径用 {@code /} 分隔、相对包根，与 zip 里的写法一致。
+     *
+     * <h2>为什么这里就要跑 §3.4 的路径判据</h2>
+     *
+     * 不跑的话它会把目录里<b>所有</b>文件一律收下。{@code gameDir} 默认是 {@code run/}，
+     * 而作者的私钥就在 {@code config/mcphone/keys/author.key} —— 把 {@code -PappDir}
+     * 指到含 {@code config/} 的父目录，私钥就被签进了那个即将发布的 zip，一声不吭。
+     *
+     * <p>收包那一侧当然会拒（{@code E_PKG_BAD_EXT}），但那是<b>别人装的时候</b>，
+     * 那会儿密钥已经出门了。判据要在东西离开这台机器之前跑。
+     */
     static Map<String, byte[]> readDir(Path dir) throws Exception {
         Map<String, byte[]> out = new LinkedHashMap<>();
         try (var walk = Files.walk(dir)) {
@@ -131,9 +142,11 @@ public final class AppSigner {
                 String rel = dir.relativize(f).toString().replace('\\', '/');
                 // META/ 下的东西不进摘要，也不该由作者手放 —— 签名这一步自己写
                 if (rel.startsWith("META/")) continue;
+                PackageError.PathRules.require(rel);
                 out.put(rel, Files.readAllBytes(f));
             }
         }
+        PackageError.PathRules.requireAll(List.copyOf(out.keySet()));
         return out;
     }
 

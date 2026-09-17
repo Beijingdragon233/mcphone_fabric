@@ -7,6 +7,7 @@ import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.client.PhoneTheme;
+import com.november.mcphone.core.script.pkg.SigCopy;
 import com.november.mcphone.feature.store.AppPriceRegistry;
 import com.november.mcphone.feature.store.client.AppSourceRegistry;
 import com.november.mcphone.feature.store.net.StoreClientCache;
@@ -34,6 +35,9 @@ public final class AppDetail {
     private boolean btnHovered;
     private boolean btnEnabled;
 
+    /** 二次确认框的位置；没画出来时 {@code confirmBoxY} 是 -1。 */
+    private int confirmBoxX, confirmBoxY = -1;
+
     private Component message = null;
 
     /** 上一帧的按钮状态：状态一变就清提示，没有计时器 */
@@ -51,6 +55,9 @@ public final class AppDetail {
      */
     private String typedPhrase = "";
 
+    /** 二次确认那个框勾了没有。换一个 App 就清掉。 */
+    private boolean confirmTicked;
+
     public void open(AppInfo target) {
         this.info = target;
         this.message = null;
@@ -58,6 +65,7 @@ public final class AppDetail {
         this.backRequest = false;
         this.installedRequest = false;
         this.typedPhrase = "";
+        this.confirmTicked = false;
     }
 
     public boolean consumeBackRequest() {
@@ -178,7 +186,7 @@ public final class AppDetail {
         btnW = w;
         // 【签名无效】那一档由 blockedReason 走 BLOCKED，本来就画不出按钮；
         // 【作者密钥变了】要抄对新指纹才放行 —— 不然按钮画灰，不给"点一下就走"
-        btnEnabled = (s == State.BUY || s == State.DOWNLOAD) && phraseSatisfied();
+        btnEnabled = (s == State.BUY || s == State.DOWNLOAD) && signatureSatisfied();
         btnHovered = btnEnabled && mouseX >= btnX && mouseX <= btnX + btnW
                 && mouseY >= btnY && mouseY <= btnY + BUTTON_H;
 
@@ -202,7 +210,7 @@ public final class AppDetail {
     }
 
     /**
-     * 签名那一段（§12.4 / §12.5）。四档提示 + 作者指纹 + <b>每次都显示的 INSTALL_NOTE</b>。
+     * 签名那一段（§12.4 / §12.5）。档位提示 + 作者指纹 + <b>每次都显示的 INSTALL_NOTE</b>。
      *
      * <p><b>这里不判签名</b>：状态是来源算好带过来的（{@link AppInfo#signature()}）。
      * 界面里再判一遍就会有两份判据。
@@ -216,7 +224,7 @@ public final class AppDetail {
 
         y += 3;
 
-        // 四档提示。参数按各档的文案填：密钥变了要新旧两个，陌生作者要指纹，已信任要名字与指纹
+        // 档位提示。参数按各档的文案填：密钥变了要新旧两个，陌生作者要指纹，已信任要名字与指纹
         String line = switch (sig.stateKey()) {
             case "mcphone.sig.key_changed" -> Component.translatable(sig.stateKey(),
                     String.valueOf(sig.previous()), String.valueOf(sig.fingerprint())).getString();
@@ -251,11 +259,25 @@ public final class AppDetail {
             y += font.lineHeight;
             g.fill(x, y, x + w, y + font.lineHeight + 2, PhoneTheme.COLOR_BUTTON_DISABLED);
             g.drawString(font, GuiUtil.truncate(font, typedPhrase, w - 4), x + 2, y + 2,
-                    phraseSatisfied() ? FontPalette.body() : FontPalette.notice(), false);
+                    phraseTyped() ? FontPalette.body() : FontPalette.notice(), false);
             y += font.lineHeight + 4;
         }
 
         // INSTALL_NOTE —— 【每次安装都显示】。它把「签名 ≠ 安全」讲给玩家
+        if (sig.needsConfirm() && y + font.lineHeight <= bodyBottom) {
+            confirmBoxX = x;
+            confirmBoxY = y;
+            g.fill(x, y, x + font.lineHeight, y + font.lineHeight,
+                    confirmTicked ? PhoneTheme.COLOR_BUTTON : PhoneTheme.COLOR_BUTTON_DISABLED);
+            g.drawString(font, GuiUtil.truncate(font,
+                            Component.translatable("mcphone.sig.confirm_tick").getString(),
+                            w - font.lineHeight - 4),
+                    x + font.lineHeight + 4, y + 1, FontPalette.body(), false);
+            y += font.lineHeight + 4;
+        } else {
+            confirmBoxY = -1;
+        }
+
         for (var l : font.split(Component.translatable("mcphone.sig.install_note"), w)) {
             if (y + font.lineHeight > bodyBottom) break;
             g.drawString(font, l, x, y, FontPalette.subtle(), false);
@@ -265,10 +287,28 @@ public final class AppDetail {
     }
 
     /** 不需要确认短语的档位恒为真；需要的那一档要抄对新指纹。 */
-    private boolean phraseSatisfied() {
+    /**
+     * 界面这一层还差什么才让点安装。
+     *
+     * <p><b>这不是闸</b> —— 真正的闸在来源的 {@code install()} 里（它才是任何调用方都绕不开的
+     * 那一道）。这里只是别让按钮看起来能点、点下去却被拒。
+     */
+    private boolean signatureSatisfied() {
         AppInfo.Signature sig = info == null ? null : info.signature();
-        if (sig == null || sig.requiredPhrase() == null) return true;
-        return typedPhrase.trim().equalsIgnoreCase(sig.requiredPhrase().trim());
+        if (sig == null) return true;
+        if (sig.requiredPhrase() != null) return phraseTyped();
+        return !sig.needsConfirm() || confirmTicked;
+    }
+
+    /**
+     * 输入的短语对不对。
+     *
+     * <p>比对本身<b>不在这里写第二份</b>：一份 {@code equalsIgnoreCase} 写在界面、
+     * 另一份写在 {@code SigCopy}，两份迟早对不上。这里问的是那一份。
+     */
+    private boolean phraseTyped() {
+        AppInfo.Signature sig = info.signature();
+        return SigCopy.phraseAccepted(typedPhrase, sig.requiredPhrase());
     }
 
     /** 抄指纹用。只有那一档收键盘。 */
@@ -291,7 +331,17 @@ public final class AppDetail {
     }
 
     public boolean mouseClicked(double mx, double my, int button) {
-        if (info == null || !btnHovered) return false;
+        if (info == null) return false;
+
+        AppInfo.Signature sig = info.signature();
+        if (sig != null && sig.needsConfirm() && confirmBoxY >= 0
+                && mx >= confirmBoxX && mx <= confirmBoxX + 160
+                && my >= confirmBoxY && my <= confirmBoxY + 12) {
+            confirmTicked = !confirmTicked;
+            return true;
+        }
+
+        if (!btnHovered) return false;
 
         switch (state()) {
             case BUY -> {
@@ -311,6 +361,12 @@ public final class AppDetail {
         if (source == null) {
             message = Component.translatable("mcphone.store.error.no_source",
                     info.sourceId().toString());
+            return;
+        }
+        // 先把玩家输入的东西交给来源判。【放行的是来源，不是这个按钮】——
+        // 界面只负责收集，判据那一份写在来源的 confirmSignature / install 里
+        if (info.signature() != null && !source.confirmSignature(info, typedPhrase)) {
+            message = Component.translatable("mcphone.sig.confirm_mismatch");
             return;
         }
         source.install(info,

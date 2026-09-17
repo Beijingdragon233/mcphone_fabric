@@ -16,7 +16,7 @@ import java.util.zip.ZipOutputStream;
 /**
  * 签名与信任（施工方案 §12.2–§12.8）。
  *
- * <p><b>这里测不了的</b>：安装界面上那五档文案与 INSTALL_NOTE 真的显示出来、
+ * <p><b>这里测不了的</b>：安装界面上那几档文案与 INSTALL_NOTE 真的显示出来、
  * 「没有暗示内容安全的图标」——那要 runClient 才能看。判定本身是纯函数，全在这里。
  *
  * <p>跑法：{@code ./gradlew assertTests}（在 {@code platforms/<目标名>/} 下）。
@@ -239,7 +239,7 @@ public class PackageSignTest {
         check(!SigManifest.parse(bad.signature()).verify(bad.digest()), "改一字节验签必败");
     }
 
-    // ================================================================ §12.4 四档判定
+    // ================================================================ §12.4 档位判定
 
     static AppPackage pkg(Map<String, byte[]> content, byte[] sig) throws Exception {
         return PackageReader.read(zip(withMeta(content, sig, null)));
@@ -289,7 +289,7 @@ public class PackageSignTest {
         tampered.put("app.vue", bytes("被改过了"));
         var v5 = TrustState.of(pkg(tampered, sigJson(author, digest, "yumeka")), appId, t3);
         eq(v5.state(), TrustState.State.INVALID, "内容改过 → 签名无效");
-        check(!v5.state().installable, "【唯一的硬拒绝】：不给「仍然继续」");
+        check(!v5.state().installable, "硬拒绝：不给「仍然继续」");
 
         // alg 不认识也是「签名无效」，不是「未签名」
         byte[] rsa = bytes(new String(sigJson(author, digest, "x"), StandardCharsets.UTF_8)
@@ -297,15 +297,17 @@ public class PackageSignTest {
         eq(TrustState.of(pkg(c, rsa), appId, new TrustStore()).state(), TrustState.State.INVALID,
                 "alg 不认识 → 签名无效，不是未签名");
 
-        // 五档都有各自的文案键，且没有一个提到「安全」
+        // 每一档都有自己的文案键。「不许写安全」那条盯的是 lang 里的文本，在 SignCopyTest
         for (TrustState.State s : TrustState.State.values()) {
             check(!s.messageKey.isEmpty(), s + " 要有文案键");
             check(s.messageKey.startsWith("mcphone.sig."), s + " 的键有前缀");
         }
-        eq(TrustState.State.values().length, 5, "五档");
+        eq(TrustState.State.values().length, 6, "六档");
         long hard = 0;
         for (TrustState.State s : TrustState.State.values()) if (!s.installable) hard++;
-        eq(hard, 1L, "硬拒绝【只有一档】—— 把未签名也做成硬拒绝会逼所有人去找绕过办法");
+        eq(hard, 2L, "硬拒绝两档：签名无效、签名被摘掉了");
+        check(TrustState.State.UNSIGNED.installable, "「未签名」本身仍然可装 —— "
+                + "把它也做成硬拒绝会逼所有人去找绕过办法");
     }
 
     /** §12.7：被封禁的作者，验签通过也拒绝。 */
@@ -449,6 +451,119 @@ public class PackageSignTest {
         check(new AuthorPolicy().permits("任何人"), "空的 allowed 表示不设白名单，不是全拒");
     }
 
+
+    /**
+     * 小阶公钥：不持任何私钥就能造出「验签通过」的包。
+     *
+     * <p>JDK 的 Ed25519 不查公钥落在哪个子群。拿恒等点当公钥、签名取 {@code 0x01||0x00*63}，
+     * 对<b>任意</b>消息验签恒为 true。少了这一层，§12.4 的「INVALID 是唯一硬拒绝」
+     * 对这类包永远不成立：玩家确认一次之后，那个谁都能签的指纹就成了 TRUSTED。
+     */
+    static void smallOrderForgery() throws Exception {
+        // 恒等点的 X.509：12 字节外壳 + 32 字节点，点是 0x01 后面全 0
+        byte[] hdr = {0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00};
+        byte[] x509 = new byte[44];
+        System.arraycopy(hdr, 0, x509, 0, 12);
+        x509[12] = 1;
+        byte[] forgedSig = new byte[64];
+        forgedSig[0] = 1;
+
+        check(Signatures.smallOrder(java.security.KeyFactory.getInstance("Ed25519")
+                        .generatePublic(new java.security.spec.X509EncodedKeySpec(x509))),
+                "恒等点要判成小阶");
+
+        boolean threw = false;
+        try {
+            Signatures.publicKey(x509);
+        } catch (PackageError e) {
+            threw = true;
+        }
+        check(threw, "publicKey() 要拒小阶公钥");
+
+        // 端到端：伪造的包必须是 INVALID，而且换多少种内容都一样
+        Map<String, byte[]> c = content();
+        String digest = PackageDigest.of(c);
+        byte[] forged = bytes("{\"format\":1,\"alg\":\"ed25519\","
+                + "\"digest\":\"sha256:" + digest + "\","
+                + "\"pubkey\":\"" + Base64.getEncoder().encodeToString(x509) + "\","
+                + "\"sig\":\"" + Base64.getEncoder().encodeToString(forgedSig) + "\","
+                + "\"author\":\"Mojang Studios\",\"signedAt\":1757203200}");
+        eq(TrustState.of(pkg(c, forged), "example:demo", new TrustStore()).state(),
+                TrustState.State.INVALID, "伪造的包是 INVALID，不是「验签通过·陌生作者」");
+
+        // 真密钥不受影响
+        KeyPair real = Signatures.generate();
+        eq(TrustState.of(pkg(c, sigJson(real, digest, "yumeka")), "example:demo", new TrustStore()).state(),
+                TrustState.State.UNKNOWN_AUTHOR, "真密钥照常走陌生作者那一档");
+    }
+
+    /**
+     * 摘掉 {@code META/sig.json} 是降级，不是「未签名」。
+     *
+     * <p>不这么判就有一条通吃的路：{@code zip -d pkg.zip META/sig.json}。没有签名就没有指纹，
+     * 查不了封禁也查不了钉扎，于是 KEY_CHANGED（要抄指纹）与 §12.7 的吊销
+     * 一起变成 UNSIGNED（点一下就装）。
+     */
+    static void signatureRemoved() throws Exception {
+        KeyPair author = Signatures.generate();
+        Map<String, byte[]> c = content();
+        String digest = PackageDigest.of(c);
+        String fpA = Signatures.fingerprint(author.getPublic());
+        String appId = "example:demo";
+
+        TrustStore t = new TrustStore();
+        t.record(fpA, "yumeka", author.getPublic().getEncoded(), 1000);
+        t.trust(fpA, appId);
+
+        eq(TrustState.of(pkg(c, null), appId, t).state(), TrustState.State.SIGNATURE_REMOVED,
+                "钉扎过的 App 突然没签名 → 降级，硬拒绝");
+        check(!TrustState.State.SIGNATURE_REMOVED.installable, "这一档不许「仍然继续」");
+
+        // 没钉扎过的 App 没签名，仍然是普通的「未签名」
+        eq(TrustState.of(pkg(c, null), "example:never-installed", t).state(),
+                TrustState.State.UNSIGNED, "没装过的包没签名 → 还是 UNSIGNED");
+
+        // 封了之后摘签名也绕不过去
+        TrustStore b = new TrustStore();
+        b.record(fpA, "yumeka", author.getPublic().getEncoded(), 1000);
+        b.trust(fpA, appId);
+        b.setBlocked(fpA, true);
+        eq(TrustState.of(pkg(c, sigJson(author, digest, "yumeka")), appId, b).state(),
+                TrustState.State.INVALID, "封了 → 验签通过也拒");
+        eq(TrustState.of(pkg(c, null), appId, b).state(), TrustState.State.SIGNATURE_REMOVED,
+                "封了之后把签名摘掉 → 照样拒，不会掉回 UNSIGNED");
+    }
+
+    /**
+     * 钉扎不受「一个作者最多记 64 个 App」那张列表约束。
+     *
+     * <p>从那张列表重建钉扎的话，装到第 65 个就会把第 1 个的钉扎挤掉 ——
+     * 那个 App 换一把密钥重签就从 KEY_CHANGED 掉回 UNKNOWN_AUTHOR。
+     */
+    static void pinsSurviveAppListCap() throws Exception {
+        KeyPair author = Signatures.generate();
+        String fpA = Signatures.fingerprint(author.getPublic());
+        TrustStore t = new TrustStore();
+        t.record(fpA, "yumeka", author.getPublic().getEncoded(), 1000);
+
+        t.trust(fpA, "example:first");
+        for (int i = 0; i < TrustStore.MAX_APPS_PER_AUTHOR + 4; i++) t.trust(fpA, "example:app" + i);
+
+        check(!t.get(fpA).apps().contains("example:first"), "第一个已经被挤出那张列表了");
+        eq(t.fingerprintFor("example:first"), fpA, "但钉扎还在（内存）");
+
+        Path f = Files.createTempDirectory("mcphone-pins").resolve("authors.json");
+        t.save(f);
+        TrustStore back = TrustStore.load(f);
+        eq(back.fingerprintFor("example:first"), fpA, "存盘再读回，钉扎仍然在");
+
+        KeyPair other = Signatures.generate();
+        Map<String, byte[]> c = content();
+        String digest = PackageDigest.of(c);
+        eq(TrustState.of(pkg(c, sigJson(other, digest, "y")), "example:first", back).state(),
+                TrustState.State.KEY_CHANGED, "换钥重签仍然要抄指纹，没掉回 UNKNOWN_AUTHOR");
+    }
+
     public static void main(String[] args) throws Exception {
         serverPolicy();
         algorithmAndFingerprint();
@@ -463,6 +578,9 @@ public class PackageSignTest {
         rotation();
         trustStoreRoundTrip();
         authorKeys();
+        smallOrderForgery();
+        signatureRemoved();
+        pinsSurviveAppListCap();
 
         System.out.println("断言 " + checks + " 条");
         if (!failures.isEmpty()) {

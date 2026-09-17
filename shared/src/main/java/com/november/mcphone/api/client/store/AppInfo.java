@@ -68,14 +68,15 @@ public final class AppInfo {
      *
      * <p>字段都是纯字符串：{@code api} 不该依赖 {@code core.script.pkg}。
      *
-     * @param stateKey       四档文案的本地化键
+     * @param stateKey       各档文案的本地化键
      * @param fingerprint    作者指纹；未签名时为 null，界面上那一格写「无」
      * @param previous       上次见到的指纹，只有「作者密钥变了」那一档非 null
      * @param requiredPhrase 要输入什么才放行；不需要确认短语时为 null
-     * @param hardRejected   硬拒绝（只有「签名无效」一档）。true 时<b>不许画「仍然继续」</b>
+     * @param hardRejected   硬拒绝（「签名无效」与「签名被摘掉了」两档）。true 时<b>不许画「仍然继续」</b>
+     * @param needsConfirm   要不要二次确认（点一下确认框，不是直接点安装）
      */
     public record Signature(String stateKey, String fingerprint, String previous,
-                            String requiredPhrase, boolean hardRejected) {
+                            String requiredPhrase, boolean hardRejected, boolean needsConfirm) {
     }
 
     /** 见 {@link Signature}。 */
