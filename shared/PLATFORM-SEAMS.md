@@ -262,7 +262,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.SystemFiles`
 - `platform.client.VanillaAudio`
 
-#### 平台内部的（13）
+#### 平台内部的（14）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -271,6 +271,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `compat.IntegratedDynamicsCompat`　—— 加载器导入
 - `core.ModAttachments`　—— 加载器导入
 - `core.ModCreativeTabs`　—— 加载器导入
+- `core.script.net.ScriptNetworking`　—— 加载器导入
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.net.ChatNetworking`　—— 加载器导入
 - `feature.notes.net.NotesNetworking`　—— 加载器导入
@@ -369,7 +370,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.SystemFiles`
 - `platform.client.VanillaAudio`
 
-#### 平台内部的（32）
+#### 平台内部的（33）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -380,6 +381,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.ModCapabilities`　—— 加载器导入、注入的方法
 - `core.ModCreativeTabs`　—— 加载器导入
 - `core.PhoneScreenOnCleanup`　—— 加载器导入
+- `core.script.net.ScriptNetworking`
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.MessageBody`
 - `feature.chat.MessageKind`
@@ -451,7 +453,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.SystemFiles`
 - `platform.client.VanillaAudio`
 
-#### 平台内部的（27）
+#### 平台内部的（28）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -467,6 +469,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.net.RequestThrottle`
 - `core.net.SyncPhoneTerminalPacket`　—— 1.20.5+ 原版
 - `core.net.SyncServerConfigPacket`　—— 1.20.5+ 原版
+- `core.script.net.ScriptNetworking`
 - `feature.camera.client.CameraHandler`
 - `feature.chat.ChatImageUploads`
 - `feature.chat.net.ChatNetworking`
