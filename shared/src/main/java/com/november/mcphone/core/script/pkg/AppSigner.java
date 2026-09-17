@@ -16,8 +16,15 @@ import java.util.zip.ZipOutputStream;
  * <p><b>与游戏里那个按钮调的是同一份实现</b>（{@link AuthorKeys#buildSigJson}）——
  * 两条路各写一份的话，迟早有一条签出来的包另一条验不过。
  *
- * <p>住在 {@code docs/} 下：那一层由每个目标编译但<b>不进模组 jar</b>，
- * 而这是个开发期工具，没必要发给玩家。
+ * <h2>为什么住在 shared/ 而不是 docs/</h2>
+ *
+ * 第一版放在 {@code docs/} 下（想着开发期工具不必进 jar），<b>结果 CI 全红</b>：
+ * {@code assertTests} 会自动发现 {@code docs/} 下每一个带 {@code main()} 的类并跑一遍，
+ * 于是它被当成断言测试无参跑了、退出码 2。
+ *
+ * <p>挪进 {@code shared/} 之后另有一个好处：游戏里那个「打包并签名」按钮要做的事
+ * （读目录 → 打包 → 算摘要 → 写 sig.json）与这里逐字相同，
+ * {@link #readDir} 与 {@link #zip} 两个方法它直接用得上。
  *
  * <h2>签名是命令式的</h2>
  *
@@ -29,9 +36,9 @@ import java.util.zip.ZipOutputStream;
  * 读包 / 算摘要 / 读私钥 / 写 sig.json —— 四步各自报各自的，
  * 不然作者只知道"签失败了"，得自己猜是密钥没生成还是包有问题。
  */
-public final class SignAppCli {
+public final class AppSigner {
 
-    private SignAppCli() {
+    private AppSigner() {
     }
 
     /**

@@ -14,21 +14,20 @@
 // 签名要私钥。挂上去等于每次构建都要有一把私钥在场，而 CI 上没有、也不该有。
 // 签名是命令式操作（§12.6）：作者自己点头才签，不因为"文件变了"就签。
 //
-// 【为什么跑的是 assert-tests 的产物】
+// 【入口为什么在 shared/ 而不是 docs/】
 //
-// 签名实现（AuthorKeys / Signatures / PackageDigest）在 shared/ 里，是模组代码；
-// 而命令行入口 SignAppCli 住在 docs/ 下 —— 那一层每个目标都编，但【不进模组 jar】。
-// 开发期工具没必要发给玩家。
-
-def signAppClasses = layout.buildDirectory.dir('classes/assert-tests')
+// 第一版放在 docs/ 下，想着"开发期工具不必进 jar"。结果 CI 全红：assertTests 会自动
+// 发现 docs/ 下每一个带 main() 的类并跑一遍，于是它被当成断言测试无参跑了、退出码 2。
+//
+// 挪进 shared/ 之后还顺带解决一件事：游戏里那个「打包并签名」按钮要做的事与它逐字相同，
+// readDir / zip 两个方法直接用得上。
 
 tasks.register('signApp', JavaExec) {
     group = 'mcphone'
     description = '给一个 App 目录签名，出一个带 META/sig.json 的 zip'
 
-    dependsOn tasks.named('compileAssertTests')
-    classpath = files(signAppClasses, sourceSets.main.output, sourceSets.main.runtimeClasspath)
-    mainClass = 'com.november.mcphone.core.script.pkg.SignAppCli'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.november.mcphone.core.script.pkg.AppSigner'
 
     doFirst {
         if (!project.hasProperty('appDir')) {
