@@ -65,12 +65,15 @@ public final class AppDetail {
         return r;
     }
 
-    private enum State { LOADING, BUY, CANT_AFFORD, DOWNLOAD, INSTALLED }
+    private enum State { LOADING, BLOCKED, BUY, CANT_AFFORD, DOWNLOAD, INSTALLED }
 
     private State state() {
         if (info == null) return State.LOADING;
 
         if (PhoneScreenRegistry.isInstalled(info.id())) return State.INSTALLED;
+
+        // 排在价钱之前：装不了的东西不该先问玩家买不买得起（§23.4）
+        if (info.blockedReason() != null) return State.BLOCKED;
 
         ICost price = AppPriceRegistry.priceOf(info.id());
         if (price == ICost.FREE) return State.DOWNLOAD;
@@ -83,9 +86,10 @@ public final class AppDetail {
         return State.BUY;
     }
 
-    private static String labelOf(State s) {
+    private String labelOf(State s) {
         return switch (s) {
             case LOADING -> Component.translatable("mcphone.store.loading").getString();
+            case BLOCKED -> info.blockedReason().getString();
             case BUY -> Component.translatable("mcphone.store.buy").getString();
             case CANT_AFFORD -> Component.translatable("mcphone.store.cant_afford").getString();
             case DOWNLOAD -> Component.translatable("mcphone.store.install").getString();

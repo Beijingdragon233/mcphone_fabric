@@ -4,6 +4,7 @@ import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
+import com.november.mcphone.api.sdk.SdkGate;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -61,7 +62,7 @@ public final class LocalScriptSource implements IAppSource {
             // 放在下面那个 continue 之后就永远走不到 —— 换过的包恰好是"已经在目录里"的那些
             ScriptAppAdapter adapter = adapter(app);
             if (PhoneScreenRegistry.getApp(app.id()) != null) continue;   // 已经在目录里，交给 LocalAppSource
-            out.add(AppInfo.of(adapter, ID));
+            out.add(AppInfo.of(adapter, ID, blockedReason(app)));
         }
         callback.accept(out);
     }
@@ -80,11 +81,34 @@ public final class LocalScriptSource implements IAppSource {
             onError.accept(Component.translatable("mcphone.store.error.not_found", info.id().toString()));
             return;
         }
+        Component blocked = blockedReason(adapter.script());
+        if (blocked != null) {
+            // 界面已经把按钮画灰了，这一道是给"不走界面的调用方"的：门控写在两处，
+            // 少了哪一处都能让一个用不了的 App 装进主屏
+            onError.accept(blocked);
+            return;
+        }
         if (!PhoneScreenRegistry.install(adapter)) {
             onError.accept(Component.translatable("mcphone.store.error.install_failed", info.id().toString()));
             return;
         }
         onSuccess.accept(adapter);
+    }
+
+    /**
+     * 这个包的 {@code sdk} 段本机满不满足（§23.4）。满足返回 null。
+     *
+     * <p>本机版本低于声明 → 标「需要更新 MCphone」并不可安装；高于声明 → 正常，契约只增不减。
+     *
+     * <p><b>这是 UX，不是边界</b>（§13.8）：这一段整个删掉也只是让商店的按钮不灰，
+     * 真正的判定在服务端审批部署那一侧，调的是同一个 {@link SdkGate}。
+     */
+    private static Component blockedReason(ScriptApp app) {
+        Map<String, Integer> missing = SdkGate.unsatisfied(app.manifest().sdk());
+        if (missing.isEmpty()) return null;
+        MCphone.LOGGER.info("[MCphone] 脚本 App {} 要的 SDK 本机给不了: {}（本机 {}）",
+                app.id(), app.manifest().sdk(), missing);
+        return Component.translatable("mcphone.store.needs_update");
     }
 
     /**

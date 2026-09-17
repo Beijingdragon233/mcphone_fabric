@@ -34,6 +34,7 @@ public final class PackageError extends RuntimeException {
         E_PKG_TEXT_TOO_LONG("manifest.json 的字段 '%s' 超长：上限 %d，收到 %d"),
         E_PKG_TEXT_CONTROL_CHAR("manifest.json 的字段 '%s' 含控制字符、换行或不可见的格式字符"),
         E_PKG_BAD_ENGINE("manifest.json 的 engine 只认 declarative-1，收到 '%s'"),
+        E_PKG_BAD_SDK("manifest.json 的 sdk 段不合法：%s"),
         E_PKG_MISSING_ENTRY("manifest.json 的 '%s' 指向 '%s'，包里没有这个文件"),
         E_PKG_NO_MANIFEST("包里没有 manifest.json —— 它必须在包根"),
         E_PKG_BAD_ICON("<manifest> 的 icon 要写成 data:image/png;base64,…，base64 部分最多 %d 字符，收到 %s"),

@@ -13,6 +13,8 @@ import java.io.StringReader;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -38,7 +40,9 @@ public record Manifest(
         String icon,
         String uiTree,
         String uiStyle,
-        String engine) {
+        String engine,
+        /** 这个 App 要用哪些 SDK、各自要几版（§23.4）。没写就是空表，<b>不是 null</b>。 */
+        Map<String, Integer> sdk) {
 
     /** 本轮只认这一个包格式版本。 */
     public static final int FORMAT = 1;
@@ -55,10 +59,22 @@ public record Manifest(
     private static final Pattern ID_SEGMENT = Pattern.compile("[a-z0-9_.-]{1,64}");
     private static final Pattern VERSION = Pattern.compile("\\d+\\.\\d+\\.\\d+");
     private static final Pattern PLAIN_INT = Pattern.compile("\\d+");
+    private static final Pattern SDK_KEY = Pattern.compile("[a-z][a-z0-9_]{0,31}");
+
+    /**
+     * {@code sdk} 段最多几项。A 档 6 个加 B 档 5 个是 11 个，给到 32 留足了将来加的余量 ——
+     * 不封顶的话，一个几千项的 sdk 段会让商店每次列表都白算几千次比较。
+     */
+    public static final int MAX_SDK_ENTRIES = 32;
 
     private static final int MAX_NAME = 64;
     private static final int MAX_AUTHOR = 32;
     private static final int MAX_DESCRIPTION = 256;
+
+    public Manifest {
+        // 没写 sdk 的包占大多数，让它们与写了的走同一条读法：调用方不必每次判 null
+        sdk = sdk == null ? Map.of() : Map.copyOf(sdk);
+    }
 
     /** {@code namespace:path}，拼回去的那一个。 */
     public String id() {
@@ -103,7 +119,7 @@ public record Manifest(
         }
 
         return new Manifest(h.format, h.namespace, h.path, h.version, h.name, h.author, description,
-                icon, uiTree, uiStyle, engine);
+                icon, uiTree, uiStyle, engine, sdk(root));
     }
 
     /**
@@ -116,7 +132,7 @@ public record Manifest(
         String description = root.has("description") ? text(root, "description", MAX_DESCRIPTION) : null;
         String icon = root.has("icon") ? inlineIcon(root) : null;
         return new Manifest(h.format, h.namespace, h.path, h.version, h.name, h.author, description,
-                icon, null, null, null);
+                icon, null, null, null, sdk(root));
     }
 
     private record Head(int format, String namespace, String path, String version, String name, String author) {
@@ -286,6 +302,37 @@ public record Manifest(
             throw PackageError.of(PackageError.Code.E_PKG_BAD_TYPE, field, "字符串", typeOf(e));
         }
         return e.getAsString();
+    }
+
+    /**
+     * {@code "sdk": { "economy": 1, "mailbox": 1 }}（§23.4）。段可省，省了就是空表。
+     *
+     * <p><b>不认识的键照收不误</b>：那表示这个包要一个比本机新的 SDK，属于"需要更新 MCphone"，
+     * 由商店门控去判（{@code SdkVersions.unsatisfied}）。在这里拒的话，将来每加一个 SDK，
+     * 旧版 MCphone 就把新包报成"清单坏了"，而它没坏。
+     */
+    private static Map<String, Integer> sdk(JsonObject root) {
+        if (!root.has("sdk")) return Map.of();
+        JsonObject obj = requireObject(root, "sdk");
+        if (obj.size() > MAX_SDK_ENTRIES) {
+            throw PackageError.of(PackageError.Code.E_PKG_BAD_SDK,
+                    "最多 " + MAX_SDK_ENTRIES + " 项，收到 " + obj.size());
+        }
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (String key : obj.keySet()) {
+            if (!SDK_KEY.matcher(key).matches()) {
+                throw PackageError.of(PackageError.Code.E_PKG_BAD_SDK,
+                        "键 '" + key + "' 要匹配 " + SDK_KEY.pattern());
+            }
+            int v = requireInt(obj, key);
+            // 0 与负数没有意义：声明"我要第 0 版"既不是"不要"也不是任何一版
+            if (v < 1) {
+                throw PackageError.of(PackageError.Code.E_PKG_BAD_SDK,
+                        "'" + key + "' 的版本要 ≥ 1，收到 " + v);
+            }
+            out.put(key, v);
+        }
+        return Map.copyOf(out);
     }
 
     private static JsonObject requireObject(JsonObject obj, String field) {

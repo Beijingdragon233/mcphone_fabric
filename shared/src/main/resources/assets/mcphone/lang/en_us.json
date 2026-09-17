@@ -54,6 +54,7 @@
   "mcphone.gui.system_app": "[System]",
   "mcphone.store.source.local": "On this device",
   "mcphone.store.source.local_script": "Script apps on this device",
+  "mcphone.store.needs_update": "Update MCphone",
   "mcphone.store.empty": "No apps available",
   "mcphone.store.install": "↓ Install",
   "mcphone.store.installed": "Installed %s",

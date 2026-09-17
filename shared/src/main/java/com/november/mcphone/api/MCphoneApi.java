@@ -22,6 +22,7 @@ public final class MCphoneApi {
      *          IAppPriceProvider / IEmcWallet / EmcWallets
      *   2  —— PhoneMultiLineEditBox（1.10.4）、IPhoneApp.opensInsidePhone()
      *   3  —— api.chat：PhoneChat / PhoneContact / PhoneConversation / ContactRelation / SendResult
+     *   4  —— api.economy 与 api.sdk（A 档六项 + B 档五项占位，施工方案 §23）；AppInfo.blockedReason
      *
      * 【这个值是在静态块里赋的，别改成 {@code = 3}】
      *
@@ -49,7 +50,7 @@ public final class MCphoneApi {
 
     static {
         // 【别把这一句挪回上面的声明里】——那样它就成了编译期常量，会被内联进附属，理由见上
-        VERSION = 3;
+        VERSION = 4;
     }
 
 }
