@@ -3,6 +3,10 @@ package com.november.mcphone.core.script.engine;
 import com.november.mcphone.api.sdk.cycle.CycleKind;
 import com.november.mcphone.api.sdk.cycle.CycleLabels;
 import com.november.mcphone.core.script.net.ScriptErrorCode;
+import com.november.mcphone.core.script.server.store.KvBackend;
+import com.november.mcphone.core.script.server.store.SealedBackend;
+import com.november.mcphone.core.script.server.store.SealedRecord;
+import com.november.mcphone.core.script.server.store.StoreQuota;
 import com.november.mcphone.core.script.server.PlayerSnapshot;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Scriptable;
@@ -44,8 +48,14 @@ public final class CtxBuilder {
     public record Cycle(ZoneId zone, LocalTime dailyAt) {
     }
 
-    /** 本步能接上的后端。为 null 的那一项<b>整个不挂</b>。 */
-    public record Backends(SharedState shared, ItemView item, Cycle cycle) {
+    /** 能接上的后端。为 null 的那一项<b>整个不挂</b>。 */
+    public record Backends(SharedState shared, ItemView item, Cycle cycle,
+                           KvBackend store, SealedBackend sealed) {
+
+        /** 只有 S13 那几样的旧写法。 */
+        public Backends(SharedState shared, ItemView item, Cycle cycle) {
+            this(shared, item, cycle, null, null);
+        }
     }
 
     /** 脚本调 {@code ctx.ok} / {@code ctx.fail} 之后落在这里。 */
@@ -134,6 +144,64 @@ public final class CtxBuilder {
                     iv.isDamaged(HostFn.str(a, 0, "item.isDamaged")));
             item.sealObject();
             ScriptableObject.putProperty(ctx, "item", item);
+        }
+
+        // ---- ctx.store（§16.5、§17.3）：每玩家的 KV。档位由"跑在哪一侧"决定，不在方法名里
+        if (backends.store() != null) {
+            KvBackend kv = backends.store();
+            ScriptableObject store = HostFn.obj(cx, scope);
+            HostFn.put(store, scope, "getString", 2, (c, s, a) -> {
+                String v = kv.getString(appId, HostFn.str(a, 0, "store.getString"));
+                return v != null ? v : (HostFn.present(a, 1) ? a[1] : null);
+            });
+            HostFn.put(store, scope, "setString", 2, (c, s, a) -> {
+                kv.setString(appId, HostFn.str(a, 0, "store.setString"), HostFn.str(a, 1, "store.setString"));
+                return Boolean.TRUE;
+            });
+            // 数值一律按十进制字符串过：毫秒时间戳与计数会超过 2^53（§23.3 同一条理由）
+            HostFn.put(store, scope, "getLong", 2, (c, s, a) -> {
+                String v = kv.getString(appId, HostFn.str(a, 0, "store.getLong"));
+                return v != null ? v : (HostFn.present(a, 1) ? a[1] : "0");
+            });
+            HostFn.put(store, scope, "setLong", 2, (c, s, a) -> {
+                kv.setString(appId, HostFn.str(a, 0, "store.setLong"),
+                        Long.toString(HostFn.num(a, 1, "store.setLong")));
+                return Boolean.TRUE;
+            });
+            HostFn.put(store, scope, "getBool", 2, (c, s, a) -> {
+                String v = kv.getString(appId, HostFn.str(a, 0, "store.getBool"));
+                return v == null ? (HostFn.present(a, 1) && HostFn.bool(a, 1, "store.getBool")) : "true".equals(v);
+            });
+            HostFn.put(store, scope, "setBool", 2, (c, s, a) -> {
+                kv.setString(appId, HostFn.str(a, 0, "store.setBool"),
+                        Boolean.toString(HostFn.bool(a, 1, "store.setBool")));
+                return Boolean.TRUE;
+            });
+            HostFn.put(store, scope, "remove", 1, (c, s, a) -> {
+                kv.remove(appId, HostFn.str(a, 0, "store.remove"));
+                return Boolean.TRUE;
+            });
+            HostFn.put(store, scope, "keys", 0, (c, s, a) ->
+                    c.newArray(s, kv.keys(appId).toArray()));
+            store.sealObject();
+            ScriptableObject.putProperty(ctx, "store", store);
+        }
+
+        // ---- ctx.sealed（§17.4.5）：只有 put 与 get，服务端只搬字节、解不开
+        if (backends.sealed() != null) {
+            SealedBackend sb = backends.sealed();
+            ScriptableObject sealed = HostFn.obj(cx, scope);
+            HostFn.put(sealed, scope, "put", 2, (c, s, a) -> {
+                // 脚本递过来的是客户端封好的密文（base64）。宿主不解、也解不开
+                throw new ScriptAbort(ScriptAbort.Reason.HOST,
+                        "sealed.put 要由客户端把封好的记录递进来，S14 只定了后端形状");
+            });
+            HostFn.put(sealed, scope, "get", 1, (c, s, a) -> {
+                SealedRecord r = sb.get(appId, HostFn.str(a, 0, "sealed.get"));
+                return r == null ? null : java.util.Base64.getEncoder().encodeToString(r.cipher());
+            });
+            sealed.sealObject();
+            ScriptableObject.putProperty(ctx, "sealed", sealed);
         }
 
         // ---- ctx.ok / ctx.fail / ctx.log

@@ -4,6 +4,8 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.music.DiscState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
+import com.november.mcphone.core.script.server.store.ScriptGuards;
+import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -140,6 +142,32 @@ public final class PhonePlayerData {
 
     public void setPurchasedApps(PurchasedApps value) {
         player.setData(ModAttachments.PURCHASED_APPS.get(), value);
+    }
+    // ---- 脚本 App 的存储（§17.3）----
+
+    /**
+     * shared 档的 KV。逻辑键的前五段由 {@code ScriptKv.namespace} 拼，玩家那一段由「挂在谁身上」隐含。
+     *
+     * <p><b>不另立第二个门面</b>：§17.3 / §20.2 / §22.7 引的那个旧门面 §10.4.1 早已删掉。
+     */
+    public ScriptKv scriptKv() {
+        return player.getData(ModAttachments.SCRIPT_KV.get());
+    }
+
+    public void setScriptKv(ScriptKv value) {
+        player.setData(ModAttachments.SCRIPT_KV.get(), value);
+    }
+
+    /**
+     * 守卫计数。<b>与 {@link #scriptKv()} 是两块，脚本写不到这一块</b> ——
+     * 放一起脚本就能把「只能领一次」清零（§19.2、§20.2）。
+     */
+    public ScriptGuards scriptGuards() {
+        return player.getData(ModAttachments.SCRIPT_GUARDS.get());
+    }
+
+    public void setScriptGuards(ScriptGuards value) {
+        player.setData(ModAttachments.SCRIPT_GUARDS.get(), value);
     }
 
     // ---- 终端卡槽 ----
