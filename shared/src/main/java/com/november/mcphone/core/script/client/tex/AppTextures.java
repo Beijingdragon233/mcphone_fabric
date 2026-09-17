@@ -116,28 +116,18 @@ public final class AppTextures {
     /** key 是包摘要：同一个包换个 AppPackage 实例装进来，贴图不必重传。 */
     private static final Map<String, App> APPS = new HashMap<>();
 
-    /** 显存里同时留多少张图标。 */
-    static final int MAX_ICONS = 64;
-
     /**
      * App 图标，key 是 App id。值为 null 表示判过了、用不了（商店画占位方块）。
      *
      * <p>单独一张表，不进上面那套每帧 16 张的名额：图标是主屏与商店画的，那条路上没有
      * {@code Frame}，也就没人调 {@link #beginFrame}，混进去会被页面里的图挤掉、然后每帧重传。
      *
-     * <p>但它也得有上限。一个 App 只有一张图标，原本"条数被装了几个 App 钉死"—— 而 S9 之后
-     * 商店会把 {@code mcphone/apps/} 里<b>还没装</b>的包也列出来，目录里放两百个包就是两百张常驻贴图。
-     * 所以按访问序留 {@link #MAX_ICONS} 张，挤掉的那张下次被画到时重传。
+     * <p><b>这张表不淘汰</b>，只由 {@link #releaseIcon} 与 {@link #clearCache} 清。试过按访问序封顶，
+     * 但那是错的：{@code AppInfo} 会把 {@code getIconTexture()} 的返回值<b>存进对象</b>，商店画的是存住的
+     * 那个 ResourceLocation、不会再问一次 —— 在它背后把贴图还掉，画出来就是紫黑格。
+     * 条数的上限是"目录里有几个包"，每张 ≤ {@link #MAX_BYTES}；真要限量得先让 AppInfo 改成画的时候再问。
      */
-    private static final Map<String, ImageCodec.Texture> ICONS =
-            new LinkedHashMap<>(16, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, ImageCodec.Texture> eldest) {
-                    if (size() <= MAX_ICONS) return false;
-                    uploader.release(eldest.getValue());
-                    return true;
-                }
-            };
+    private static final Map<String, ImageCodec.Texture> ICONS = new LinkedHashMap<>();
 
     private static int epoch;
 

@@ -88,19 +88,29 @@ public final class LocalScriptSource implements IAppSource {
     }
 
     /**
-     * 启动恢复（§3.2）：把目录里的脚本 App 全部登记进目录，<b>不改安装状态</b>。
+     * 启动恢复（§3.2）：把<b>存档里记着装过的</b>那几个脚本 App 登记进目录，不改安装状态。
      *
      * <p>必须早于读存档状态：{@code loadState()} 只把"目录里存在的 id"装回已安装集合，
      * 末尾又按当前集合覆写存档。不先登记的话，重启之后已安装的脚本 App 会从主屏消失，
      * 而且那一次覆写会把它从存档里也抹掉 —— 玩家再也装不回原来的位置。
      *
+     * <p><b>只恢复装过的，不是把目录里的全登记一遍</b>：全登记的话它们就都成了"目录里未安装的"，
+     * 于是改由既有的 LocalAppSource 列出来 —— 玩家会看到同一个没装的 App 重连一次就从
+     * 「本机脚本」跳到「本机」那一组，而这个来源的 install 从此再也走不到。
+     *
      * @return 这一次新登记了几个
      */
     public static int registerAll() {
+        // 先让内建那批进目录：register 不会自己触发 SPI 扫描，而"先注册者胜"。
+        // 脚本先进去的话，一个 .vue 声明 someaddon:foo 就能把那个附属模组的 App 挡在门外
+        PhoneScreenRegistry.getAppCount();
+
+        Set<ResourceLocation> installed = PhoneScreenRegistry.savedInstalledIds();
         int n = 0;
         for (ScriptApp app : ScriptAppFolder.scan()) {
-            // 同上：换过的包在这一步被换进注册表，所以每次进世界都跟得上磁盘上的版本
+            // 换过的包在这一步被换进注册表，所以每次进世界都跟得上磁盘上的版本
             ScriptAppAdapter adapter = adapter(app);
+            if (!installed.contains(app.id())) continue;
             if (!TRIED.add(app.id())) continue;   // 这一局试过了，别让每次进世界都重报一次 id 冲突
             if (PhoneScreenRegistry.register(adapter)) n++;
         }
@@ -119,10 +129,17 @@ public final class LocalScriptSource implements IAppSource {
 
         ScriptAppAdapter fresh = new ScriptAppAdapter(app);
         ADAPTERS.put(app.id(), fresh);
-        if (known != null && PhoneScreenRegistry.replace(known, fresh)) {
+        if (known == null) return fresh;
+
+        if (PhoneScreenRegistry.replace(known, fresh)) {
             known.onUninstall();   // 旧那份的图标与包内贴图，这时候才还
             MCphone.LOGGER.info("[MCphone] 脚本 App {} 换成了 {}（{}）",
                     app.id(), app.manifest().version(), app.file());
+        } else if (PhoneScreenRegistry.getApp(app.id()) != null) {
+            // 目录里那个 id 是别人的（第一次登记时就撞车了）。按设计不抢，但得说一声，
+            // 否则玩家改完文件看不到任何变化，也不知道为什么
+            MCphone.LOGGER.warn("[MCphone] {} 改过了，但目录里的 '{}' 是别人登记的，这个包不生效",
+                    app.file(), app.id());
         }
         return fresh;
     }

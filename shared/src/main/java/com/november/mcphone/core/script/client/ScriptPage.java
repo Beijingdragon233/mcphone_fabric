@@ -25,6 +25,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 一个脚本 App 画在手机屏幕里的那一页（施工方案 §8.7、§10）。
@@ -41,6 +42,9 @@ public final class ScriptPage implements IPhonePage {
 
     /** 返回栈上限（§10）。堆满了就把最老的那层丢掉，不让一个 nav 循环把内存吃干净。 */
     public static final int MAX_NAV = 8;
+
+    /** 会叠按下色的那几种。 */
+    private static final Set<NodeType> INTERACTIVE = Set.of(NodeType.BUTTON, NodeType.TOGGLE, NodeType.TAB_BAR);
 
     /**
      * 字体探针：拿它的宽度看字宽变没变。
@@ -134,6 +138,7 @@ public final class ScriptPage implements IPhonePage {
             return;
         }
         current = name;
+        pressedKey = null;   // 上一页那个按钮的 key 在这一页可能指到另一个节点，跨页串色
         // 每一页各自的 state：从详情页退回来时，玩家在上一页勾的开关还在
         state = states.computeIfAbsent(name, k -> UiState.of(page.template().initialState()));
         instance = new TemplateInstance(page.template(), app.id() + (name.isEmpty() ? "" : "/" + name));
@@ -210,7 +215,10 @@ public final class ScriptPage implements IPhonePage {
             pressedKey = null;
             return null;
         }
-        return byKey(layout, pressedKey);
+        LayoutNode hit = byKey(layout, pressedKey);
+        // 只认可交互的：key 是按树路径拼的，而 v-if 的兄弟一藏，后面的路径整体前移（见 LayoutNode.key），
+        // 同一个 key 可能落到另一个节点上。叠错按下色不致命，但没必要叠到一个不能点的东西上
+        return hit != null && INTERACTIVE.contains(hit.node.type()) ? hit : null;
     }
 
     /** 按 key 在这一棵树里找回那个节点（§7.7 的 key 就是为"重排之后还认得出是同一个"留的）。 */

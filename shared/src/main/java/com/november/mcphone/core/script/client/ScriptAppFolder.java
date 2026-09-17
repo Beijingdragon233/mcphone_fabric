@@ -28,6 +28,9 @@ import java.util.stream.Stream;
  * <p><b>编译一次常驻</b>（§9.9）：按文件路径缓存，文件的大小与修改时间都没变就不再读、不再编。
  * 玩家在游戏里换掉一个包时，下次扫描会看见时间变了，重新编。
  *
+ * <p>修改时间在有些文件系统上是秒级：同一秒里改两次、而且字节数正好没变的那一次看不出来。
+ * 代价是作者那一下改动要到下次改动才生效；换成内容摘要的话，每次开商店都要把目录里每个包整份读一遍。
+ *
  * <p>全在客户端主线程：读盘量很小（整包 ≤ 256 KiB，至多几十个），而回调契约要求在主线程，
  * 换到后台线程再弹回来只会多一层。
  */
@@ -192,10 +195,5 @@ public final class ScriptAppFolder {
         ResourceLocation id = ResourceLocation.tryParse(manifest.id());
         if (id == null) throw new IllegalStateException("id '" + manifest.id() + "' 不是合法的 ResourceLocation");
         return id;
-    }
-
-    /** 忘掉这个文件的缓存，下次扫描重新读、重新编。覆盖安装走这条。 */
-    public static void forget(String file) {
-        CACHE.entrySet().removeIf(e -> e.getKey().getFileName().toString().equals(file));
     }
 }

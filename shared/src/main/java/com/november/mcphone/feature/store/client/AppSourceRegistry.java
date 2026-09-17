@@ -4,6 +4,7 @@ import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
 import com.november.mcphone.util.SpiLoader;
+import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.*;
@@ -81,19 +82,23 @@ public final class AppSourceRegistry {
         }
 
         /** 一个来源答了。齐了就出列表，并且只出这一次。 */
-        synchronized void answer(ResourceLocation id, List<AppInfo> list) {
-            if (finished) {
-                // 超时之后、或者这一批已经作废之后才回来的：下次进商店会带上它
-                MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调来晚了，这一批已经出过列表", id);
-                return;
+        void answer(ResourceLocation id, List<AppInfo> list) {
+            boolean full;
+            synchronized (this) {
+                if (finished) {
+                    // 超时之后、或者这一批已经作废之后才回来的：下次进商店会带上它
+                    MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调来晚了，这一批已经出过列表", id);
+                    return;
+                }
+                if (!answered.add(id)) {
+                    // 回调两次的来源：多出来的那次会让同一批 App 在商店里出现两遍
+                    MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调了不止一次，后面的已忽略", id);
+                    return;
+                }
+                if (list != null) merged.addAll(list);
+                full = answered.size() == total;
             }
-            if (!answered.add(id)) {
-                // 回调两次的来源：多出来的那次会让同一批 App 在商店里出现两遍
-                MCphone.LOGGER.warn("[MCphone] 应用来源 {} 回调了不止一次，后面的已忽略", id);
-                return;
-            }
-            if (list != null) merged.addAll(list);
-            if (answered.size() == total) finish();
+            if (full) finish();
         }
 
         /** 到点了没有？ */
@@ -110,11 +115,26 @@ public final class AppSourceRegistry {
             return out;
         }
 
-        /** 出列表，只出一次。 */
-        synchronized void finish() {
-            if (finished) return;
-            finished = true;
-            callback.accept(List.copyOf(merged));
+        /**
+         * 出列表，只出一次。
+         *
+         * <p>不在锁里调 callback：那是外人的代码（商店那一页），持锁调外部回调就是一个死锁面。
+         * 而且要回客户端主线程 —— 这套加固防的正是<b>不守契约、从后台线程回调</b>的来源，
+         * 它的那次 answer 会一路走到这里，而 callback 里碰的是 GUI 状态。
+         */
+        void finish() {
+            List<AppInfo> out;
+            synchronized (this) {
+                if (finished) return;
+                finished = true;
+                out = List.copyOf(merged);
+            }
+            Minecraft mc = Minecraft.getInstance();
+            if (mc == null || mc.isSameThread()) {
+                callback.accept(out);
+            } else {
+                mc.execute(() -> callback.accept(out));
+            }
         }
 
         /** 作废：不出列表，之后来的回调也不算数。 */
@@ -164,7 +184,8 @@ public final class AppSourceRegistry {
                 batch.answer(id, null);
             }
         }
-        if (batch.done()) pending = null;   // 全是同步来源，已经出过了
+        // 认一下是不是自己那一批：回调里又发起一次 listAllAvailable 的话，pending 已经是新的那个了
+        if (pending == batch && batch.done()) pending = null;   // 全是同步来源，已经出过了
     }
 
     /**

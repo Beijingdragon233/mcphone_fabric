@@ -371,6 +371,31 @@ public final class PhoneScreenRegistry {
         }
     }
 
+    /**
+     * 存档里记着装了哪些 —— 还没读进来的那一份。
+     *
+     * <p>给动态来源做启动恢复用（见 {@code LocalScriptSource.registerAll}）：**只恢复玩家真的装过的那些**。
+     * 把磁盘上全部的包都登记进目录的话，它们就全都成了"目录里未安装的"，于是改由既有的 LocalAppSource
+     * 列出来 —— 玩家会看到同一个 App 重连一次就从「本机脚本」跳到「本机」那一组。
+     *
+     * <p>这里自己读一遍状态文件而不是等 {@link #loadState()}：恢复登记必须发生在它之前。
+     * 读不出来就当没有 —— 那时本来也没什么可恢复的。
+     */
+    public static Set<ResourceLocation> savedInstalledIds() {
+        Path file = STATE_DIR.resolve(currentWorldKey() + ".json");
+        if (!Files.isRegularFile(file)) return Set.of();
+        try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            State s = GSON.fromJson(r, State.class);
+            if (s == null) return Set.of();
+            Set<ResourceLocation> out = new LinkedHashSet<>();
+            parseStoredIds(s.installed, out);
+            return out;
+        } catch (Exception e) {
+            MCphone.LOGGER.warn("[MCphone] 读 {} 失败，启动恢复按「没装过」处理: {}", file, e.toString());
+            return Set.of();
+        }
+    }
+
     /** 把没买过的付费 App 从主屏摘掉，收到服务端购买记录后调用。不摘的话它既用不了也不在商店里，买不回来 */
     public static void enforcePurchases() {
         if (stateFile == null) return;   // 还没进世界，此时的 INSTALLED 不代表任何存档
