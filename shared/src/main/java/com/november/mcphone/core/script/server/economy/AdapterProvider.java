@@ -165,9 +165,15 @@ public final class AdapterProvider implements ICurrencyProvider {
         if (e.settled()) return TxnResult.ALREADY_SETTLED;
         if (!wallet.available()) return TxnResult.UNAVAILABLE;
         UUID target = toBeneficiary ? e.beneficiary() : e.owner();
-        // 先存款、后标结清：反过来的话存款失败时托管已经结清，钱就没了。只在主线程上跑（网关），中间没人插得进来
-        if (!wallet.deposit(target, e.amount())) return TxnResult.FAILED;
-        escrow.settle(id);
-        return TxnResult.OK;
+        // 先标结清、再存款，没存进去（失败或抛异常）就撤回，钱仍押着。
+        // 先存款后结清的话，外部钱包在 deposit 里同步再来结算这一笔时它还没结清 —— 同一笔放两次
+        if (!escrow.settle(id)) return TxnResult.ALREADY_SETTLED;
+        boolean paid = false;
+        try {
+            paid = wallet.deposit(target, e.amount());
+        } finally {
+            if (!paid) escrow.unsettle(id);
+        }
+        return paid ? TxnResult.OK : TxnResult.FAILED;
     }
 }

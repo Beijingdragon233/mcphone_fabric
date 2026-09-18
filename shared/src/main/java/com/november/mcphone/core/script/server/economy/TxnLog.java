@@ -169,11 +169,11 @@ public final class TxnLog {
 
     /** {有没有存档点, 最后一个存档点之后（没有存档点就是整个文件）的成功变动数}；读不出来返回 null。 */
     private static int[] scan(Path p) {
-        try (java.io.Reader r = reader(p)) {
+        try (Lines r = new Lines(p)) {
             boolean found = false;
             int ok = 0;
             String line;
-            while ((line = readLine(r)) != null) {
+            while ((line = r.next()) != null) {
                 if (line.startsWith(CHECKPOINT)) {
                     found = true;
                     ok = 0;
@@ -191,46 +191,72 @@ public final class TxnLog {
 
     /**
      * 流水文件从旧到新。<b>按文件名里的日期与轮转序号排，不看修改时间</b>：复制、迁移世界时修改时间会被改掉，文件名不会。
-     * 认不出日期的名字排在最后。
+     * 名字不是我们写的格式（{@code xxx - 副本.log} 之类）的不算流水，不读：算进来会每次开服都把它报一遍。
+     * 日期是写流水那台机器的时区：换了时区之后新的行可能落进日期更早的文件，那一次开服报的数会错 —— 只影响那一行说明，不动钱。
      */
     private List<Path> filesOldestFirst() throws IOException {
         List<Path> files = new ArrayList<>();
         try (var s = Files.list(dir)) {
             for (Path p : s.toList()) {
-                if (p.getFileName().toString().endsWith(".log")) files.add(p);
+                if (NAME.matcher(p.getFileName().toString()).matches()) files.add(p);
             }
         }
         files.sort(java.util.Comparator.comparing(TxnLog::orderKey));
         return files;
     }
 
-    static String orderKey(Path p) {
-        String n = p.getFileName().toString();
-        java.util.regex.Matcher m = NAME.matcher(n);
-        if (!m.matches()) return "~" + n;
+    private static String orderKey(Path p) {
+        java.util.regex.Matcher m = NAME.matcher(p.getFileName().toString());
+        if (!m.matches()) throw new IllegalArgumentException("不是流水文件名：" + p);   // filesOldestFirst 只收认得的名字
         int idx = m.group(2) == null ? 0 : Integer.parseInt(m.group(2));
         return m.group(1) + "#" + String.format("%06d", idx);
     }
 
-    // InputStreamReader 遇到坏字节换成 U+FFFD 接着读（Files.newBufferedReader 会直接报错）：写到一半断电的文件不至于整个读不出
-    private static java.io.Reader reader(Path p) throws IOException {
-        return new java.io.BufferedReader(new java.io.InputStreamReader(Files.newInputStream(p), StandardCharsets.UTF_8));
-    }
+    /**
+     * 逐行读：一行超过 {@link #MAX_LINE_CHARS} 的部分丢掉，行尾的 {@code \r} 与行首的 BOM 去掉。
+     * 坏字节换成 U+FFFD 接着读（{@code Files.newBufferedReader} 会直接报错）：写到一半断电的文件不至于整个读不出。
+     * 按块读进数组再找换行 —— 逐字符调 {@code Reader.read()} 慢近十倍，开服时在主线程上读几十兆就是好几秒。
+     */
+    private static final class Lines implements java.io.Closeable {
+        private final java.io.Reader in;
+        private final char[] buf = new char[8192];
+        private int pos, len;
 
-    /** 读一行，超过 {@link #MAX_LINE_CHARS} 的部分丢掉；行首的 BOM 去掉。读完了返回 null。 */
-    private static String readLine(java.io.Reader r) throws IOException {
-        StringBuilder b = new StringBuilder();
-        boolean any = false;
-        int c;
-        while ((c = r.read()) != -1) {
-            any = true;
-            if (c == '\n') break;
-            if (c == '\r') continue;
-            if (b.length() < MAX_LINE_CHARS) b.append((char) c);
+        Lines(Path p) throws IOException {
+            in = new java.io.InputStreamReader(Files.newInputStream(p), StandardCharsets.UTF_8);
         }
-        if (!any) return null;
-        if (b.length() > 0 && b.charAt(0) == '\uFEFF') b.deleteCharAt(0);
-        return b.toString();
+
+        /** 读完了返回 null。 */
+        String next() throws IOException {
+            StringBuilder b = new StringBuilder();
+            boolean any = false;
+            while (true) {
+                if (pos == len) {
+                    int n = in.read(buf, 0, buf.length);
+                    if (n < 0) break;
+                    pos = 0;
+                    len = n;
+                    continue;
+                }
+                any = true;
+                int start = pos;
+                while (pos < len && buf[pos] != '\n') pos++;
+                b.append(buf, start, Math.min(pos - start, Math.max(0, MAX_LINE_CHARS - b.length())));
+                if (pos < len) {
+                    pos++;
+                    break;
+                }
+            }
+            if (!any) return null;
+            if (b.length() > 0 && b.charAt(b.length() - 1) == '\r') b.setLength(b.length() - 1);
+            if (b.length() > 0 && b.charAt(0) == '\uFEFF') b.deleteCharAt(0);
+            return b.toString();
+        }
+
+        @Override
+        public void close() throws IOException {
+            in.close();
+        }
     }
 
     private void write(Instant at, String line) {
@@ -320,9 +346,9 @@ public final class TxnLog {
         }
         // 一个文件读不出只跳过它，不把整个合计打断
         for (Path p : files) {
-            try (java.io.Reader r = reader(p)) {
+            try (Lines r = new Lines(p)) {
                 String line;
-                while ((line = readLine(r)) != null) {
+                while ((line = r.next()) != null) {
                     String[] f = line.split("\\|", -1);
                     if (f.length < 10 || !currencyId.equals(f[1])) continue;
                     if (!"OK".equals(f[9])) continue;              // 失败的不算进总量

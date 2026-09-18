@@ -11,6 +11,7 @@ import net.minecraft.world.level.storage.LevelResource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -72,7 +73,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     private Path snapshotFile;
 
     private final LongSupplier clock;
-    /** 上一次保存的时刻（存档里的 savedAt）。读档时钟比它还早，说明是读档这台机器的时钟慢了 */
+    /** 历次保存里最晚的时刻（存档里的 savedAt）。只增不减：时钟慢的机器上保存一次就把它拉回去的话，下次开服照样提前退款 */
     private long savedAt;
 
     private EconomyData(LongSupplier clock, String wholeLock) {
@@ -119,8 +120,11 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         }
         // 两份里有一份在就不是新世界：快照在但读不出也一样，给空账的话第一次保存就把它盖掉了
         if (Files.exists(file) || Files.exists(snapshot)) {
+            Path stale = EconomySnapshot.stalePath(snapshot);
             return locked("存档文件 " + file + (Files.exists(file) ? " 在但没读出来" : " 不在")
-                    + "，原子快照 " + snapshot + (Files.exists(snapshot) ? " 在但没读出来" : " 不在"), clock);
+                    + "，原子快照 " + snapshot + (Files.exists(snapshot) ? " 在但没读出来" : " 不在")
+                    + (Files.exists(stale) ? "；上一份完整快照在 " + stale + "（写快照失败时挪开的，比 SavedData 旧），"
+                    + "确认后改名成 " + snapshot.getFileName() + " 再开服，就回到那一次保存" : ""), clock);
         }
         return empty(clock);
     }
@@ -276,7 +280,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     protected CompoundTag write(CompoundTag tag) {
         tag.putInt("dataVersion", DATA_VERSION);
         tag.putLong("generation", ++generation);
-        savedAt = clock.getAsLong();
+        savedAt = Math.max(savedAt, clock.getAsLong());
         tag.putLong("savedAt", savedAt);
 
         CompoundTag currencies = new CompoundTag();
@@ -312,23 +316,34 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         });
         for (Tag raw : lockedEscrow) list.add(raw.copy());
         tag.put("escrow", list);
-        // 同一个 tag 先原子写快照，再交给 MC 写 SavedData。写失败不抛：SavedData 那份照写，它的代数更新，下次开服会选它
-        if (snapshotFile != null) {
-            try {
-                EconomySnapshot.write(snapshotFile, tag);
-            } catch (java.io.IOException e) {
-                // 旧快照删掉：留着它，之后 SavedData 再被写坏时开服会拿它当"完整的那份"，静默回滚好几次保存
-                MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；旧快照删掉，免得被当成新的",
-                        e.toString());
-                try {
-                    Files.deleteIfExists(snapshotFile);
-                } catch (java.io.IOException gone) {
-                    MCphone.LOGGER.error("[MCphone] 旧快照 {} 也删不掉（{}）：SavedData 再坏的话开服可能回滚到它", snapshotFile, gone.toString());
-                }
-            }
-        }
+        if (snapshotFile != null) writeSnapshot(tag);
         onSave.run();
         return tag;
+    }
+
+    /**
+     * 同一个 tag 先原子写快照，再交给 MC 写 SavedData。写失败不抛：SavedData 那份照写，它的代数更新，下次开服会选它。
+     * 失败时上一份快照挪成 {@code .stale}：留在原处，SavedData 之后再被写坏时开服会拿它当"完整的那份"静默回滚；
+     * 删掉，Forge 1.20.1 / Fabric 这一次就地写 SavedData 被杀的话就一份完整副本都不剩了。
+     */
+    private void writeSnapshot(CompoundTag tag) {
+        Path stale = EconomySnapshot.stalePath(snapshotFile);
+        try {
+            EconomySnapshot.write(snapshotFile, tag);
+        } catch (java.io.IOException e) {
+            MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；上一份快照挪到 {}", e.toString(), stale);
+            try {
+                if (Files.exists(snapshotFile)) Files.move(snapshotFile, stale, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.io.IOException moved) {
+                MCphone.LOGGER.error("[MCphone] 上一份快照 {} 挪不开（{}）：SavedData 再坏的话开服会回滚到它", snapshotFile, moved.toString());
+            }
+            return;
+        }
+        try {
+            Files.deleteIfExists(stale);
+        } catch (java.io.IOException e) {
+            MCphone.LOGGER.warn("[MCphone] 过时的快照 {} 删不掉（{}）", stale, e.toString());
+        }
     }
 
     /** 给测试用：不经过 MC 的存档机制，拿到这一份写出去会是什么样。 */
@@ -384,7 +399,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             }
             Map<UUID, EscrowLedger.Entry> ok = new LinkedHashMap<>();
             List<CompoundTag> pending = new ArrayList<>();
-            // 重新计时的基准：读档时刻与上次保存时刻里晚的那个 —— 读档时钟慢了（主板电池没电、世界搬到时钟偏后的机器上）
+            // 重新计时的基准：读档时刻与历次保存最晚时刻里晚的那个 —— 读档时钟慢了（主板电池没电、世界搬到时钟偏后的机器上）
             // 也不会把托管的建立时刻往前挪，往前挪就是提前退款
             long base = Math.max(clock.getAsLong(), d.savedAt);
             Map<UUID, Long> fixed = new LinkedHashMap<>();
@@ -469,9 +484,9 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         boolean settled = e.getBoolean("settled");
         // 超时判断是 now - createdAt ≥ 超时：建立时刻远在将来（建托管时服务器时钟快了）或不是正数（负得离谱会溢出），
         // 这笔就永远不会被退款。没结清的改成基准时刻、从那时起再等满一个超时周期；不锁 —— 为一笔时间戳停掉整种货币代价太大。
-        // 晚于基准一个超时周期以内的原样收：时钟差一点不算错。基准不早于上次保存，所以只会往后挪、不会提前退款。
-        // 已结清的不会再到期，不管它
-        if (!settled && (createdAt <= 0 || createdAt > base + EscrowLedger.DEFAULT_TIMEOUT_MS)) {
+        // 晚于基准一个超时周期以内的原样收：时钟差一点不算错。基准不早于历次保存，所以只会往后挪、不会提前退款。
+        // 已结清的不会再到期，不管它。比较写成减法：基准接近 long 上限时 base + 超时会溢出成负数
+        if (!settled && (createdAt <= 0 || createdAt - EscrowLedger.DEFAULT_TIMEOUT_MS > base)) {
             fixed.put(id, createdAt);
             createdAt = base;
         }

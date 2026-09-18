@@ -68,7 +68,7 @@ public final class EconomyRuntime {
         CurrencyGateway gateway = new CurrencyGateway(server::execute,
                 () -> Thread.currentThread() == server.getRunningThread());
         EconomyRuntime r = new EconomyRuntime(data, log, gateway, currencyId -> null, System.nanoTime() / 1_000_000);
-        r.report(sweepEscrow(data.escrow(), r.providers));
+        r.sweepNow();
         gateway.open();
         current = r;
     }
@@ -86,10 +86,17 @@ public final class EconomyRuntime {
     void sweepIfDue(long nowMonotonicMs) {
         if (nowMonotonicMs < nextSweepAt) return;
         nextSweepAt = nowMonotonicMs + SWEEP_INTERVAL_MS;
+        sweepNow();
+    }
+
+    /**
+     * 扫一趟，什么都不往外抛：开服时抛出去服务器就起不来；tick 里抛出去会穿过事件总线把服务器弄崩，
+     * Fabric 上还会连带跳过同一个 tick 里的别的活。provider 抛的在 {@link #sweepEscrow} 里逐笔接住，这里接的是剩下的。
+     */
+    void sweepNow() {
         try {
             report(sweepEscrow(data.escrow(), providers));
         } catch (RuntimeException e) {
-            // provider 抛出来的不许穿过事件总线：那会把服务器弄崩，Fabric 上还会连带跳过同一个 tick 里的别的活
             MCphone.LOGGER.error("[MCphone] 扫超时托管时出错，下次再扫", e);
         }
     }
@@ -101,9 +108,14 @@ public final class EconomyRuntime {
         }
         lastOrphaned = s.orphaned();
         if (s.refunded() > 0) MCphone.LOGGER.info("[MCphone] 超时托管：退了 {} 笔", s.refunded());
-        // 被拒的每 5 分钟会再试一次、再被拒一次：同一个数只说一次
+        // 被拒的每 5 分钟会再试一次、再被拒一次：同一个数只说一次，堆栈也只在这时候打
         if (s.failed() != lastFailed && s.failed() > 0) {
-            MCphone.LOGGER.warn("[MCphone] 超时托管：{} 笔退款被拒（那种货币现在用不了），下次再试", s.failed());
+            if (s.error() == null) {
+                MCphone.LOGGER.warn("[MCphone] 超时托管：{} 笔退款被拒（那种货币现在用不了），下次再试", s.failed());
+            } else {
+                MCphone.LOGGER.error("[MCphone] 超时托管：{} 笔退款没成（有 provider 抛了异常，下面是第一个），下次再试",
+                        s.failed(), s.error());
+            }
         }
         lastFailed = s.failed();
     }
@@ -134,11 +146,12 @@ public final class EconomyRuntime {
 
     /**
      * @param refunded 退成了几笔
-     * @param failed   provider 拒了几笔（比如那种货币的存档锁住了）—— 还在托管里，下次开服再试
+     * @param failed   provider 拒了或抛了几笔（比如那种货币的存档锁住了）—— 还在托管里，下次再试
      * @param orphaned 找不到 provider 的几笔 —— 没动
      * @param pruned   清掉了几条很久以前已结清的
+     * @param error    第一笔抛出来的异常；没有是 null
      */
-    public record Sweep(int refunded, int failed, int orphaned, int pruned) {
+    public record Sweep(int refunded, int failed, int orphaned, int pruned, RuntimeException error) {
     }
 
     /**
@@ -149,16 +162,23 @@ public final class EconomyRuntime {
      */
     public static Sweep sweepEscrow(EscrowLedger escrow, Function<String, ICurrencyProvider> providers) {
         int refunded = 0, failed = 0, orphaned = 0;
+        RuntimeException error = null;
         for (Map.Entry<EscrowId, EscrowLedger.Entry> e : escrow.expired()) {
-            ICurrencyProvider p = providers.apply(e.getValue().currencyId());
-            if (p == null) {
-                orphaned++;
-                continue;
+            // 逐笔接住：一种货币的 provider 抛了，别的货币照样退、已结清的照样清
+            try {
+                ICurrencyProvider p = providers.apply(e.getValue().currencyId());
+                if (p == null) {
+                    orphaned++;
+                    continue;
+                }
+                TxnResult r = p.refund(e.getKey(), new TxnReason(TIMEOUT_REFUND_KIND, e.getKey().value().toString()));
+                if (r == TxnResult.OK) refunded++;
+                else failed++;
+            } catch (RuntimeException ex) {
+                failed++;
+                if (error == null) error = ex;
             }
-            TxnResult r = p.refund(e.getKey(), new TxnReason(TIMEOUT_REFUND_KIND, e.getKey().value().toString()));
-            if (r == TxnResult.OK) refunded++;
-            else failed++;
         }
-        return new Sweep(refunded, failed, orphaned, escrow.pruneSettled());
+        return new Sweep(refunded, failed, orphaned, escrow.pruneSettled(), error);
     }
 }

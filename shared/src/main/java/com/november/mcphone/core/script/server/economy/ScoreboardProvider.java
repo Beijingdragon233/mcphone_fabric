@@ -247,6 +247,9 @@ public final class ScoreboardProvider implements ICurrencyProvider {
     @Override
     public long balance(UUID player) {
         if (player == null) throw new IllegalArgumentException("player 不能为 null");
+        // 存档锁住时计分板上的分虽然读得到，这一档照样整个不可用（isAvailable() 是 false）
+        String locked = escrow.unavailableReasonKey(id());
+        if (locked != null) throw new CurrencyUnavailableException(locked);
         MinecraftServer s = ready();
         if (s == null) throw new CurrencyUnavailableException(unavailableReasonKey());
         String holder = Scores.nameOf(s, player);

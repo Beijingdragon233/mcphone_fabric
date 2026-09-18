@@ -71,22 +71,35 @@ final class EconomySnapshot {
         }
     }
 
+    /**
+     * 写快照失败时，上一份完整快照挪到这里（{@link EconomyData}）。开服不自动用它 —— 它比 SavedData 旧；
+     * 两份都读不出、整份锁住时在日志里点名它，由服主决定要不要回到那一次保存。
+     */
+    static Path stalePath(Path file) {
+        return file.resolveSibling(file.getFileName() + ".stale");
+    }
+
     /** 解压后最多多大。正常一份远小于这个数；再大就是坏了，不许为它把堆吃光。 */
     private static final int MAX_BYTES = 256 * 1024 * 1024;
 
-    /** 读不出来（没有、截断、CRC 不对、不是 NBT、长度字段坏成巨大值）一律抛 IOException。 */
+    /** 读不出来（没有、截断、CRC 不对、不是 NBT、长度字段坏成巨大值、解压后超大）一律抛 IOException。 */
     static CompoundTag read(Path file) throws IOException {
-        byte[] data;
-        try (InputStream raw = Files.newInputStream(file);
-             GZIPInputStream gz = new GZIPInputStream(new BufferedInputStream(raw))) {
-            // 先整份读完：读到流尾 gzip 才核 CRC —— 先核再解析，坏数据进不了解析器
-            data = gz.readNBytes(MAX_BYTES + 1);
-            if (data.length > MAX_BYTES) throw new IOException("快照解压后超过 " + MAX_BYTES + " 字节");
-        }
+        return read(file, MAX_BYTES);
+    }
+
+    static CompoundTag read(Path file, int maxBytes) throws IOException {
         try {
+            byte[] data;
+            try (InputStream raw = Files.newInputStream(file);
+                 GZIPInputStream gz = new GZIPInputStream(new BufferedInputStream(raw))) {
+                // 先整份读完：读到流尾 gzip 才核 CRC —— 先核再解析，坏数据进不了解析器
+                data = gz.readNBytes(maxBytes + 1);
+                if (data.length > maxBytes) throw new IOException("快照解压后超过 " + maxBytes + " 字节");
+            }
             return NbtIo.read(new DataInputStream(new java.io.ByteArrayInputStream(data)));
         } catch (RuntimeException | OutOfMemoryError e) {
-            // 长度字段坏成巨大值时原版解析器会直接按它开数组：接住，当成读不出，回退 SavedData 那份
+            // 解压到上限要临时占两倍的堆；长度字段坏成巨大值时原版解析器会直接按它开数组。
+            // 都接住、当成读不出，回退 SavedData 那份 —— 抛到开服那一层就是起不来
             throw new IOException("快照读不出来：" + e, e);
         }
     }

@@ -230,7 +230,7 @@ public class EconomyDataTest {
         Path broken = tmp("broken");
         TxnLog bl = new TxnLog(broken, ZoneOffset.UTC);
         bl.append(Instant.EPOCH, COIN, TxnLog.Kind.MINT, null, UUID.randomUUID(), 5, "-", RSN, TxnResult.OK);
-        Files.createDirectories(broken.resolve("ledger").resolve("zzz.log"));
+        Files.createDirectories(broken.resolve("ledger").resolve("2099-01-01.log"));
         long before = Files.size(broken.resolve("ledger").resolve(logName(0)));
         eq(bl.noteRestart(Instant.EPOCH), -1, "读不出来返回 -1");
         eq(Files.size(broken.resolve("ledger").resolve(logName(0))), before, "读不出来时不补存档点");
@@ -308,6 +308,59 @@ public class EconomyDataTest {
         Files.createDirectories(ll);
         Files.writeString(ll.resolve("2026-09-20.log"), TxnLog.CHECKPOINT + "x\n" + okLine("2026-09-20") + "\n" + "Z".repeat(1_000_000));
         eq(new TxnLog(longLine, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "超长的一行按截断读，不影响计数");
+
+        // 轮转到两位数：.10.log 排在 .2.log 之后（按数排，不按字典序）
+        Path rot10 = tmp("rot10");
+        Path r10 = rot10.resolve("ledger");
+        Files.createDirectories(r10);
+        Files.writeString(r10.resolve("2026-09-06.2.log"), TxnLog.CHECKPOINT + "x\n");
+        Files.writeString(r10.resolve("2026-09-06.10.log"), okLine("2026-09-06") + "\n" + okLine("2026-09-06") + "\n");
+        eq(new TxnLog(rot10, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 2, "第 10 个轮转文件排在第 2 个之后");
+
+        // 名字不是我们写的格式（复制出来的副本之类）：不算流水 —— 算进来每次开服都会把它报一遍，对账也会算两遍
+        Path copy = tmp("copy");
+        Path cl = copy.resolve("ledger");
+        Files.createDirectories(cl);
+        Files.writeString(cl.resolve("2026-09-17.log"), okLine("2026-09-17") + "\n" + TxnLog.CHECKPOINT + "x\n");
+        Files.writeString(cl.resolve("2026-09-17 - Copy.log"), okLine("2026-09-17") + "\n" + okLine("2026-09-17") + "\n");
+        eq(new TxnLog(copy, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 0, "副本不算：存档点之后没有变动");
+        eq(new TxnLog(copy, ZoneOffset.UTC).sumMintAndBurn(COIN)[0], 5L, "对账的合计也不算副本");
+
+        // 往回最多找 MAX_SCAN_FILES 个文件：存档点在那之外就是老流水、判断不了，不报
+        Path deep = tmp("deep");
+        Path dl = deep.resolve("ledger");
+        Files.createDirectories(dl);
+        Files.writeString(dl.resolve("2026-01-01.log"), TxnLog.CHECKPOINT + "x\n");
+        for (int i = 1; i <= TxnLog.MAX_SCAN_FILES; i++) {
+            Files.writeString(dl.resolve("2026-02-01." + i + ".log"), okLine("2026-02-01") + "\n");
+        }
+        eq(new TxnLog(deep, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 0, "存档点在第 MAX_SCAN_FILES+1 个文件：不去找，不报");
+
+        // 一行最多读 MAX_LINE_CHARS 个字符：超出的截掉，那一行的结果格被截没了就不算；下一行照常
+        Path wide = tmp("wide");
+        Path wl = wide.resolve("ledger");
+        Files.createDirectories(wl);
+        Files.writeString(wl.resolve("2026-09-21.log"), TxnLog.CHECKPOINT + "x\n2026-09-21T00:00:00Z|" + COIN
+                + "|mint|-|-|5|-|test|" + "r".repeat(9000) + "|OK\n" + okLine("2026-09-21") + "\n");
+        eq(new TxnLog(wide, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "超长的行截断后结果格没了：不算；下一行照常");
+
+        // 被记事本另存成 CRLF：行尾的 \r 去掉，照样数得对
+        Path crlf = tmp("crlf");
+        Path crl = crlf.resolve("ledger");
+        Files.createDirectories(crl);
+        Files.writeString(crl.resolve("2026-09-22.log"),
+                TxnLog.CHECKPOINT + "x\r\n" + okLine("2026-09-22") + "\r\n" + okLine("2026-09-22") + "\r\n");
+        eq(new TxnLog(crlf, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 2, "CRLF：照样数得对");
+
+        // 一个文件好几块（按块读，行跨块边界）：一行不多一行不少
+        Path many = tmp("many");
+        Path ml = many.resolve("ledger");
+        Files.createDirectories(ml);
+        StringBuilder sb = new StringBuilder(okLine("2026-09-23")).append('\n').append(TxnLog.CHECKPOINT).append("x\n");
+        for (int i = 0; i < 1000; i++) sb.append(okLine("2026-09-23")).append('\n');
+        sb.append(okLine("2026-09-23"));                                 // 最后一行没有换行（断电的尾巴）
+        Files.writeString(ml.resolve("2026-09-23.log"), sb.toString());
+        eq(new TxnLog(many, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1001, "跨了十几块：存档点之后 1001 笔一笔不差");
     }
 
     /** 对账的旧读法（流水现算）：一个文件里有坏字节，只跳过那一行，不把整个合计打断。 */
@@ -341,15 +394,20 @@ public class EconomyDataTest {
         eq(p.transfer(UUID.randomUUID(), UUID.randomUUID(), 5, RSN), TxnResult.UNAVAILABLE, "锁住时转账 UNAVAILABLE");
         check(!touched.get(), "锁住时根本不去碰计分板 —— 判锁在找服务器之前");
         eq(p.transfer(UUID.randomUUID(), UUID.randomUUID(), 0, RSN), TxnResult.INVALID, "参数错仍然先报 INVALID");
+        touched.set(false);
         check(!p.isAvailable(), "锁住时 isAvailable 是 false");
+        check(!touched.get(), "isAvailable 判锁在找服务器之前");
+        eq(refusal(() -> p.balance(UUID.randomUUID())), EconomyData.KEY_LOCKED, "锁住时 balance 抛，原因是存档锁住");
+        check(!touched.get(), "balance 判锁在找服务器之前：计分板上的分读得到也不给");
         eq(p.unavailableReasonKey(), EconomyData.KEY_LOCKED, "原因是存档锁住");
     }
 
-    /** adapter 档放款：存款失败时托管不结清，钱还押着，钱包好了再放一次就成。 */
-    static void adapterDepositBeforeSettle() {
+    /** adapter 档放款：存款失败或抛异常时撤回结清、钱还押着；deposit 里重入不会放两次。 */
+    static void adapterSettleOnce() {
         EconomyData d = EconomyData.empty(() -> 1);
         Map<UUID, Long> wallet = new HashMap<>();
         AtomicBoolean depositOk = new AtomicBoolean(true);
+        AtomicReference<Runnable> onDeposit = new AtomicReference<>(() -> { });
         UUID a = UUID.randomUUID(), b = UUID.randomUUID();
         wallet.put(a, 100L);
         AdapterProvider p = new AdapterProvider(currency(COIN), new AdapterProvider.ExternalWallet() {
@@ -362,6 +420,7 @@ public class EconomyDataTest {
             }
 
             public boolean deposit(UUID x, long n) {
+                onDeposit.get().run();
                 if (!depositOk.get()) return false;
                 wallet.merge(x, n, Long::sum);
                 return true;
@@ -380,6 +439,33 @@ public class EconomyDataTest {
         eq(p.release(h.id(), RSN), TxnResult.OK, "钱包好了再放一次就成");
         eq(wallet.get(b), 40L, "受益人收到");
         eq(p.release(h.id(), RSN), TxnResult.ALREADY_SETTLED, "不会再放第二次");
+
+        // 外部钱包在 deposit 里同步再来放这一笔：它看到的已经是结清了
+        HoldResult h2 = p.hold(a, b, 40, RSN);
+        AtomicReference<TxnResult> inner = new AtomicReference<>();
+        onDeposit.set(() -> {
+            onDeposit.set(() -> { });
+            inner.set(p.release(h2.id(), RSN));
+        });
+        eq(p.release(h2.id(), RSN), TxnResult.OK, "外层放款成");
+        eq(inner.get(), TxnResult.ALREADY_SETTLED, "deposit 里重入：ALREADY_SETTLED");
+        eq(wallet.get(b), 80L, "受益人一共收到两笔各 40，没有多出一笔");
+
+        // deposit 抛异常：撤回结清，钱仍押着
+        HoldResult h3 = p.hold(a, b, 5, RSN);
+        onDeposit.set(() -> {
+            throw new IllegalStateException("钱包炸了");
+        });
+        boolean threw = false;
+        try {
+            p.release(h3.id(), RSN);
+        } catch (IllegalStateException e) {
+            threw = true;
+        }
+        check(threw, "对照：异常照样抛给调用方");
+        eq(d.escrow().get(h3.id()).settled(), false, "deposit 抛异常：撤回结清，钱仍押着");
+        onDeposit.set(() -> { });
+        eq(p.refund(h3.id(), RSN), TxnResult.OK, "钱包好了照样能退");
     }
 
     /** 代码里用到的原因键，两份语言文件都得有：缺了玩家看到的是一串键名。 */
@@ -486,6 +572,24 @@ public class EconomyDataTest {
         escrowOf(slowFar).putLong("createdAt", Long.MAX_VALUE);
         eq(EconomyData.load(slowFar, () -> 30_000L).escrow().snapshot().values().iterator().next().createdAt(), savedAt,
                 "读档时钟慢、建立时刻又远在将来：按上次保存时刻重新计时，不按那个慢的读档时刻");
+
+        // 慢时钟的机器上连着开两次服、中间存过档：savedAt 只增不减，第二次开服照样不改写正常的托管
+        CompoundTag twice = goodTag(UUID.randomUUID());
+        twice.putLong("savedAt", savedAt);
+        escrowOf(twice).putLong("createdAt", savedAt - 3_600_000L);
+        CompoundTag savedSlow = EconomyData.load(twice, () -> 30_000L).toTag();
+        eq(savedSlow.getLong("savedAt"), savedAt, "慢时钟上保存：savedAt 不往回拉");
+        eq(EconomyData.load(savedSlow, () -> 30_000L).escrow().snapshot().values().iterator().next().createdAt(),
+                savedAt - 3_600_000L, "第二次开服时钟仍慢：正常的托管还是不改写（改成慢时钟的现在就是提前退款）");
+        eq(EconomyData.load(savedSlow, () -> savedAt + 5).toTag().getLong("savedAt"), savedAt + 5, "时钟正常时 savedAt 跟着走");
+
+        // savedAt 接近 long 上限：基准加一个超时周期不许溢出成负数、把正常的托管改成永远不到期
+        CompoundTag huge = goodTag(UUID.randomUUID());
+        huge.putLong("savedAt", Long.MAX_VALUE);
+        escrowOf(huge).putLong("createdAt", now - 3_600_000L);
+        EconomyData hd = EconomyData.load(huge, () -> now);
+        eq(hd.escrow().snapshot().values().iterator().next().createdAt(), now - 3_600_000L, "savedAt 是 long 上限：正常的托管不改写");
+        check(!hd.isDirty(), "savedAt 是 long 上限：不标脏");
 
         // 那种货币本来就锁住了：改了也不落盘，不标脏（不然每次开服白白重写一遍存档）
         CompoundTag lockedOne = goodTag(UUID.randomUUID());
@@ -649,27 +753,77 @@ public class EconomyDataTest {
     }
 
     /**
-     * 快照写失败：旧快照删掉。留着它，之后 SavedData 再被写坏时开服会拿它当"完整的那份"，静默回滚好几次保存。
+     * 快照写失败：上一份快照挪成 .stale。留在原处，SavedData 之后再被写坏时开服会拿它静默回滚；
+     * 删掉，这一次就地写 SavedData 被杀就一份完整副本都不剩。锁住时点名它，改名回去就回到那一次保存。
      */
-    static void snapshotFailureDropsStale() throws Exception {
+    static void snapshotFailureKeepsStale() throws Exception {
         Path dir = tmp("stale");
         Path snap = dir.resolve("economy.dat");
+        Path stale = EconomySnapshot.stalePath(snap);
         AtomicLong t = new AtomicLong(1);
         EconomyData d = EconomyData.empty(t::get);
         d.snapshotTo(snap);
         UUID p = UUID.randomUUID();
         BuiltinProvider coin = builtin(COIN, d, null, t);
         coin.mint(p, 100, RSN);
-        d.toTag();                                                     // 快照写成功
+        CompoundTag saveA = d.toTag();                                 // 快照写成功
         check(Files.exists(snap), "对照：快照在");
         Files.createDirectories(dir.resolve("economy.dat.tmp"));      // 临时文件的位置被占了：之后写快照一律失败
         coin.mint(p, 900, RSN);
-        d.toTag();
-        check(!Files.exists(snap), "写快照失败：旧快照删掉了");
+        CompoundTag saveB = d.toTag();
+        check(!Files.exists(snap), "写快照失败：上一份不留在原处（留着会被当成完整的那份）");
+        eq(EconomySnapshot.read(stale), saveA, "上一份完整快照挪到了 .stale，内容没动");
+
+        eq(EconomyData.loadPreferring(saveB, snap, t::get).get(p, COIN), 1000L, "这次 SavedData 写完了：用它，不理 .stale");
+
         Path mcFile = dir.resolve("mcphone_economy.dat");
-        Files.write(mcFile, new byte[]{0x1f, (byte) 0x8b, 8});        // 之后 SavedData 又被写坏
-        check(EconomyData.createFor(mcFile, snap, t::get).wholeLock() != null,
-                "两份都没有可用的：整份锁住、大声报，不静默回滚到旧快照的 100");
+        Files.write(mcFile, new byte[]{0x1f, (byte) 0x8b, 8});        // 这次 SavedData 就地写到一半被杀
+        EconomyData locked = EconomyData.createFor(mcFile, snap, t::get);
+        check(locked.wholeLock() != null && locked.wholeLock().contains(stale.toString()),
+                "两份都读不出：整份锁住、不静默回滚，原因里点名 .stale —— " + locked.wholeLock());
+        Files.move(stale, snap);                                        // 服主确认后改名回去
+        eq(EconomyData.createFor(mcFile, snap, t::get).get(p, COIN), 100L, "改名回去：回到保存 A 的 100");
+
+        EconomyData d2 = EconomyData.load(saveB, t::get);
+        d2.snapshotTo(snap);
+        d2.toTag();                                                     // 临时文件的位置还占着：又失败一次
+        check(Files.exists(stale) && !Files.exists(snap), "又失败一次：挪开");
+        Files.delete(dir.resolve("economy.dat.tmp"));
+        d2.toTag();
+        check(Files.exists(snap) && !Files.exists(stale), "写成功之后 .stale 清掉：锁住时不会点名一份过时的");
+    }
+
+    /** 解压后超过上限：读不出（IOException），不为它把堆吃光。上限本身那么大的读得出。 */
+    static void snapshotSizeCap() throws Exception {
+        Path snap = tmp("cap").resolve("economy.dat");
+        CompoundTag tag = goodTag(UUID.randomUUID());
+        EconomySnapshot.write(snap, tag);
+        int n;
+        try (var gz = new java.util.zip.GZIPInputStream(Files.newInputStream(snap))) {
+            n = gz.readAllBytes().length;
+        }
+        eq(EconomySnapshot.read(snap, n), tag, "解压后正好是上限：读得出");
+        boolean threw = false;
+        try {
+            EconomySnapshot.read(snap, n - 1);
+        } catch (java.io.IOException e) {
+            threw = true;
+        }
+        check(threw, "解压后超过上限一个字节：读不出");
+
+        // 前面是一份完整的 NBT、后面拖着一截：超过上限照样读不出，不许只读到上限、解析出前面那份就算数（那样 CRC 也没核）
+        Path tail = tmp("captail").resolve("economy.dat");
+        EconomySnapshot.write(tail, out -> {
+            net.minecraft.nbt.NbtIo.write(tag, out);
+            out.write(new byte[64]);
+        });
+        threw = false;
+        try {
+            EconomySnapshot.read(tail, n + 1);
+        } catch (java.io.IOException e) {
+            threw = true;
+        }
+        check(threw, "完整的 NBT 后面拖着一截、总长超过上限：读不出");
     }
 
     /** 快照里的长度字段坏成巨大值：当成读不出，回退 SavedData —— 不许抛 OutOfMemoryError 把开服卡死。 */
@@ -690,28 +844,51 @@ public class EconomyDataTest {
         eq(EconomyData.loadPreferring(goodTag(a), snap, () -> 1).get(a, COIN), 500L, "回退 SavedData 那份");
     }
 
-    /** 周期扫描里 provider 抛异常：接住，不许穿过事件总线把服务器弄崩。 */
+    /**
+     * 扫描里 provider 抛异常：逐笔接住 —— 别的货币照样退、已结清的照样清；剩下的（账本自己抛）在 sweepNow 接住，
+     * 开服与 tick 都走它，什么都不穿出去。
+     */
     static void periodicSweepSurvivesThrow() {
         AtomicLong t = new AtomicLong(1_700_000_000_000L);
-        EconomyData d = EconomyData.empty(t::get);
+        AtomicBoolean clockBroken = new AtomicBoolean();
+        EconomyData d = EconomyData.empty(() -> {
+            if (clockBroken.get()) throw new IllegalStateException("时钟坏了");
+            return t.get();
+        });
         BuiltinProvider coin = builtin(COIN, d, null, t);
+        BuiltinProvider gem = builtin(GEM, d, null, t);
         UUID a = UUID.randomUUID();
         coin.mint(a, 100, RSN);
-        coin.hold(a, UUID.randomUUID(), 30, RSN);
-        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);
+        gem.mint(a, 100, RSN);
+        for (int i = 0; i < 3; i++) {
+            coin.hold(a, UUID.randomUUID(), 10, RSN);
+            gem.hold(a, UUID.randomUUID(), 10, RSN);
+        }
+        gem.release(gem.hold(a, UUID.randomUUID(), 1, RSN).id(), RSN);   // 一笔已结清的，过了保留期该清掉
+        t.addAndGet(EscrowLedger.SETTLED_KEEP_MS + 1);
         ICurrencyProvider boom = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
                 EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
                 (proxy, m, args) -> {
                     throw new IllegalStateException("provider 坏了");
                 });
-        EconomyRuntime r = new EconomyRuntime(d, null, null, id -> boom, 0);
+        EconomyRuntime.Sweep s = EconomyRuntime.sweepEscrow(d.escrow(), id -> id.equals(COIN) ? boom : gem);
+        eq(s.refunded(), 3, "gem 的 3 笔照样退了，不管 coin 的排在前面还是后面");
+        eq(s.failed(), 3, "coin 的 3 笔算没退成");
+        check(s.error() instanceof IllegalStateException, "第一个异常带回来打日志");
+        eq(s.pruned(), 1, "已结清的照样清");
+        eq(d.get(a, GEM), 99L, "gem 退回来了");
+        eq(d.escrow().held(COIN), 30L, "coin 还押着，下次再试");
+
+        EconomyRuntime r = new EconomyRuntime(d, null, null, id -> gem, 0);
+        clockBroken.set(true);
         boolean threw = false;
         try {
             r.sweepIfDue(EconomyRuntime.SWEEP_INTERVAL_MS);
+            r.sweepNow();
         } catch (RuntimeException e) {
             threw = true;
         }
-        check(!threw, "provider 抛的异常没有穿出 sweepIfDue");
+        check(!threw, "账本自己抛的也没有穿出 sweepIfDue / sweepNow");
     }
 
     /** 超时托管每 5 分钟扫一次：没到点不扫；到点就退；再扫不会重复退（幂等）。 */
@@ -1492,7 +1669,8 @@ public class EconomyDataTest {
         snapshotPreference();
         snapshotSameSerialization();
         periodicSweep();
-        snapshotFailureDropsStale();
+        snapshotFailureKeepsStale();
+        snapshotSizeCap();
         snapshotHugeLengthNoOom();
         periodicSweepSurvivesThrow();
         badCreatedAtReset();
@@ -1511,7 +1689,7 @@ public class EconomyDataTest {
         adapterRespectsLock();
         unavailableBalanceThrows();
         scoreboardHonorsLock();
-        adapterDepositBeforeSettle();
+        adapterSettleOnce();
         reasonKeysTranslated();
         gatewayInlineAndReentrant();
         gatewayTimeoutNeverRunsLater();

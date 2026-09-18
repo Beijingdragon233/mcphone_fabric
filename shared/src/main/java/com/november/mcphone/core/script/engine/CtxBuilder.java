@@ -242,7 +242,7 @@ public final class CtxBuilder {
 
             // balance 只能读自己（§22.5）。读别人是 currency.read.other，granted 档，本步不给
             HostFn.put(cur, scope, "balance", 1, (c, s, a) -> {
-                ICurrencyProvider prov = requireOrError(reg, HostFn.str(a, 0, "currency.balance"));
+                ICurrencyProvider prov = requireOrError(reg, strOrNull(a, 0, "currency.balance"));
                 try {
                     return Amounts.toScript(prov.balance(player.uuid()));
                 } catch (com.november.mcphone.core.script.server.economy.CurrencyUnavailableException e) {
@@ -255,7 +255,7 @@ public final class CtxBuilder {
 
             // format 必须用宿主（§22.5）：自己拼小数点，负数与不足位就各错各的
             HostFn.put(cur, scope, "format", 2, (c, s, a) -> {
-                ICurrencyProvider prov = requireOrError(reg, HostFn.str(a, 0, "currency.format"));
+                ICurrencyProvider prov = requireOrError(reg, strOrNull(a, 0, "currency.format"));
                 // 金额缺了（常见是 parse 给的 null）或超出 long：和 pay 一样算"数不对"，抛接得住的 Error，不中断
                 Long v = amountOrNull(a, 1, "currency.format");
                 if (v == null) throw org.mozilla.javascript.ScriptRuntime.constructError("Error", "INVALID: " + INVALID_AMOUNT);
@@ -264,10 +264,10 @@ public final class CtxBuilder {
 
             // parse 收字符串，回 BigInt
             HostFn.put(cur, scope, "parse", 2, (c, s, a) -> {
-                ICurrencyProvider prov = requireOrError(reg, HostFn.str(a, 0, "currency.parse"));
+                ICurrencyProvider prov = requireOrError(reg, strOrNull(a, 0, "currency.parse"));
                 try {
-                    return Amounts.toScript(Balances.parse(HostFn.str(a, 1, "currency.parse"),
-                            prov.currency().decimals()));
+                    // 没给文本（null）Balances.parse 同样抛 NumberFormatException
+                    return Amounts.toScript(Balances.parse(strOrNull(a, 1, "currency.parse"), prov.currency().decimals()));
                 } catch (NumberFormatException e) {
                     // 解析的多半是玩家输入：解析不了给 null，App 该 ctx.fail('INVALID')
                     return null;
@@ -276,9 +276,9 @@ public final class CtxBuilder {
 
             // pay 的 from 恒为调用者（§22.6：这样它才是 plain 档）
             HostFn.put(cur, scope, "pay", 4, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(HostFn.str(a, 0, "currency.pay"));
+                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.pay"));
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
-                java.util.UUID to = uuidOrNull(HostFn.str(a, 1, "currency.pay"));
+                java.util.UUID to = uuidOrNull(strOrNull(a, 1, "currency.pay"));
                 Long amt = amountOrNull(a, 2, "currency.pay");
                 TxnReason why = reasonOrNull(a, 3, "pay");
                 if (to == null || amt == null || why == null) return TxnResult.INVALID.name();
@@ -286,9 +286,9 @@ public final class CtxBuilder {
             });
 
             HostFn.put(cur, scope, "hold", 4, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(HostFn.str(a, 0, "currency.hold"));
+                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.hold"));
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
-                java.util.UUID to = uuidOrNull(HostFn.str(a, 1, "currency.hold"));
+                java.util.UUID to = uuidOrNull(strOrNull(a, 1, "currency.hold"));
                 Long amt = amountOrNull(a, 2, "currency.hold");
                 TxnReason why = reasonOrNull(a, 3, "hold");
                 if (to == null || amt == null || why == null) return TxnResult.INVALID.name();
@@ -297,9 +297,9 @@ public final class CtxBuilder {
             });
 
             HostFn.put(cur, scope, "release", 3, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(HostFn.str(a, 0, "currency.release"));
+                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.release"));
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
-                java.util.UUID id = uuidOrNull(HostFn.str(a, 1, "currency.release"));
+                java.util.UUID id = uuidOrNull(strOrNull(a, 1, "currency.release"));
                 if (id == null) return TxnResult.UNKNOWN_ESCROW.name();
                 TxnReason why = reasonOrNull(a, 2, "release");
                 if (why == null) return TxnResult.INVALID.name();
@@ -307,9 +307,9 @@ public final class CtxBuilder {
             });
 
             HostFn.put(cur, scope, "refund", 3, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(HostFn.str(a, 0, "currency.refund"));
+                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.refund"));
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
-                java.util.UUID id = uuidOrNull(HostFn.str(a, 1, "currency.refund"));
+                java.util.UUID id = uuidOrNull(strOrNull(a, 1, "currency.refund"));
                 if (id == null) return TxnResult.UNKNOWN_ESCROW.name();
                 TxnReason why = reasonOrNull(a, 2, "refund");
                 if (why == null) return TxnResult.INVALID.name();
@@ -359,6 +359,14 @@ public final class CtxBuilder {
     }
 
     static final String NO_SUCH_CURRENCY = "mcphone.economy.no_such_currency";
+
+    /**
+     * 字符串参数缺了（null / undefined）→ null，由调用方给返回码：常见是 {@code default()} 在没有默认货币时给的 null、
+     * 或者玩家没填。别的类型照旧中断（脚本写错了）。
+     */
+    private static String strOrNull(Object[] args, int i, String where) {
+        return HostFn.present(args, i) ? HostFn.str(args, i, where) : null;
+    }
 
     static final String INVALID_AMOUNT = "mcphone.economy.invalid_amount";
 

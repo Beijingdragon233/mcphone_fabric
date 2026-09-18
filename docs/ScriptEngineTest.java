@@ -515,6 +515,34 @@ public class ScriptEngineTest {
                 "规范写法的大写也收：是同一个 UUID");
         check(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5)", b).startsWith("ScriptAbort"),
                 "金额传了 Number 不是 BigInt：脚本自己写错了，照旧中断");
+
+        // 字符串参数缺了（null / undefined）和金额缺了一样是返回码：多半是 default() 没有默认货币、或者玩家没填
+        for (String call : new String[]{"pay(null, " + to + ", 5n)", "pay(undefined, " + to + ", 5n)",
+                "hold(null, " + to + ", 5n)", "release(null, " + u + ")", "refund(undefined, " + u + ")"}) {
+            eq(withCtx("ctx.currency." + call, b), "UNAVAILABLE", call + "：没给货币 id 给 UNAVAILABLE");
+        }
+        for (String call : new String[]{"pay(" + c + ", null, 5n)", "pay(" + c + ", undefined, 5n)", "hold(" + c + ", null, 5n)"}) {
+            eq(withCtx("ctx.currency." + call, b), "INVALID", call + "：没给收款人给 INVALID");
+        }
+        for (String call : new String[]{"release(" + c + ", null)", "refund(" + c + ", undefined)", "refund(" + c + ")"}) {
+            eq(withCtx("ctx.currency." + call, b), "UNKNOWN_ESCROW", call + "：没给托管号给 UNKNOWN_ESCROW");
+        }
+        for (String call : new String[]{"balance(null)", "format(undefined, 5n)", "parse(null, '5')"}) {
+            eq(withCtx("try { ctx.currency." + call + " } catch (e) { e.message }", b),
+                    "UNAVAILABLE: mcphone.economy.no_such_currency", call + "：没给货币 id 是接得住的 Error");
+        }
+        eq(withCtx("String(ctx.currency.parse(" + c + ", null))", b), "null", "parse 没给文本：null，不中断");
+        check(withCtx("ctx.currency.pay(" + c + ", 5, 5n)", b).startsWith("ScriptAbort"),
+                "收款人传了 Number：类型写错了，照旧中断");
+
+        var noDefault = new com.november.mcphone.core.script.server.economy.CurrencyRegistry();
+        noDefault.register(new com.november.mcphone.core.script.server.economy.BuiltinProvider(
+                coin, data, data.escrow(), null, () -> 1, false, 1_000_000L), false);
+        var nb = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, noDefault);
+        eq(withCtx("String(ctx.currency.default())", nb), "null", "对照：没有默认货币时 default() 是 null");
+        eq(withCtx("ctx.currency.pay(ctx.currency.default(), " + to + ", 5n)", nb), "UNAVAILABLE",
+                "pay(default()) 在没有默认货币时：UNAVAILABLE，不中断");
     }
 
     public static void main(String[] args) {
