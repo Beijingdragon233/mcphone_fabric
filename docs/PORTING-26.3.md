@@ -84,7 +84,7 @@ E 桶一共 186 条，多出的 17 条是 `setDirty`（`SavedData.java:6` 还在
 | `MetadataSectionSerializer<T>` | `record MetadataSectionType<T>(String name, Codec<T> codec)` —— 匿名类要改写成 `Codec` | 3 |
 | `PlayerFaceRenderer` | `PlayerFaceExtractor` | 2 |
 | `InteractionResultHolder<T>` | `net.minecraft.world.InteractionResult` | 3 |
-| `Util#isWindows()` / `openPath` | `Util.getPlatform() == Util.OS.WINDOWS`；`Blaze3D.openPath(Path)` | 21 |
+| `Util`（整类搬家） | `net.minecraft.Util` → **`net.minecraft.util.Util`**；`backgroundExecutor()`、`ioPool()`、`getFilenameFormattedDateTime()`、`getPlatform()` 四个方法都还在。但 `Util.OS` 那个枚举现在只剩 `telemetryName()`，**`openPath` 从枚举上摘掉了**，换成 `com.mojang.blaze3d.Blaze3D.openPath(Path)` | 21 |
 | `ServerPlayer#server` | 字段还在但**私有**（`ServerPlayer.java:1057` 自己用 `this.server`），要换 getter | 21 |
 | `Player#displayClientMessage` | 0 命中；`sendSystemMessage(Component)` 到处在用 | 5 |
 | `NativeImage#setPixelRGBA` | `setPixel(x, y, int)` | 2 |
@@ -293,6 +293,21 @@ java 文件**生成的，而这里现在确实只有那一个文件。补进上�
 3. **A 桶那 588 条改名不需要任何新机制**：它们要的是「一份源码在两个名字下都能编」，
    而这在 Java 里做不到 —— 所以只能各平台各留一份 facade。本仓的 `platform/client/Draw`、
    `StackCodecs`、`ModPresence` 这些 facade 类就是干这个的，26.3 补上同名文件即可。
+
+   `Util` 是这一条最干净的样本。它是**整类换包**（`net.minecraft` → `net.minecraft.util`），
+   四个用到的方法一个没少 —— 名字对不上纯粹是 import 那一行。而 Java 里没有一个 import
+   不可能同时在 1.21.1 和 26.3 上成立，所以直接 `import net.minecraft.Util;` 的那 10 个文件
+   （8 个在 `shared/`，`ChatImageStore` 在两个加载器层各一份，对 26.3 实际挂载的是 9 个文件）、
+   15 处引用（`backgroundExecutor` 11、`getFilenameFormattedDateTime` 2、`getPlatform` 1、
+   `ioPool` 1，含注释里的提及）**必须收进门面**。本仓其实已经收了一半：
+   `platform/client/SystemFiles.java` 的 javadoc 写着「全仓唯一碰这一句的地方」，
+   但它收的只有「打开文件夹」那一句；剩下这 15 处是直接 import 原版 `Util` 的，
+   其中 `BookList.java:566` 那句 `Util.getPlatform().openFile(...)` 本来就已经绕过了门面 ——
+   26.3 里 `Util.OS` 只剩 `telemetryName()`，`openFile` / `openPath` 一并没了，
+   去处是 `com.mojang.blaze3d.Blaze3D.openPath(Path)`（同类还有 `openUri(URI)`）。
+   顺带一句：`verifySharedIsTargetNeutral` 这次是**绿的**（354 个文件），也就是说这类
+   「共用代码直接 import 一个会换包的原版类」它现在拦不住 —— 要不要给它补一条判据，
+   是 1d 之后值得单独议的一件事。
 
 **建议的形状**（不需要改任何构建脚本，等 1d 印证）：
 
