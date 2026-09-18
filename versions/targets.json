@@ -198,17 +198,8 @@
     "gradle": "9.2.1",
     "project": "platforms/26.3-neoforge",
     "buildable": false,
-    "unverified": [
-      "loader_version",
-      "gradle"
-    ],
-    "note": "26.x 的主路径，也是这一组里唯一准备真去建的。loader_version 是 maven.neoforged.net 上 26.3 最新的那个构建（26.3.0.3-beta），没在任何真构建上验过，所以连同 gradle 一起标着 —— gradle 9.2.1 抄自 1.21.1-neoforge。java 25 不是猜的：piston-meta 里 26.3 的 java_version 就是 25。构建插件这一版仓库钉的是 ModDevGradle 2.0.143，26.3 上要哪一版没实测（他们发到 2.0.147）。还有一个未知数比映射更要紧：26.3 的 client jar 已经不混淆了 —— 那个 jar 里 11266 个 net/minecraft/** 条目、0 个 class_N，而 1.21.1 那边是混淆的短随机名，piston-meta 里 26.3 的 downloads 也只剩 client 与 server、没有 client_mappings。所以风险不是「拉不到映射」，而是「构建插件吃不吃一个已经命名好的输入 jar」。工程目录 platforms/26.3-neoforge/ 还没建，而 CI 的矩阵按目录存在与否挑目标，所以这三行现在都是纯声明。",
-    "layers": [
-      "1.20.3+",
-      "1.20.5+",
-      "1.21+",
-      "neoforge"
-    ]
+    "note": "26.x 的主路径。工程目录已经建出来了，所以 CI 从下一次推送起就会真编这一支。骨架在 2026-09-19 本地编过：platforms/26.3-neoforge 下 ./gradlew build 用 8m43s 编到 BUILD SUCCESSFUL，ModDevGradle 2.0.147 + neo_version 26.3.0.3-beta + Java 25 工具链，neoform-runtime 那条 26.3 的流水线全程走通（decompile 43.36s、recompile 37.49s），产物 build/libs/mcphone-1.10.2.jar 里 META-INF/jarjar/ 嵌着 rhino-1.9.1 与 javamp3-1.0.1 —— 嵌库那条路在 26.3 上也通。原先那个最大的未知数答掉了：26.3 的 client jar 确实不混淆（那个 jar 里 11266 个 net/minecraft/** 条目、0 个 class_N，piston-meta 里 26.3 的 downloads 也只剩 client 与 server、没有 client_mappings），而构建插件吃得下这个已经命名好的输入 jar —— 骨架里那一个探针类 import 的就是 26.x 的新名字（Identifier、GuiGraphicsExtractor），javac 解析得到。java 25 来自 piston-meta 里 26.3 的 java_version，现在也被这次构建验着。【这一支现在不挂共用代码】：build.gradle 里 mountSharedSources = false，这里的 layers 于是也写 []，两处要一起翻回完整形态。理由是共用代码有 201 个文件碰到 26.x 改名或消失的 API，接上来的第一刻就是一片 javac 错，那一轮日志该专门用来收集错误清单，而不是和工具链的成败混在一份输出里。gradle/mcphone-checks.gradle 也还没 apply —— 里面的 assertTests 会把仓库级 docs/ 那批断言测试对着 sourceSets.main 的产物与编译类路径编一遍，不挂共用代码时它们引用的类一个都不在。",
+    "layers": []
   },
   "26.3-fabric": {
     "minecraft": "26.3",
