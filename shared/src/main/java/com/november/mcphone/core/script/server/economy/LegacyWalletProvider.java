@@ -65,11 +65,11 @@ public final class LegacyWalletProvider implements ICurrencyProvider {
 
     /**
      * 旧接口<b>刻意不提供读余额</b>（§22.2：ProjectE 的 EMC 用 BigInteger，写死 long 就得截断）。
-     * 返回 0 不是"没钱"，是"读不到"。
+     * 所以一律读不到 —— 抛，不返回 0：0 会被当成"没钱"。
      */
     @Override
     public long balance(UUID player) {
-        return 0;
+        throw new CurrencyUnavailableException(unavailableReasonKey());
     }
 
     @Override

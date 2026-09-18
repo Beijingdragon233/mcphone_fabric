@@ -115,7 +115,7 @@ public final class TxnLog {
      *
      * <p>最后<b>要补一个存档点</b>：开服这一刻盘上的存档就是现状。不补的话，重启后一直没有成功变动时存档不脏、
      * 不会写存档点，下次开服又把同一批行报一遍。两种情况不补：还没有流水目录（从没用过货币的世界，别为它建目录），
-     * 以及流水读不出来（补了就再也报不出那批没进存档的行）。
+     * 以及流水读不出来（补了就再也报不出那批没进存档的行）。没有目录的世界，第一次写流水时由 {@link #write} 先补一个。
      *
      * <p>只看最新的两个文件：跨两个文件还找不到存档点就是老流水、判断不了，不报。
      *
@@ -155,7 +155,9 @@ public final class TxnLog {
         for (Path p : files.subList(0, Math.min(2, files.size()))) {
             List<String> lines;
             try {
-                lines = Files.readAllLines(p, StandardCharsets.UTF_8);
+                // 按字节读、坏字节换成 U+FFFD：写到一半断电、被人用别的编码另存过，readAllLines 会整个文件都读不出来，
+                // 之后每次开服都是 -1，再也报不出任何东西
+                lines = new String(Files.readAllBytes(p), StandardCharsets.UTF_8).lines().toList();
             } catch (IOException e) {
                 com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
                 return -1;
@@ -172,7 +174,13 @@ public final class TxnLog {
 
     private void write(Instant at, String line) {
         try {
-            Files.createDirectories(dir);
+            if (!Files.isDirectory(dir)) {
+                Files.createDirectories(dir);
+                // 头一次写：此刻盘上的存档就是现状（之前没有任何变动），先落一个存档点。
+                // 不落的话，这之后到第一次世界保存之间被强杀，开服时找不到存档点，那几笔就永远报不出来。
+                // 只有接着存档的流水（有 Journal）才谈得上存档点
+                if (journal != null && !line.startsWith(CHECKPOINT)) write(at, CHECKPOINT + at);
+            }
             Path f = fileFor(at);
             if (Files.exists(f) && Files.size(f) >= MAX_FILE_BYTES) f = rotated(f);
             Files.writeString(f, encodable(line) + "\n", StandardCharsets.UTF_8,

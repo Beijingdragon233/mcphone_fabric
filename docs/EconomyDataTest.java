@@ -172,6 +172,7 @@ public class EconomyDataTest {
         bad.put("托管建立时刻是 0（超时判断会溢出，永远不退）", t -> escrowOf(t).putLong("createdAt", 0));
         bad.put("托管建立时刻是 Long.MIN_VALUE", t -> escrowOf(t).putLong("createdAt", Long.MIN_VALUE));
         bad.put("托管 settledAt 不是 long", t -> escrowOf(t).putInt("settledAt", 5));
+        bad.put("托管建立时刻在远远的将来（永远不到期）", t -> escrowOf(t).putLong("createdAt", Long.MAX_VALUE));
         for (var c : bad.entrySet()) {
             CompoundTag tag = goodTag(a);
             c.getValue().accept(tag);
@@ -191,6 +192,12 @@ public class EconomyDataTest {
         check(d1.lockedCurrencies().contains("MyServer:Coin"), "货币 id 是大写：锁住，不当成另一种货币来记");
         eq(d1.toTag().getCompound("currencies").get("MyServer:Coin"), coinSection, "原样写回");
 
+        CompoundTag noNamespace = goodTag(a);
+        CompoundTag cs3 = noNamespace.getCompound("currencies");
+        cs3.put("coin", cs3.get(COIN).copy());
+        check(EconomyData.load(noNamespace, () -> 5).lockedCurrencies().contains("coin"),
+                "货币 id 省了命名空间（coin 而不是 minecraft:coin）：锁住，不当成另一种货币来记");
+
         CompoundTag upperEscrow = goodTag(a);
         escrowOf(upperEscrow).putString("currency", "MyServer:Coin");
         EconomyData d2 = EconomyData.load(upperEscrow, () -> 5);
@@ -205,11 +212,55 @@ public class EconomyDataTest {
         check(!Files.exists(fresh.resolve("ledger")), "从没用过货币的世界不建流水目录");
 
         Path old = tmp("old");
+        Files.createDirectories(old.resolve("ledger"));
+        Files.writeString(old.resolve("ledger").resolve(logName(0)),
+                "1970-01-01T00:00:00Z|" + COIN + "|mint|-|" + UUID.randomUUID() + "|5|-|test|r|OK\n");
         TxnLog log = new TxnLog(old, ZoneOffset.UTC);
-        log.append(Instant.EPOCH, COIN, TxnLog.Kind.MINT, null, UUID.randomUUID(), 5, "-", RSN, TxnResult.OK);
         eq(log.noteRestart(Instant.EPOCH), 0, "没有存档点的老流水：判断不了，不报");
         List<String> lines = Files.readAllLines(old.resolve("ledger").resolve(logName(0)));
         check(lines.get(lines.size() - 1).startsWith("# 存档点"), "但补了一个存档点，之后的强杀就判断得了：" + lines);
+
+        // 世界第一次用货币：开服时没有目录、不补存档点；头一次写流水时补。之后被强杀，照样报得出来
+        Path first = tmp("first");
+        TxnLog fl = new TxnLog(first, ZoneOffset.UTC, EconomyData.empty(() -> 1));
+        eq(fl.noteRestart(Instant.EPOCH), 0, "开服时还没有流水");
+        fl.append(Instant.EPOCH, COIN, TxnLog.Kind.MINT, null, UUID.randomUUID(), 5, "-", RSN, TxnResult.OK);
+        fl.append(Instant.EPOCH, COIN, TxnLog.Kind.MINT, null, UUID.randomUUID(), 5, "-", RSN, TxnResult.OK);
+        eq(new TxnLog(first, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 2,
+                "第一次用货币、第一次保存之前被强杀：那 2 笔报得出来");
+
+        // 流水读不出来（这里拿一个叫 .log 的目录顶替）：不报，也不补存档点 —— 补了就再也报不出那批行
+        Path broken = tmp("broken");
+        TxnLog bl = new TxnLog(broken, ZoneOffset.UTC);
+        bl.append(Instant.EPOCH, COIN, TxnLog.Kind.MINT, null, UUID.randomUUID(), 5, "-", RSN, TxnResult.OK);
+        Files.createDirectories(broken.resolve("ledger").resolve("zzz.log"));
+        long before = Files.size(broken.resolve("ledger").resolve(logName(0)));
+        eq(bl.noteRestart(Instant.EPOCH), -1, "读不出来返回 -1");
+        eq(Files.size(broken.resolve("ledger").resolve(logName(0))), before, "读不出来时不补存档点");
+
+        // 写坏了半行（非法 UTF-8）：坏字节换掉接着读，不因此整个文件读不出来
+        Path torn = tmp("torn");
+        Files.createDirectories(torn.resolve("ledger"));
+        byte[] good = ("# 存档点 x\n1970-01-01T00:00:00Z|" + COIN + "|mint|-|" + UUID.randomUUID() + "|5|-|test|r|OK\n")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bad = {(byte) 0xE5, (byte) 0xAD, '\n'};
+        byte[] all = new byte[good.length + bad.length];
+        System.arraycopy(good, 0, all, 0, good.length);
+        System.arraycopy(bad, 0, all, good.length, bad.length);
+        Files.write(torn.resolve("ledger").resolve(logName(0)), all);
+        eq(new TxnLog(torn, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "半行坏字节不妨碍数出存档点之后那 1 笔");
+    }
+
+    /** 孤立的代理字符换成 U+FFFD；合法的代理对（emoji）原样留着。 */
+    static void encodableEdges() {
+        char hi = (char) 0xD83D, lo = (char) 0xDE00, rep = (char) 0xFFFD;
+        String pair = new String(new char[]{hi, lo});
+        eq(TxnLog.encodable("a" + pair + "b"), "a" + pair + "b", "合法的代理对不动");
+        eq(TxnLog.encodable("a" + lo + "b"), "a" + rep + "b", "孤立的低位代理换掉");
+        eq(TxnLog.encodable(hi + "x"), rep + "x", "开头孤立的高位代理换掉");
+        eq(TxnLog.encodable("x" + hi), "x" + rep, "结尾孤立的高位代理换掉");
+        eq(TxnLog.encodable("" + lo + hi), "" + rep + rep, "低在前、高在后：两个都孤立");
+        eq(TxnLog.encodable("" + hi + hi + lo), "" + rep + pair, "连续两个高位：第一个孤立，后一个与低位成对");
     }
 
     /** 脚本给的 reason 里有孤立的代理字符：这一行照样进流水，不能因为 UTF-8 编码失败就丢了。 */
@@ -221,9 +272,9 @@ public class EconomyDataTest {
         log.append(Instant.EPOCH, COIN, TxnLog.Kind.TRANSFER, UUID.randomUUID(), UUID.randomUUID(), 60, "-",
                 new TxnReason("pay", "x" + lone), TxnResult.OK);
         List<String> lines = Files.readAllLines(dir.resolve("ledger").resolve(logName(0)));
-        check(lines.size() == 1 && lines.get(0).contains("|transfer|") && lines.get(0).endsWith("|OK"),
-                "那一笔进了流水：" + lines);
-        check(lines.get(0).contains("x" + (char) 0xFFFD), "孤立的代理字符换成了 U+FFFD");
+        String tx = lines.stream().filter(l -> l.contains("|transfer|")).findFirst().orElse("");
+        check(tx.endsWith("|OK"), "那一笔进了流水：" + lines);
+        check(tx.contains("x" + (char) 0xFFFD), "孤立的代理字符换成了 U+FFFD");
     }
 
     static CompoundTag goodTag(UUID a) {
@@ -506,6 +557,30 @@ public class EconomyDataTest {
         }, d.escrow(), 1_000);
         eq(p.hold(a, UUID.randomUUID(), 40, RSN).result(), TxnResult.UNAVAILABLE, "存档锁住，托管不了");
         eq(wallet.get(a), 100L, "外部钱包一分没扣");
+    }
+
+    /** 各档读不到余额都抛，不返回 0（计分板档例外：S15b 钉着"服务器不在时读成 0"，待定）。 */
+    static void unavailableBalanceThrows() {
+        String k = refusal(() -> new LegacyWalletProvider(currency(COIN)).balance(UUID.randomUUID()));
+        check(k != null, "emc_legacy 读不到余额要抛：它本来就不提供读余额");
+        AdapterProvider off = new AdapterProvider(currency(COIN), new AdapterProvider.ExternalWallet() {
+            public boolean available() {
+                return false;
+            }
+
+            public long balance(UUID x) {
+                return 0;
+            }
+
+            public boolean deposit(UUID x, long n) {
+                return false;
+            }
+
+            public boolean withdraw(UUID x, long n) {
+                return false;
+            }
+        }, EconomyData.empty(() -> 1).escrow(), 1_000);
+        check(refusal(() -> off.balance(UUID.randomUUID())) != null, "adapter 钱包不在时读余额要抛，不去问它要一个 0");
     }
 
     // ================================================================ 网关
@@ -879,6 +954,10 @@ public class EconomyDataTest {
         reg2.register(new GatedCurrencyProvider(builtin(GEM, d, null, t), rogue), false);
         eq(onWorker(() -> reg2.get(GEM).mint(UUID.randomUUID(), 1, RSN)), TxnResult.UNAVAILABLE,
                 "换成了注册表自己的网关（没开，所以拒）—— 没有走那个恒为真的");
+        CurrencyRegistry reg3 = new CurrencyRegistry(closed);
+        reg3.register(new GatedCurrencyProvider(new GatedCurrencyProvider(builtin(GEM, d, null, t), rogue), rogue), false);
+        check(!(((GatedCurrencyProvider) reg3.get(GEM)).inner() instanceof GatedCurrencyProvider),
+                "包了两层也拆到底，里面不剩别的网关");
 
         // 拒因各记各的：A 币被拒之后问 B 币，拿到的是 B 币自己的
         CurrencyGateway inlineOk = new CurrencyGateway(Runnable::run, () -> true);
@@ -977,6 +1056,7 @@ public class EconomyDataTest {
         strictLoad();
         createForFileState();
         restartCheckpoint();
+        encodableEdges();
         loneSurrogateStillLogged();
         wholeLock();
         currencyLock();
@@ -986,6 +1066,7 @@ public class EconomyDataTest {
         escrowSweep();
         longUptimeSweep();
         adapterRespectsLock();
+        unavailableBalanceThrows();
         gatewayInlineAndReentrant();
         gatewayTimeoutNeverRunsLater();
         gatewayTimeoutRace();

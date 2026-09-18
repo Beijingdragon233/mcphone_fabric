@@ -78,7 +78,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 整份锁住的一本。原因要醒目地进日志：服主不看日志就只会看到「货币用不了」。 */
     static EconomyData locked(String reason, LongSupplier clock) {
-        MCphone.LOGGER.error("[MCphone] ⚠⚠ 货币存档锁住了，所有货币操作都会返回 UNAVAILABLE，存档文件不会被改写 ⚠⚠ 原因：{}", reason);
+        MCphone.LOGGER.error("[MCphone] ⚠⚠ 货币存档锁住了，凡是要记进这份存档的货币操作都会返回 UNAVAILABLE，存档文件不会被改写 ⚠⚠ 原因：{}", reason);
         return new EconomyData(clock, reason);
     }
 
@@ -300,7 +300,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
                 }
                 String currency = e.getString("currency");
                 // 大写之类的 id 不锁的话，这笔就成了哪种货币都不认领的孤儿
-                String why = canonicalCurrency(currency) ? readEscrow(e, ok) : "的货币 id 不是规范写法";
+                String why = canonicalCurrency(currency) ? readEscrow(e, ok, clock.getAsLong()) : "的货币 id 不是规范写法";
                 if (why != null) d.lockCurrency(currency, rawCurrencies.get(currency), "第 " + (i + 1) + " 笔托管" + why);
                 pending.add(e);
             }
@@ -350,7 +350,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     }
 
     /** 读一笔托管。读不懂返回原因。 */
-    private static String readEscrow(CompoundTag e, Map<UUID, EscrowLedger.Entry> out) {
+    private static String readEscrow(CompoundTag e, Map<UUID, EscrowLedger.Entry> out, long now) {
         UUID id = canonicalUuid(e.getString("id"));
         UUID owner = canonicalUuid(e.getString("owner"));
         UUID beneficiary = canonicalUuid(e.getString("beneficiary"));
@@ -359,8 +359,11 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             return "缺 amount 或 createdAt，或者不是 long";
         }
         if (e.getLong("amount") <= 0) return "的金额不是正数";
-        // 超时判断是 now - createdAt：负得离谱会溢出，这笔就永远不会被退款
-        if (e.getLong("createdAt") <= 0) return "的建立时刻不是正数";
+        // 超时判断是 now - createdAt ≥ 超时：负得离谱会溢出，在未来就永远不到期 —— 两种都是这笔永远不会被退款。
+        // 未来放宽一个超时周期，容得下服务器时钟往回拨一点
+        long createdAt = e.getLong("createdAt");
+        if (createdAt <= 0) return "的建立时刻不是正数";
+        if (createdAt > now + EscrowLedger.DEFAULT_TIMEOUT_MS) return "的建立时刻在将来";
         // settled 缺了不取默认：按"没结清"读，放过款的那笔就能再放一次
         if (!e.contains("settled", Tag.TAG_BYTE)) return "缺 settled，或者不是布尔";
         if (out.containsKey(id)) return "的号 " + id + " 重复了";

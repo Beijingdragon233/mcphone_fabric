@@ -80,6 +80,8 @@ public final class AdapterProvider implements ICurrencyProvider {
 
     @Override
     public long balance(UUID player) {
+        // 钱包不在时抛，不去问它：问出来的 0 会被当成"没钱"
+        if (!wallet.available()) throw new CurrencyUnavailableException(unavailableReasonKey());
         return wallet.balance(player);
     }
 
