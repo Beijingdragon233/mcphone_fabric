@@ -443,9 +443,47 @@ public class ScriptEngineTest {
         eq(paid.get(), 1, "pay 只执行了一次");
     }
 
+    /**
+     * S15h：被拒的调用、玩家输错的数据是返回值，不中断（中断记过失，连着几次禁玩家、熔断整个 App）。
+     * 只有脚本自己写错类型才中断。
+     */
+    static void currencyRejectionsAreReturnValues() {
+        var data = com.november.mcphone.core.script.server.economy.EconomyData.empty(() -> 1);
+        var coin = new com.november.mcphone.api.economy.Currency(
+                net.minecraft.resources.ResourceLocation.tryParse("myserver:coin"),
+                net.minecraft.network.chat.Component.literal("coin"), "G", 2, null);
+        var provider = new com.november.mcphone.core.script.server.economy.BuiltinProvider(
+                coin, data, data.escrow(), null, () -> 1, false, 1_000_000L);
+        provider.mint(player().uuid(), 1_000, new com.november.mcphone.api.economy.TxnReason("t", "r"));
+        var reg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry();
+        reg.register(provider, true);
+        var b = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, reg);
+        String c = "'myserver:coin'", to = "'00000000-0000-0000-0000-000000000002'";
+
+        eq(withCtx("String(ctx.currency.parse(" + c + ", '1.234'))", b), "null", "小数位超了：parse 给 null，不中断");
+        eq(withCtx("String(ctx.currency.parse(" + c + ", '十块'))", b), "null", "不是数：parse 给 null");
+        eq(withCtx("String(ctx.currency.parse(" + c + ", '1.23'))", b), "123", "对照：合法的照常解析");
+        eq(withCtx("ctx.currency.pay(" + c + ", 'not-a-uuid', 5n)", b), "INVALID", "收款人不是 UUID：INVALID");
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 99999999999999999999999n)", b), "INVALID",
+                "金额超出 long：INVALID");
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", -5n)", b), "INVALID", "负金额：INVALID");
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5n, 'a|b')", b), "INVALID", "单号里有竖线：INVALID");
+        eq(withCtx("ctx.currency.hold(" + c + ", 'nope', 5n)", b), "INVALID", "托管给一个不是 UUID 的人：INVALID");
+        eq(withCtx("ctx.currency.release(" + c + ", 'garbage')", b), "UNKNOWN_ESCROW", "托管号不是 UUID：UNKNOWN_ESCROW");
+        eq(withCtx("ctx.currency.refund(" + c + ", 'garbage')", b), "UNKNOWN_ESCROW", "退款同样");
+        eq(withCtx("ctx.currency.pay('server:nope', " + to + ", 5n)", b), "UNAVAILABLE", "没有这种货币：UNAVAILABLE");
+        eq(withCtx("try { ctx.currency.balance('server:nope') } catch (e) { e.message }", b),
+                "UNAVAILABLE: mcphone.economy.no_such_currency", "没有这种货币读余额：接得住的 Error");
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5n)", b), "OK", "对照：合法的照常转");
+        check(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5)", b).startsWith("ScriptAbort"),
+                "金额传了 Number 不是 BigInt：脚本自己写错了，照旧中断");
+    }
+
     public static void main(String[] args) {
         escapes();
         currencyBalanceUnavailable();
+        currencyRejectionsAreReturnValues();
         globalsExactly();
         sealed();
         normalStillWorks();

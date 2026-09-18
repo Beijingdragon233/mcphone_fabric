@@ -414,5 +414,6 @@
   "mcphone.economy.adapter.unavailable": "The external economy mod is unavailable right now (not installed, not loaded yet, or reporting itself unavailable).",
   "mcphone.economy.emc_legacy.no_escrow": "The legacy wallet interface has no escrow, so this currency cannot be used for marketplace trades.",
   "mcphone.economy.emc_legacy.no_balance": "The legacy wallet interface does not expose balances.",
-  "mcphone.economy.scoreboard.unknown_player": "This player has never been seen on this server; the scoreboard keys balances by name, so it cannot be read."
+  "mcphone.economy.scoreboard.unknown_player": "This player has never been seen on this server; the scoreboard keys balances by name, so it cannot be read.",
+  "mcphone.economy.no_such_currency": "This server has no such currency (the server owner may have changed the configuration)."
 }
