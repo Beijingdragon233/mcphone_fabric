@@ -42,6 +42,7 @@ public final class EconomyRuntime {
     private final Function<String, ICurrencyProvider> providers;
     private long nextSweepAt;
     private int lastOrphaned;
+    private int lastFailed;
 
     EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
                    Function<String, ICurrencyProvider> providers, long now) {
@@ -66,23 +67,31 @@ public final class EconomyRuntime {
         log.sweep(now);
         CurrencyGateway gateway = new CurrencyGateway(server::execute,
                 () -> Thread.currentThread() == server.getRunningThread());
-        EconomyRuntime r = new EconomyRuntime(data, log, gateway, currencyId -> null, now.toEpochMilli());
+        EconomyRuntime r = new EconomyRuntime(data, log, gateway, currencyId -> null, System.nanoTime() / 1_000_000);
         r.report(sweepEscrow(data.escrow(), r.providers));
         gateway.open();
         current = r;
     }
 
-    /** 每个服务端 tick 结束时在主线程上调。到点才扫，按墙钟算：服务器卡的时候 tick 数不准。 */
+    /**
+     * 每个服务端 tick 结束时在主线程上调。到点才扫：间隔按单调时钟算 —— tick 数在服务器卡的时候不准，
+     * 墙钟往回拨的话会停扫那么久。
+     */
     public static void tick() {
         EconomyRuntime r = current;
-        if (r != null) r.sweepIfDue(System.currentTimeMillis());
+        if (r != null) r.sweepIfDue(System.nanoTime() / 1_000_000);
     }
 
-    /** 到点就扫一次。幂等：只退没结清、已到期的，退过的已经结清。 */
-    void sweepIfDue(long now) {
-        if (now < nextSweepAt) return;
-        nextSweepAt = now + SWEEP_INTERVAL_MS;
-        report(sweepEscrow(data.escrow(), providers));
+    /** 到点就扫一次。幂等：只退没结清、已到期的，退过的已经结清。{@code nowMonotonicMs} 只拿来比间隔。 */
+    void sweepIfDue(long nowMonotonicMs) {
+        if (nowMonotonicMs < nextSweepAt) return;
+        nextSweepAt = nowMonotonicMs + SWEEP_INTERVAL_MS;
+        try {
+            report(sweepEscrow(data.escrow(), providers));
+        } catch (RuntimeException e) {
+            // provider 抛出来的不许穿过事件总线：那会把服务器弄崩，Fabric 上还会连带跳过同一个 tick 里的别的活
+            MCphone.LOGGER.error("[MCphone] 扫超时托管时出错，下次再扫", e);
+        }
     }
 
     // 找不到 provider 的只在数目变了时说一次：每 5 分钟报同一句会把日志刷满
@@ -91,9 +100,12 @@ public final class EconomyRuntime {
             MCphone.LOGGER.warn("[MCphone] 有 {} 笔托管已超时，但那种货币还没注册，先不退 —— 钱仍在托管里", s.orphaned());
         }
         lastOrphaned = s.orphaned();
-        if (s.refunded() > 0 || s.failed() > 0) {
-            MCphone.LOGGER.info("[MCphone] 超时托管：退了 {} 笔，{} 笔被拒（下次再试）", s.refunded(), s.failed());
+        if (s.refunded() > 0) MCphone.LOGGER.info("[MCphone] 超时托管：退了 {} 笔", s.refunded());
+        // 被拒的每 5 分钟会再试一次、再被拒一次：同一个数只说一次
+        if (s.failed() != lastFailed && s.failed() > 0) {
+            MCphone.LOGGER.warn("[MCphone] 超时托管：{} 笔退款被拒（那种货币现在用不了），下次再试", s.failed());
         }
+        lastFailed = s.failed();
     }
 
     /** 停服时在主线程上调，<b>在 {@code ScriptWorkers.stop()} 之前</b>。 */

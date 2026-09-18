@@ -225,6 +225,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
         if (s == null) return "mcphone.economy.scoreboard.no_server";
         if (!onServerThread(s)) return "mcphone.economy.scoreboard.off_thread";
         if (!Scores.hasObjective(s, objective)) return "mcphone.economy.scoreboard.no_objective";
+        // 目标在，却用不了（只读）：isAvailable() 是 false，这里也得说得出原因，不许给空串
+        if (!isAvailable()) return "mcphone.economy.scoreboard.no_objective";
         return "";
     }
 
@@ -246,10 +248,7 @@ public final class ScoreboardProvider implements ICurrencyProvider {
     public long balance(UUID player) {
         if (player == null) throw new IllegalArgumentException("player 不能为 null");
         MinecraftServer s = ready();
-        if (s == null) {
-            String key = unavailableReasonKey();
-            throw new CurrencyUnavailableException(key.isEmpty() ? "mcphone.economy.scoreboard.no_objective" : key);
-        }
+        if (s == null) throw new CurrencyUnavailableException(unavailableReasonKey());
         String holder = Scores.nameOf(s, player);
         if (holder == null) throw new CurrencyUnavailableException(KEY_UNKNOWN_PLAYER);
         return Scores.get(s, objective, holder);
@@ -435,6 +434,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
             if (e.settled()) {
                 return record(kind, e.owner(), e.beneficiary(), e.amount(), reason, TxnResult.ALREADY_SETTLED);
             }
+            // 号认不认得、属不属于这种货币、结没结过，排在"用不了"之前判（S15b / E25）：
+            // 排在后面的话，一笔永远过不了的调用会被答成 UNAVAILABLE，调用方以为重试一下就能过
             MinecraftServer s = ready();
             UUID target = toBeneficiary ? e.beneficiary() : e.owner();
             if (s == null) {

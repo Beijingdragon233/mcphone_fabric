@@ -71,18 +71,22 @@ final class EconomySnapshot {
         }
     }
 
-    /** 读不出来（没有、截断、CRC 不对、不是 NBT）一律抛。 */
+    /** 解压后最多多大。正常一份远小于这个数；再大就是坏了，不许为它把堆吃光。 */
+    private static final int MAX_BYTES = 256 * 1024 * 1024;
+
+    /** 读不出来（没有、截断、CRC 不对、不是 NBT、长度字段坏成巨大值）一律抛 IOException。 */
     static CompoundTag read(Path file) throws IOException {
+        byte[] data;
         try (InputStream raw = Files.newInputStream(file);
              GZIPInputStream gz = new GZIPInputStream(new BufferedInputStream(raw))) {
-            CompoundTag tag = NbtIo.read(new DataInputStream(gz));
-            // 读到流尾，gzip 才会核对 CRC 与长度
-            byte[] rest = new byte[256];
-            while (gz.read(rest) != -1) {
-                // 把尾巴读完
-            }
-            return tag;
-        } catch (RuntimeException e) {
+            // 先整份读完：读到流尾 gzip 才核 CRC —— 先核再解析，坏数据进不了解析器
+            data = gz.readNBytes(MAX_BYTES + 1);
+            if (data.length > MAX_BYTES) throw new IOException("快照解压后超过 " + MAX_BYTES + " 字节");
+        }
+        try {
+            return NbtIo.read(new DataInputStream(new java.io.ByteArrayInputStream(data)));
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // 长度字段坏成巨大值时原版解析器会直接按它开数组：接住，当成读不出，回退 SavedData 那份
             throw new IOException("快照读不出来：" + e, e);
         }
     }

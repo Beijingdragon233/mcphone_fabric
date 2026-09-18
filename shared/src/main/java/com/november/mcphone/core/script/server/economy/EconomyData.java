@@ -112,11 +112,17 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         if (snap != null) {
             MCphone.LOGGER.warn("[MCphone] 货币存档 {} {}，改用原子快照 {}", file,
                     Files.exists(file) ? "读不出来" : "不在", snapshot);
-            return load(snap, clock);
+            EconomyData d = load(snap, clock);
+            // 下次保存把 SavedData 那份重写好：不然这段时间快照是唯一的好副本，删错一个目录就没了
+            d.setDirty();
+            return d;
         }
-        return Files.exists(file)
-                ? locked("存档文件 " + file + " 在，但没读出来（见上面原版的报错），原子快照也没有可用的", clock)
-                : empty(clock);
+        // 两份里有一份在就不是新世界：快照在但读不出也一样，给空账的话第一次保存就把它盖掉了
+        if (Files.exists(file) || Files.exists(snapshot)) {
+            return locked("存档文件 " + file + (Files.exists(file) ? " 在但没读出来" : " 不在")
+                    + "，原子快照 " + snapshot + (Files.exists(snapshot) ? " 在但没读出来" : " 不在"), clock);
+        }
+        return empty(clock);
     }
 
     /** SavedData 那份读出来了：快照也完整、而且不比它旧，就用快照；否则用 SavedData 那份并记日志。 */
@@ -131,7 +137,17 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             MCphone.LOGGER.warn("[MCphone] 货币的原子快照比 SavedData 旧（第 {} 次对第 {} 次保存，上次写快照失败过），用 SavedData 那份", gs, gm);
             return load(saved, clock);
         }
-        return load(snap, clock);
+        EconomyData d = load(snap, clock);
+        if (gm < gs) {
+            MCphone.LOGGER.warn("[MCphone] 货币的 SavedData 比原子快照旧（第 {} 次对第 {} 次保存），用快照 {}", gm, gs, snapshot);
+            d.setDirty();
+        } else if (!snap.equals(saved)) {
+            // 代数一样、内容不一样：多半是有人手改了其中一份。以快照为准，说清楚改 SavedData 不算数
+            MCphone.LOGGER.warn("[MCphone] 货币的 SavedData 与原子快照 {} 代数相同但内容不同，以快照为准 —— "
+                    + "手改存档要连快照一起改，或者先删掉快照", snapshot);
+            d.setDirty();
+        }
+        return d;
     }
 
     /** 没有返回 null；有但读不出来记一条并返回 null。 */
@@ -301,7 +317,14 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             try {
                 EconomySnapshot.write(snapshotFile, tag);
             } catch (java.io.IOException e) {
-                MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份", e.toString());
+                // 旧快照删掉：留着它，之后 SavedData 再被写坏时开服会拿它当"完整的那份"，静默回滚好几次保存
+                MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；旧快照删掉，免得被当成新的",
+                        e.toString());
+                try {
+                    Files.deleteIfExists(snapshotFile);
+                } catch (java.io.IOException gone) {
+                    MCphone.LOGGER.error("[MCphone] 旧快照 {} 也删不掉（{}）：SavedData 再坏的话开服可能回滚到它", snapshotFile, gone.toString());
+                }
             }
         }
         onSave.run();

@@ -817,6 +817,13 @@ public class CurrencyTest {
         eq(p.mint(a, 1, r), TxnResult.UNAVAILABLE, "用不了时铸造 UNAVAILABLE");
         eq(p.burn(a, 1, r), TxnResult.UNAVAILABLE, "用不了时销毁 UNAVAILABLE");
         eq(p.hold(a, b, 1, r).result(), TxnResult.UNAVAILABLE, "用不了时托管 UNAVAILABLE");
+        boolean npe = false;
+        try {
+            p.balance(null);
+        } catch (IllegalArgumentException e) {
+            npe = true;
+        }
+        check(npe, "balance(null) 是调用方的错，抛 IllegalArgumentException，不返回 0");
     }
 
 

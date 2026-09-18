@@ -404,7 +404,7 @@
   "mcphone.picker.preview.loading": "载入中…",
   "mcphone.economy.scoreboard.no_server": "服务器还没起来，这本账现在读不了。",
   "mcphone.economy.scoreboard.off_thread": "这笔操作不在服务端主线程上，计分板改不了。",
-  "mcphone.economy.scoreboard.no_objective": "计分板上没有这本账的目标，建不出来。",
+  "mcphone.economy.scoreboard.no_objective": "计分板上没有这本账能用的目标（没有、建不出来，或者是只读的）。",
   "mcphone.economy.unavailable.data_locked": "这种货币的存档读不出来，已锁住，原始数据原样保留（细节见服务器日志）。",
   "mcphone.economy.unavailable.main_thread_busy": "服务器正忙，这笔没办，稍后再试。",
   "mcphone.economy.unavailable.queue_full": "货币请求排队太多，这笔没办，稍后再试。",
@@ -414,7 +414,7 @@
   "mcphone.economy.adapter.unavailable": "外部经济模组现在用不了（没装、没加载完，或者它自己报了不可用）。",
   "mcphone.economy.emc_legacy.no_escrow": "旧版钱包接口不支持托管，这种货币做不了市场类交易。",
   "mcphone.economy.emc_legacy.no_balance": "旧版钱包接口不提供读余额。",
-  "mcphone.economy.scoreboard.unknown_player": "这个玩家没在这台服务器上出现过，计分板按名字记账，读不到他的分。",
+  "mcphone.economy.scoreboard.unknown_player": "查不到这个玩家的名字（很久没上线，或者从没来过），计分板按名字记账，读不到他的分。",
   "mcphone.economy.no_such_currency": "这台服务器上没有这种货币（可能是服主改了配置）。",
   "mcphone.economy.invalid_amount": "金额不对：没给，或者大得装不下。"
 }

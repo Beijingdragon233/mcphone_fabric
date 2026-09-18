@@ -521,7 +521,12 @@ public class EconomyDataTest {
         eq(d.wholeLock(), null, "SavedData 读坏、快照完整：用快照，不锁");
         eq(d.get(a, COIN), 500L, "快照里的余额回来了");
         Files.delete(file);
-        eq(EconomyData.createFor(file, snap, () -> 1).get(a, COIN), 500L, "SavedData 不在、快照在：用快照");
+        EconomyData fromSnap = EconomyData.createFor(file, snap, () -> 1);
+        eq(fromSnap.get(a, COIN), 500L, "SavedData 不在、快照在：用快照");
+        check(fromSnap.isDirty(), "用快照恢复之后标脏：下次保存把 SavedData 重写好");
+        Files.write(snap, new byte[]{7, 7, 7});
+        check(EconomyData.createFor(file, snap, () -> 1).wholeLock() != null,
+                "SavedData 不在、快照在但坏了：锁住，不给空账（给空账的话第一次保存就把它盖掉了）");
     }
 
     /** 快照是原子写的：写到一半被杀，读到的是上一份完整的；被截断、被改了一个字节都读不出，不会读成半份。 */
@@ -589,7 +594,15 @@ public class EconomyDataTest {
         newer.getCompound("currencies").getCompound(COIN).putLong("minted", 877);
 
         EconomySnapshot.write(snap, newer);
-        eq(EconomyData.loadPreferring(older, snap, () -> 1).get(a, COIN), 777L, "快照更新：用快照");
+        EconomyData pick = EconomyData.loadPreferring(older, snap, () -> 1);
+        eq(pick.get(a, COIN), 777L, "快照更新：用快照");
+        check(pick.isDirty(), "SavedData 比快照旧：标脏，下次保存把它重写好");
+        CompoundTag sameGenOther = older.copy();
+        sameGenOther.putLong("generation", 5);
+        EconomyData same = EconomyData.loadPreferring(sameGenOther, snap, () -> 1);
+        eq(same.get(a, COIN), 777L, "代数一样、内容不同：以快照为准");
+        check(same.isDirty(), "代数一样、内容不同：标脏");
+        check(!EconomyData.loadPreferring(newer, snap, () -> 1).isDirty(), "两份一模一样：不标脏");
         EconomySnapshot.write(snap, older);
         eq(EconomyData.loadPreferring(newer, snap, () -> 1).get(a, COIN), 777L, "快照更旧（上次写快照失败）：用 SavedData");
         Files.write(snap, new byte[]{1});
@@ -604,11 +617,17 @@ public class EconomyDataTest {
         AtomicLong t = new AtomicLong(1);
         EconomyData d = EconomyData.empty(t::get);
         d.snapshotTo(snap);
-        builtin(COIN, d, null, t).mint(UUID.randomUUID(), 5, RSN);
+        BuiltinProvider sameCoin = builtin(COIN, d, null, t);
+        UUID holder = UUID.randomUUID();
+        sameCoin.mint(holder, 50, RSN);
+        sameCoin.hold(holder, UUID.randomUUID(), 20, RSN);
         CompoundTag handedToMc = d.toTag();
-        eq(EconomySnapshot.read(snap), handedToMc, "快照就是交给 MC 的那一份");
+        eq(EconomySnapshot.read(snap), handedToMc, "快照就是交给 MC 的那一份（含托管）");
+        check(handedToMc.getList("escrow", 10).size() == 1, "夹具里真有一笔托管");
         long g1 = handedToMc.getLong("generation");
         eq(d.toTag().getLong("generation"), g1 + 1, "再保存一次代数加一");
+        eq(EconomyData.load(handedToMc, t::get).toTag().getLong("generation"), g1 + 1,
+                "代数跨重启接着涨：从 0 重来的话，快照写失败时旧快照的代数反而更大"); 
 
         // 清单 #4 的离线版：保存 A → 改动 → 保存 B 写到一半被杀（快照只留半截临时文件、SavedData 被截断）→ 重启读到 A
         UUID p = UUID.randomUUID();
@@ -627,6 +646,72 @@ public class EconomyDataTest {
         eq(after.wholeLock(), null, "写到一半被杀：没锁");
         eq(after.get(p, COIN), 100L, "重启读到上一份完整快照（保存 A 时的 100）");
         check(EconomyAudit.run(COIN, after).balanced(), "对账平");
+    }
+
+    /**
+     * 快照写失败：旧快照删掉。留着它，之后 SavedData 再被写坏时开服会拿它当"完整的那份"，静默回滚好几次保存。
+     */
+    static void snapshotFailureDropsStale() throws Exception {
+        Path dir = tmp("stale");
+        Path snap = dir.resolve("economy.dat");
+        AtomicLong t = new AtomicLong(1);
+        EconomyData d = EconomyData.empty(t::get);
+        d.snapshotTo(snap);
+        UUID p = UUID.randomUUID();
+        BuiltinProvider coin = builtin(COIN, d, null, t);
+        coin.mint(p, 100, RSN);
+        d.toTag();                                                     // 快照写成功
+        check(Files.exists(snap), "对照：快照在");
+        Files.createDirectories(dir.resolve("economy.dat.tmp"));      // 临时文件的位置被占了：之后写快照一律失败
+        coin.mint(p, 900, RSN);
+        d.toTag();
+        check(!Files.exists(snap), "写快照失败：旧快照删掉了");
+        Path mcFile = dir.resolve("mcphone_economy.dat");
+        Files.write(mcFile, new byte[]{0x1f, (byte) 0x8b, 8});        // 之后 SavedData 又被写坏
+        check(EconomyData.createFor(mcFile, snap, t::get).wholeLock() != null,
+                "两份都没有可用的：整份锁住、大声报，不静默回滚到旧快照的 100");
+    }
+
+    /** 快照里的长度字段坏成巨大值：当成读不出，回退 SavedData —— 不许抛 OutOfMemoryError 把开服卡死。 */
+    static void snapshotHugeLengthNoOom() throws Exception {
+        java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(new java.util.zip.GZIPOutputStream(bytes))) {
+            out.writeByte(10);                 // 根：CompoundTag
+            out.writeUTF("");
+            out.writeByte(7);                  // ByteArrayTag
+            out.writeUTF("a");
+            out.writeInt(Integer.MAX_VALUE);   // 长度坏成 2^31-1
+            out.writeByte(0);
+        }
+        Path snap = tmp("huge").resolve("economy.dat");
+        Files.write(snap, bytes.toByteArray());
+        check(readFails(snap), "长度字段坏成巨大值：读不出（IOException），不是 OutOfMemoryError");
+        UUID a = UUID.randomUUID();
+        eq(EconomyData.loadPreferring(goodTag(a), snap, () -> 1).get(a, COIN), 500L, "回退 SavedData 那份");
+    }
+
+    /** 周期扫描里 provider 抛异常：接住，不许穿过事件总线把服务器弄崩。 */
+    static void periodicSweepSurvivesThrow() {
+        AtomicLong t = new AtomicLong(1_700_000_000_000L);
+        EconomyData d = EconomyData.empty(t::get);
+        BuiltinProvider coin = builtin(COIN, d, null, t);
+        UUID a = UUID.randomUUID();
+        coin.mint(a, 100, RSN);
+        coin.hold(a, UUID.randomUUID(), 30, RSN);
+        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);
+        ICurrencyProvider boom = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    throw new IllegalStateException("provider 坏了");
+                });
+        EconomyRuntime r = new EconomyRuntime(d, null, null, id -> boom, 0);
+        boolean threw = false;
+        try {
+            r.sweepIfDue(EconomyRuntime.SWEEP_INTERVAL_MS);
+        } catch (RuntimeException e) {
+            threw = true;
+        }
+        check(!threw, "provider 抛的异常没有穿出 sweepIfDue");
     }
 
     /** 超时托管每 5 分钟扫一次：没到点不扫；到点就退；再扫不会重复退（幂等）。 */
@@ -1407,6 +1492,9 @@ public class EconomyDataTest {
         snapshotPreference();
         snapshotSameSerialization();
         periodicSweep();
+        snapshotFailureDropsStale();
+        snapshotHugeLengthNoOom();
+        periodicSweepSurvivesThrow();
         badCreatedAtReset();
         restartCheckpoint();
         multiFileOrder();
