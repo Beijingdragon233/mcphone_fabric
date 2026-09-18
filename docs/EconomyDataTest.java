@@ -990,7 +990,7 @@ public class EconomyDataTest {
         String cw = EconomyData.createFor(mcFile, snap, () -> 1).wholeLock();
         check(cw != null && cw.startsWith("原子快照 " + snap) && cw.contains("SavedData 那份 " + mcFile + " 读不出来"),
                 "createFor 里快照锁住：点名快照，也说出 SavedData 那份的状态 —— " + cw);
-        check(cw.contains("另一份不在就按新世界开"), "提示里说出挪走一份、另一份不在的后果 —— " + cw);
+        check(cw.contains("另一份不在、也没有 economy.dat.stale 的话就按新世界开"), "提示里说出挪走一份、另一份不在的后果 —— " + cw);
         Files.delete(mcFile);
         String gone = EconomyData.createFor(mcFile, snap, () -> 1).wholeLock();
         check(gone != null && gone.contains("SavedData 那份 " + mcFile + " 不在"),
@@ -1000,13 +1000,23 @@ public class EconomyDataTest {
         CompoundTag badSaved = new CompoundTag();
         badSaved.putInt("dataVersion", EconomyData.DATA_VERSION);
         badSaved.putString("escrow", "坏");
-        check(EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock().contains("SavedData 那份"), "没有快照、SavedData 读出问题：点名它");
+        String noSnap = EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock();
+        check(noSnap.contains("SavedData 那份") && noSnap.contains("原子快照 " + snap + " 不在"),
+                "没有快照、SavedData 读出问题：点名它，也说出快照不在 —— 否则服主只挪走 SavedData 就静默按新世界开了 —— " + noSnap);
         badSaved.putLong("generation", 9);
         CompoundTag olderSnap = goodTag(a);
         olderSnap.putLong("generation", 3);
         EconomySnapshot.write(snap, olderSnap);
-        check(EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock().contains("SavedData 那份"),
-                "快照更旧、选了 SavedData、它读出问题：同样点名它");
+        String older = EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock();
+        check(older.contains("SavedData 那份") && older.contains("是第 3 次保存，比它旧"),
+                "快照更旧、选了 SavedData、它读出问题：点名它，也说出快照更旧 —— " + older);
+
+        // 路径中间一节是普通文件：root 也看不到（ENOTDIR），不许当成不在给空账
+        Path plain = dir.resolve("plain");
+        Files.writeString(plain, "x");
+        String notDir = EconomyData.createFor(dir.resolve("none.dat"), plain.resolve("economy.dat"), () -> 1).wholeLock();
+        check(notDir != null && notDir.contains("看不到"), "快照路径走不通：锁住并说看不到，不当成新世界 —— " + notDir);
+        check(!notDir.contains("上一份完整快照") && !notDir.contains("也读不出来"), ".stale 同样看不到：不暗示有一份 .stale —— " + notDir);
     }
 
     /** 解压后超过上限：读不出（IOException），不为它把堆吃光。上限本身那么大的读得出。 */
@@ -1291,6 +1301,32 @@ public class EconomyDataTest {
         r.sweepIfDue(5 * EconomyRuntime.SWEEP_INTERVAL_MS);
         eq(d.escrow().held(GEM), 0L, "明确被拒的，下次再试就退成了");
         eq(credited.get(), 1, "抛过的那笔还是没再试");
+
+        // provider 抛的异常 getMessage 自己会炸：那一笔照样记成结果不明，同一趟里别的货币照样退
+        class Bomb extends RuntimeException {
+            @Override
+            public String getMessage() {
+                throw new IllegalStateException("getMessage 自己炸了");
+            }
+        }
+        EconomyData bd = EconomyData.empty(t::get);
+        BuiltinProvider bcoin = builtin(COIN, bd, null, t);
+        BuiltinProvider bgem = builtin(GEM, bd, null, t);
+        bcoin.mint(a, 100, RSN);
+        bgem.mint(a, 100, RSN);
+        for (int i = 0; i < 3; i++) {
+            bcoin.hold(a, UUID.randomUUID(), 10, RSN);
+            bgem.hold(a, UUID.randomUUID(), 10, RSN);
+        }
+        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);
+        ICurrencyProvider bomb = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    throw new Bomb();
+                });
+        EconomyRuntime.Sweep bs = EconomyRuntime.sweepEscrow(bd.escrow(), id -> id.equals(COIN) ? bomb : bgem);
+        eq(bs.suspect(), 3, "getMessage 会炸的异常：coin 的 3 笔照样记成结果不明");
+        eq(bs.refunded(), 3, "同一趟里 gem 的 3 笔照样退了");
 
         // provider 的 refund 返回 null：没给结果和抛了一样是结果不明，不当成"拒了"每趟重试
         EconomyData nd = EconomyData.empty(t::get);

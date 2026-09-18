@@ -157,7 +157,8 @@ public final class CurrencyGateway {
         if (c.state.get() == CANCELLED) throw refuse(KEY_CLOSED);
         if (c.error instanceof RuntimeException re) throw re;
         if (c.error instanceof Error er) throw er;
-        if (c.error != null) throw new IllegalStateException(c.error);
+        // 不用 new IllegalStateException(c.error)：那会调它的 toString，第三方异常的 getMessage 可能自己会炸
+        if (c.error != null) throw new IllegalStateException("provider 抛了受检异常 " + c.error.getClass().getName(), c.error);
         return c.result;
     }
 

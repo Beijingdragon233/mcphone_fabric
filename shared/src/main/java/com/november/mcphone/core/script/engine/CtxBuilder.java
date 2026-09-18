@@ -15,6 +15,7 @@ import com.november.mcphone.api.economy.TxnReason;
 import com.november.mcphone.api.economy.TxnResult;
 import com.november.mcphone.core.script.server.economy.Amounts;
 import com.november.mcphone.core.script.server.economy.CurrencyRegistry;
+import com.november.mcphone.core.script.server.economy.ProviderFailure;
 import com.november.mcphone.core.script.server.PlayerSnapshot;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Scriptable;
@@ -370,7 +371,7 @@ public final class CtxBuilder {
 
     /**
      * 会动钱的 provider 调用。provider 抛了、或者没给结果 = 结果不明（可能已经动了一半）：打一条带来龙去脉与 provider 堆栈的 ERROR
-     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失。
+     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失。provider 抛的是虚拟机级别的错误就原样抛它。
      * 不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
      */
     private static <T> T moneyCall(String what, String appId, java.util.UUID player, String currencyId,
@@ -379,25 +380,27 @@ public final class CtxBuilder {
         try {
             T r = op.get();
             if (r != null) return r;
-            failure = new NullPointerException("provider 返回了 null");
+            failure = null;
         } catch (ScriptAbort e) {
             throw e;
         } catch (Throwable e) {
             failure = e;
         }
-        // 拼说明、打日志都可能再抛（异常自己的 getMessage 会炸、栈溢出、内存不够）：一律接住，别换掉原来那个错，
-        // 也别让它变成一个脚本 finally 吞得掉的 RuntimeException
+        // provider 抛来的那个不可信（getMessage / getStackTrace 自己可能会炸）：日志与 cause 都只用替身
+        Throwable standIn = null;
         String detail = "货币调用结果不明";
         try {
+            standIn = failure == null ? null : ProviderFailure.of(failure);
             detail = "货币调用结果不明：app=" + appId + " 玩家=" + player + " " + what + " " + currencyId
                     + " 对方或托管号=" + other + " 金额=" + (amount == null ? "-" : amount + "（最小单位）")
-                    + " —— provider 抛了异常或没给结果（" + failure.getClass().getName() + "），钱可能已经动了一半，请核对";
-            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ {}", detail, failure);
+                    + " —— " + (failure == null ? "provider 没给结果（返回了 null）" : "provider 抛了 " + failure.getClass().getName())
+                    + "，钱可能已经动了一半，请核对";
+            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ {}", detail, standIn);
         } catch (Throwable ignored) {
-            // 见上
+            // 栈溢出、内存不够时打不出来也别换掉原来那个错，更别变成脚本 finally 吞得掉的 RuntimeException
         }
         if (failure instanceof VirtualMachineError vm) throw vm;
-        throw new OutcomeUnknown(detail, failure);
+        throw new OutcomeUnknown(detail, standIn);
     }
 
     /**

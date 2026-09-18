@@ -223,6 +223,24 @@ public class ScriptEngineTest {
     }
 
     /** 在 ctx 在场的情况下跑一段。 */
+    static String withCtx(String src, CtxBuilder.Backends backends) {
+        Context cx = BUDGET.enterContext();
+        try {
+            BUDGET.begin();
+            HostFn.resetDepth();
+            ScriptableObject scope = ScriptSandbox.harden(cx);
+            CtxBuilder.Result r = new CtxBuilder.Result();
+            ScriptableObject ctx = CtxBuilder.build(cx, scope, "t:app", player(), backends, r);
+            ScriptableObject.putProperty(scope, "ctx", ctx);
+            return String.valueOf(Context.toString(cx.evaluateString(scope, src, "t", 1, null)));
+        } catch (Throwable t) {
+            return t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()).split("\n")[0];
+        } finally {
+            BUDGET.end();
+            Context.exit();
+        }
+    }
+
     /** 和 withCtx 一样跑一段，但把抛出来的东西原样交回来；没抛就是 null。 */
     static Throwable thrownBy(String src, CtxBuilder.Backends backends) {
         Context cx = BUDGET.enterContext();
@@ -237,24 +255,6 @@ public class ScriptEngineTest {
             return null;
         } catch (Throwable t) {
             return t;
-        } finally {
-            BUDGET.end();
-            Context.exit();
-        }
-    }
-
-    static String withCtx(String src, CtxBuilder.Backends backends) {
-        Context cx = BUDGET.enterContext();
-        try {
-            BUDGET.begin();
-            HostFn.resetDepth();
-            ScriptableObject scope = ScriptSandbox.harden(cx);
-            CtxBuilder.Result r = new CtxBuilder.Result();
-            ScriptableObject ctx = CtxBuilder.build(cx, scope, "t:app", player(), backends, r);
-            ScriptableObject.putProperty(scope, "ctx", ctx);
-            return String.valueOf(Context.toString(cx.evaluateString(scope, src, "t", 1, null)));
-        } catch (Throwable t) {
-            return t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()).split("\n")[0];
         } finally {
             BUDGET.end();
             Context.exit();
@@ -590,7 +590,7 @@ public class ScriptEngineTest {
         for (String call : new String[]{"pay(" + c + ", " + to + ", 5n)", "hold(" + c + ", " + to + ", 5n)",
                 "release(" + c + ", " + u + ")", "refund(" + c + ", " + u + ")"}) {
             String got = withCtx("(function () { try { return ctx.currency." + call + " } finally { return 'SWALLOWED' } })()", nb2);
-            check(got.startsWith("OutcomeUnknown"), call + "：provider 返回 null 也是结果不明 —— " + got);
+            check(got.startsWith("OutcomeUnknown") && got.contains("没给结果"), call + "：provider 返回 null 也是结果不明，说明里说没给结果 —— " + got);
         }
         check(!ScriptAbort.class.isAssignableFrom(OutcomeUnknown.class), "结果不明不是 ScriptAbort：不记过失");
 
@@ -616,8 +616,30 @@ public class ScriptEngineTest {
             Throwable t = thrownBy("(function () { try { return ctx.currency.pay(" + c + ", " + to + ", 5n) } finally { return 'SWALLOWED' } })()", kb);
             String name = kind.getClass().getSimpleName();
             check(t instanceof OutcomeUnknown, name + "：结果不明、finally 吞不掉 —— " + t);
-            check(t != null && t.getCause() == kind, name + "：cause 是 provider 原来那个异常");
+            // cause 是替身：只带原来的类名与堆栈；原来那个（getMessage 可能会炸）不交给日志
+            check(t != null && t.getCause() instanceof com.november.mcphone.core.script.server.economy.ProviderFailure
+                    && kind.getClass().getName().equals(t.getCause().getMessage()), name + "：cause 是带着原类名的替身");
+            check(t != null && java.util.Arrays.equals(t.getCause().getStackTrace(), kind.getStackTrace()), name + "：替身带着原来的堆栈");
+            check(t != null && t.getMessage().contains("app=t:app") && t.getMessage().contains("金额=5（最小单位）")
+                    && t.getMessage().contains(kind.getClass().getName()), name + "：说明里有 app、金额与原类名 —— " + t);
+            // 日志渲染时会把整条链打出来：不许在这一步再炸（原版日志配置下炸了会把求值线程带走）
+            boolean renders = true;
+            try {
+                t.printStackTrace(new java.io.PrintWriter(new java.io.StringWriter()));
+            } catch (Throwable e) {
+                renders = false;
+            }
+            check(renders, name + "：整条异常链打得出来");
         }
+        // 原来那个连 getStackTrace 都会炸：替身不带堆栈，照样造得出来
+        Throwable noStack = new RuntimeException() {
+            @Override
+            public StackTraceElement[] getStackTrace() {
+                throw new IllegalStateException("getStackTrace 也炸了");
+            }
+        };
+        var standIn = com.november.mcphone.core.script.server.economy.ProviderFailure.of(noStack);
+        check(standIn.getStackTrace().length == 0, "getStackTrace 炸了：替身不带堆栈，不抛");
         var refusingReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(
                 new com.november.mcphone.core.script.server.economy.CurrencyGateway(Runnable::run, () -> false));
         refusingReg.register(halfway, true);
