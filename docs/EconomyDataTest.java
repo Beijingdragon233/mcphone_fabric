@@ -335,13 +335,157 @@ public class EconomyDataTest {
                 "已结清的不会再到期，不管它");
     }
 
-    /** 原版读档失败时回头要一本新的：文件在就给整份锁住的，文件不在才给空账。 */
+    /**
+     * 原版读档失败时回头要一本新的：有完整的原子快照就用快照；没有的话文件在就整份锁住，文件不在才给空账。
+     */
     static void createForFileState() throws Exception {
         Path dir = tmp("create");
         Path file = dir.resolve("mcphone_economy.dat");
-        eq(EconomyData.createFor(file, () -> 1).wholeLock(), null, "文件不在：新世界，给空账");
+        Path snap = dir.resolve("economy.dat");
+        eq(EconomyData.createFor(file, snap, () -> 1).wholeLock(), null, "两份都不在：新世界，给空账");
         Files.write(file, new byte[]{1, 2, 3});
-        check(EconomyData.createFor(file, () -> 1).wholeLock() != null, "文件在却要新建：读坏了，整份锁住");
+        check(EconomyData.createFor(file, snap, () -> 1).wholeLock() != null, "SavedData 读坏、没有快照：整份锁住");
+        Files.write(snap, new byte[]{9, 9});
+        check(EconomyData.createFor(file, snap, () -> 1).wholeLock() != null, "快照也坏：整份锁住");
+
+        UUID a = UUID.randomUUID();
+        EconomySnapshot.write(snap, goodTag(a));
+        EconomyData d = EconomyData.createFor(file, snap, () -> 1);
+        eq(d.wholeLock(), null, "SavedData 读坏、快照完整：用快照，不锁");
+        eq(d.get(a, COIN), 500L, "快照里的余额回来了");
+        Files.delete(file);
+        eq(EconomyData.createFor(file, snap, () -> 1).get(a, COIN), 500L, "SavedData 不在、快照在：用快照");
+    }
+
+    /** 快照是原子写的：写到一半被杀，读到的是上一份完整的；被截断、被改了一个字节都读不出，不会读成半份。 */
+    static void snapshotAtomicity() throws Exception {
+        Path dir = tmp("snap");
+        Path snap = dir.resolve("economy.dat");
+        UUID a = UUID.randomUUID();
+        CompoundTag first = goodTag(a);
+        EconomySnapshot.write(snap, first);
+        eq(EconomySnapshot.read(snap), first, "写读往返");
+
+        // 写第二份写到一半被杀：只留下半截临时文件，目标文件还是上一份
+        Files.write(dir.resolve("economy.dat.tmp"), new byte[]{0x1f, (byte) 0x8b, 8, 0, 0});
+        eq(EconomySnapshot.read(snap), first, "写到一半被杀：读到上一份完整的");
+
+        // 写第二份写到一半出错：目标文件一个字节都没动。直写目标文件的话，打开时就已经截断了
+        boolean threw = false;
+        try {
+            EconomySnapshot.write(snap, out -> {
+                out.write(new byte[4096]);
+                out.flush();
+                throw new java.io.IOException("写到一半");
+            });
+        } catch (java.io.IOException e) {
+            threw = true;
+        }
+        check(threw, "序列化中途出错要抛出来");
+        eq(EconomySnapshot.read(snap), first, "写到一半出错：目标文件还是上一份完整的");
+
+        byte[] whole = Files.readAllBytes(snap);
+        Path cut = dir.resolve("cut.dat");
+        Files.write(cut, java.util.Arrays.copyOf(whole, whole.length / 2));
+        check(readFails(cut), "截断的读不出（不会读成半份）");
+        byte[] flipped = whole.clone();
+        flipped[flipped.length / 2] ^= 0x40;
+        Path bad = dir.resolve("flip.dat");
+        Files.write(bad, flipped);
+        check(readFails(bad), "改了一个字节的读不出");
+        byte[] trailer = whole.clone();
+        trailer[trailer.length - 6] ^= 0x01;          // gzip 尾巴里的 CRC：数据完好，只有校验值不对
+        Path crc = dir.resolve("crc.dat");
+        Files.write(crc, trailer);
+        check(readFails(crc), "CRC 不对的读不出 —— 要读到流尾才核得到");
+    }
+
+    static boolean readFails(Path p) {
+        try {
+            EconomySnapshot.read(p);
+            return false;
+        } catch (java.io.IOException e) {
+            return true;
+        }
+    }
+
+    /** 两份都完整时比代数：快照不比 SavedData 旧就用快照；快照旧（上次写失败过）就用 SavedData；快照坏了回退 SavedData。 */
+    static void snapshotPreference() throws Exception {
+        Path dir = tmp("pref");
+        Path snap = dir.resolve("economy.dat");
+        UUID a = UUID.randomUUID();
+        CompoundTag older = goodTag(a);
+        older.putLong("generation", 4);
+        CompoundTag newer = goodTag(a);
+        newer.putLong("generation", 5);
+        newer.getCompound("currencies").getCompound(COIN).getCompound("balances").putLong(a.toString(), 777);
+        newer.getCompound("currencies").getCompound(COIN).putLong("minted", 877);
+
+        EconomySnapshot.write(snap, newer);
+        eq(EconomyData.loadPreferring(older, snap, () -> 1).get(a, COIN), 777L, "快照更新：用快照");
+        EconomySnapshot.write(snap, older);
+        eq(EconomyData.loadPreferring(newer, snap, () -> 1).get(a, COIN), 777L, "快照更旧（上次写快照失败）：用 SavedData");
+        Files.write(snap, new byte[]{1});
+        eq(EconomyData.loadPreferring(older, snap, () -> 1).get(a, COIN), 500L, "快照坏了：回退 SavedData");
+        Files.delete(snap);
+        eq(EconomyData.loadPreferring(older, snap, () -> 1).get(a, COIN), 500L, "没有快照：用 SavedData");
+    }
+
+    /** 快照与 SavedData 出自同一次序列化：写进快照的就是交给 MC 的那个 tag；每保存一次代数加一。 */
+    static void snapshotSameSerialization() throws Exception {
+        Path snap = tmp("same").resolve("economy.dat");
+        AtomicLong t = new AtomicLong(1);
+        EconomyData d = EconomyData.empty(t::get);
+        d.snapshotTo(snap);
+        builtin(COIN, d, null, t).mint(UUID.randomUUID(), 5, RSN);
+        CompoundTag handedToMc = d.toTag();
+        eq(EconomySnapshot.read(snap), handedToMc, "快照就是交给 MC 的那一份");
+        long g1 = handedToMc.getLong("generation");
+        eq(d.toTag().getLong("generation"), g1 + 1, "再保存一次代数加一");
+
+        // 清单 #4 的离线版：保存 A → 改动 → 保存 B 写到一半被杀（快照只留半截临时文件、SavedData 被截断）→ 重启读到 A
+        UUID p = UUID.randomUUID();
+        Path dir = tmp("kill");
+        Path snapA = dir.resolve("economy.dat");
+        EconomyData live = EconomyData.empty(t::get);
+        live.snapshotTo(snapA);
+        BuiltinProvider coin = builtin(COIN, live, new TxnLog(dir, ZoneOffset.UTC, live), t);   // 照生产接上流水：累计经它记
+        coin.mint(p, 100, RSN);
+        live.toTag();                                          // 保存 A
+        coin.mint(p, 900, RSN);                                // 保存之后的改动
+        Files.write(dir.resolve("economy.dat.tmp"), new byte[]{0x1f, (byte) 0x8b});   // 保存 B 的快照写到一半
+        Path mcFile = dir.resolve("mcphone_economy.dat");
+        Files.write(mcFile, new byte[]{0x1f, (byte) 0x8b, 8});                          // SavedData 就地截断
+        EconomyData after = EconomyData.createFor(mcFile, snapA, t::get);
+        eq(after.wholeLock(), null, "写到一半被杀：没锁");
+        eq(after.get(p, COIN), 100L, "重启读到上一份完整快照（保存 A 时的 100）");
+        check(EconomyAudit.run(COIN, after).balanced(), "对账平");
+    }
+
+    /** 超时托管每 5 分钟扫一次：没到点不扫；到点就退；再扫不会重复退（幂等）。 */
+    static void periodicSweep() {
+        AtomicLong t = new AtomicLong(1_700_000_000_000L);
+        EconomyData d = EconomyData.empty(t::get);
+        BuiltinProvider coin;
+        try {
+            coin = builtin(COIN, d, new TxnLog(tmp("periodic"), ZoneOffset.UTC, d), t);   // 照生产接上流水
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        UUID a = UUID.randomUUID();
+        coin.mint(a, 100, RSN);
+        coin.hold(a, UUID.randomUUID(), 30, RSN);
+        long start = t.get();
+        BuiltinProvider c = coin;
+        EconomyRuntime r = new EconomyRuntime(d, null, null, id -> c, start);
+        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);      // 托管已经到期
+        r.sweepIfDue(start + EconomyRuntime.SWEEP_INTERVAL_MS - 1);
+        eq(d.get(a, COIN), 70L, "没到 5 分钟不扫");
+        r.sweepIfDue(start + EconomyRuntime.SWEEP_INTERVAL_MS);
+        eq(d.get(a, COIN), 100L, "到点就退");
+        r.sweepIfDue(start + 2 * EconomyRuntime.SWEEP_INTERVAL_MS);
+        eq(d.get(a, COIN), 100L, "再扫不会重复退");
+        check(EconomyAudit.run(COIN, d).balanced(), "对账平");
     }
 
     /** 版本认不得 → 整份锁住，永远不脏（不会被拿去盖原文件），一切操作 UNAVAILABLE。 */
@@ -1092,6 +1236,10 @@ public class EconomyDataTest {
         missingAndUnknownFields();
         strictLoad();
         createForFileState();
+        snapshotAtomicity();
+        snapshotPreference();
+        snapshotSameSerialization();
+        periodicSweep();
         badCreatedAtReset();
         restartCheckpoint();
         encodableEdges();

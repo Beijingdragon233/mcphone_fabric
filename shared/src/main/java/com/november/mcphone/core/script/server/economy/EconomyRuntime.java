@@ -19,7 +19,10 @@ import java.util.function.Function;
  * <p>开服：读存档 → 标出流水比存档超前的那截（存档点之后的） → 扫超时托管 → <b>最后才开网关</b>：扫描完成之前不接受任何货币调用。
  * 停服：先关网关，<b>要在停 worker 之前</b>（理由见 {@link CurrencyGateway#close()}）。
  *
- * <p>注册表（有哪几种货币、各用哪一档）还没接进来，那是 S15f 的事；所以开服扫描时超时托管找不到 provider 退款，
+ * <p>超时托管除了开服扫一次，运行中每 {@link #SWEEP_INTERVAL_MS} 再扫一次（{@link #tick()}）：只在开服扫，
+ * 服务器跑得越久越不守 7 天的规则。
+ *
+ * <p>注册表（有哪几种货币、各用哪一档）还没接进来，那是 S15f 的事；所以扫描时超时托管找不到 provider 退款，
  * 只计数不动账 —— 钱留在托管里，比退错地方强。
  */
 public final class EconomyRuntime {
@@ -27,16 +30,26 @@ public final class EconomyRuntime {
     /** 超时退款写进流水的 {@code reason.kind}。 */
     public static final String TIMEOUT_REFUND_KIND = "escrow_timeout";
 
+    /** 运行中扫超时托管的间隔。超时本身是 {@link EscrowLedger#DEFAULT_TIMEOUT_MS}（7 天），这里只管多久看一次。 */
+    public static final long SWEEP_INTERVAL_MS = 5L * 60 * 1000;
+
     private static volatile EconomyRuntime current;
 
     private final EconomyData data;
     private final TxnLog log;
     private final CurrencyGateway gateway;
+    /** 货币 id → 它的 provider。注册表接进来（S15f）之前一律找不到。 */
+    private final Function<String, ICurrencyProvider> providers;
+    private long nextSweepAt;
+    private int lastOrphaned;
 
-    private EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway) {
+    EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
+                   Function<String, ICurrencyProvider> providers, long now) {
         this.data = data;
         this.log = log;
         this.gateway = gateway;
+        this.providers = providers;
+        this.nextSweepAt = now + SWEEP_INTERVAL_MS;
     }
 
     /** 开服时在主线程上调。重复调会先把上一份关掉。 */
@@ -51,14 +64,36 @@ public final class EconomyRuntime {
         if (data.wholeLock() == null) log.noteRestart(now);
         data.onSave(() -> log.checkpoint(Instant.now()));
         log.sweep(now);
-        Sweep s = sweepEscrow(data.escrow(), currencyId -> null);
-        if (s.orphaned() > 0) {
-            MCphone.LOGGER.warn("[MCphone] 有 {} 笔托管已超时，但那种货币还没注册，先不退 —— 钱仍在托管里", s.orphaned());
-        }
         CurrencyGateway gateway = new CurrencyGateway(server::execute,
                 () -> Thread.currentThread() == server.getRunningThread());
+        EconomyRuntime r = new EconomyRuntime(data, log, gateway, currencyId -> null, now.toEpochMilli());
+        r.report(sweepEscrow(data.escrow(), r.providers));
         gateway.open();
-        current = new EconomyRuntime(data, log, gateway);
+        current = r;
+    }
+
+    /** 每个服务端 tick 结束时在主线程上调。到点才扫，按墙钟算：服务器卡的时候 tick 数不准。 */
+    public static void tick() {
+        EconomyRuntime r = current;
+        if (r != null) r.sweepIfDue(System.currentTimeMillis());
+    }
+
+    /** 到点就扫一次。幂等：只退没结清、已到期的，退过的已经结清。 */
+    void sweepIfDue(long now) {
+        if (now < nextSweepAt) return;
+        nextSweepAt = now + SWEEP_INTERVAL_MS;
+        report(sweepEscrow(data.escrow(), providers));
+    }
+
+    // 找不到 provider 的只在数目变了时说一次：每 5 分钟报同一句会把日志刷满
+    private void report(Sweep s) {
+        if (s.orphaned() != lastOrphaned && s.orphaned() > 0) {
+            MCphone.LOGGER.warn("[MCphone] 有 {} 笔托管已超时，但那种货币还没注册，先不退 —— 钱仍在托管里", s.orphaned());
+        }
+        lastOrphaned = s.orphaned();
+        if (s.refunded() > 0 || s.failed() > 0) {
+            MCphone.LOGGER.info("[MCphone] 超时托管：退了 {} 笔，{} 笔被拒（下次再试）", s.refunded(), s.failed());
+        }
     }
 
     /** 停服时在主线程上调，<b>在 {@code ScriptWorkers.stop()} 之前</b>。 */

@@ -140,6 +140,10 @@ public final class MCphone {
                     com.november.mcphone.core.script.server.ScriptWorkers.stop();
                     com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
                 });
+        // 超时托管每 5 分钟扫一次（见 EconomyRuntime.tick），只在 tick 结束那一相位调一次
+        MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.TickEvent.ServerTickEvent e) -> {
+            if (e.phase == net.minecraftforge.event.TickEvent.Phase.END) com.november.mcphone.core.script.server.economy.EconomyRuntime.tick();
+        });
         MinecraftForge.EVENT_BUS.addListener(
                 (net.minecraftforge.event.RegisterCommandsEvent e) -> com.november.mcphone.core.script.server.economy.EconomyCommand.register(e.getDispatcher()));
 

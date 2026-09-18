@@ -84,6 +84,8 @@ public class MCphone implements ModInitializer {
         // 手机替卡槽里的终端供电。漏了它的症状是"终端在手机里会没电"，见 TerminalCharger。
         // Fabric 没有 NeoForge 的按玩家 tick 事件，用服务端 tick 自己发
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            // 超时托管每 5 分钟扫一次（见 EconomyRuntime.tick）
+            com.november.mcphone.core.script.server.economy.EconomyRuntime.tick();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 com.november.mcphone.feature.terminal.TerminalCharger.onPlayerTick(player);
             }

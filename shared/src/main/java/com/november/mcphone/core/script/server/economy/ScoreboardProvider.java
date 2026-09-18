@@ -230,18 +230,24 @@ public final class ScoreboardProvider implements ICurrencyProvider {
         return Thread.currentThread() == s.getRunningThread();
     }
 
+    /** 从没上过线、查不到名字的玩家：计分板按名字记账，读不到他的分。 */
+    public static final String KEY_UNKNOWN_PLAYER = "mcphone.economy.scoreboard.unknown_player";
+
     /**
-     * 余额。
-     *
-     * <p><b>用不了的时候返回 0，与「真的有 0 块」分不出来</b>。别的几档这时抛 {@link CurrencyUnavailableException}；
-     * 这一档没改，因为 S15b 的断言钉着「服务器不在时读成 0，不抛」（待产品经理定）。调用方要先问 {@link #isAvailable()}。
+     * 余额。{@link #isAvailable()} 为 false 时这一档整个不可用：所有操作 {@code UNAVAILABLE}，余额读不到 ——
+     * 抛 {@link CurrencyUnavailableException}，<b>不返回 0</b>：0 与「真的没钱」分不出来，调用方会据此做错决定。
+     * 可用时返回的是计分板上的真实分值；查不到名字的玩家同样读不到，抛。
      */
     @Override
     public long balance(UUID player) {
+        if (player == null) throw new IllegalArgumentException("player 不能为 null");
         MinecraftServer s = ready();
-        if (s == null || player == null) return 0;
+        if (s == null) {
+            String key = unavailableReasonKey();
+            throw new CurrencyUnavailableException(key.isEmpty() ? "mcphone.economy.scoreboard.no_objective" : key);
+        }
         String holder = Scores.nameOf(s, player);
-        if (holder == null) return 0;
+        if (holder == null) throw new CurrencyUnavailableException(KEY_UNKNOWN_PLAYER);
         return Scores.get(s, objective, holder);
     }
 

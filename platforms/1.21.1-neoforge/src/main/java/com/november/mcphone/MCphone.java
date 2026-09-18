@@ -64,6 +64,9 @@ public class MCphone {
                     com.november.mcphone.core.script.server.ScriptWorkers.stop();
                     com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
                 });
+        // 超时托管每 5 分钟扫一次（见 EconomyRuntime.tick）
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.event.tick.ServerTickEvent.Post e) -> com.november.mcphone.core.script.server.economy.EconomyRuntime.tick());
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 (net.neoforged.neoforge.event.RegisterCommandsEvent e) -> com.november.mcphone.core.script.server.economy.EconomyCommand.register(e.getDispatcher()));
 

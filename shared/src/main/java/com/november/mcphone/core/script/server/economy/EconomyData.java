@@ -27,9 +27,10 @@ import java.util.function.UnaryOperator;
  * 托管账本。世界级存档，挂主世界 —— 余额挂在玩家身上的话，离线玩家就收不到钱（§22.4）。
  *
  * <p><b>只许服务端主线程碰，没有锁</b>（{@link CurrencyGateway}）。改动与 {@code setDirty()} 在同一个主线程操作里；
- * 什么时候写盘归 MC 的世界保存，我们不自己写文件 —— 所以强杀之后看到的是上一次保存时那一份完整的快照，
- * <b>前提是那一次写盘本身没被打断</b>：NeoForge 写临时文件再原子改名；Forge 1.20.1 与 Fabric（原版）就地截断重写，
- * 写到一半被强杀，文件就坏了 —— 那时下面的锁保证不拿空账盖掉它，但上一份快照要从服务器备份里恢复。
+ * 什么时候写盘归 MC 的世界保存。NeoForge 写 SavedData 是原子的；Forge 1.20.1 与 Fabric（原版）就地截断重写，
+ * 写到一半被杀那一份就坏了。所以同一次序列化出来的 tag 另写一份原子快照（{@link EconomySnapshot}），开服时优先读它；
+ * 两份都完整就比代数（{@code generation}，每次保存加一），用新的那份 —— 快照写失败过的话它是旧的，无条件优先它就等于回滚。
+ * 两份都读不出来才整份锁住（见下）。
  *
  * <p><b>读坏了绝不拿一本空账顶上</b>：原版读档出错会新建一份空的，下次保存就把原文件盖掉，等于清空所有人的钱。
  * <ul>
@@ -65,6 +66,10 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     private final EscrowLedger escrow;
     /** 世界保存、序列化这一份时调：给流水写存档点（{@link TxnLog#checkpoint}） */
     private Runnable onSave = () -> { };
+    /** 第几次保存。两份存档都完整时靠它挑新的那份 */
+    private long generation;
+    /** 原子快照写到哪；null = 不写（测试） */
+    private Path snapshotFile;
 
     private EconomyData(LongSupplier clock, String wholeLock) {
         this.wholeLock = wholeLock;
@@ -86,17 +91,62 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     public static EconomyData get(MinecraftServer server) {
         LongSupplier clock = System::currentTimeMillis;
         Path file = server.getWorldPath(LevelResource.ROOT).resolve("data").resolve(FILE_NAME + ".dat");
-        return getOrCreate(server, FILE_NAME, () -> createFor(file, clock), tag -> load(tag, clock));
+        Path snapshot = EconomySnapshot.path(server);
+        EconomyData d = getOrCreate(server, FILE_NAME,
+                () -> createFor(file, snapshot, clock), tag -> loadPreferring(tag, snapshot, clock));
+        d.snapshotTo(snapshot);
+        return d;
     }
 
     /**
-     * 原版要一本新的时候给什么。原版读档抛异常时不报给我们，而是回头来这里要一本新的 ——
-     * 所以"文件在却要新建"就是读坏了，给一本整份锁住的，绝不给空账。
+     * 原版要一本新的时候给什么：SavedData 那份不在，或者在却读不出来（原版读档抛异常时不报给我们，而是回头来这里要一本新的）。
+     * 有完整的快照就用快照；没有的话，文件在就整份锁住，绝不给空账；文件也不在才是新世界。
      */
-    static EconomyData createFor(Path file, LongSupplier clock) {
+    static EconomyData createFor(Path file, Path snapshot, LongSupplier clock) {
+        CompoundTag snap = readSnapshot(snapshot);
+        if (snap != null) {
+            MCphone.LOGGER.warn("[MCphone] 货币存档 {} {}，改用原子快照 {}", file,
+                    Files.exists(file) ? "读不出来" : "不在", snapshot);
+            return load(snap, clock);
+        }
         return Files.exists(file)
-                ? locked("存档文件 " + file + " 在，但没读出来（见上面原版的报错）", clock)
+                ? locked("存档文件 " + file + " 在，但没读出来（见上面原版的报错），原子快照也没有可用的", clock)
                 : empty(clock);
+    }
+
+    /** SavedData 那份读出来了：快照也完整、而且不比它旧，就用快照；否则用 SavedData 那份并记日志。 */
+    static EconomyData loadPreferring(CompoundTag saved, Path snapshot, LongSupplier clock) {
+        CompoundTag snap = readSnapshot(snapshot);
+        if (snap == null) {
+            if (!Files.exists(snapshot)) MCphone.LOGGER.info("[MCphone] 还没有货币的原子快照，用 SavedData 那份");
+            return load(saved, clock);
+        }
+        long gs = generationOf(snap), gm = generationOf(saved);
+        if (gm > gs) {
+            MCphone.LOGGER.warn("[MCphone] 货币的原子快照比 SavedData 旧（第 {} 次对第 {} 次保存，上次写快照失败过），用 SavedData 那份", gs, gm);
+            return load(saved, clock);
+        }
+        return load(snap, clock);
+    }
+
+    /** 没有返回 null；有但读不出来记一条并返回 null。 */
+    private static CompoundTag readSnapshot(Path snapshot) {
+        if (!Files.exists(snapshot)) return null;
+        try {
+            return EconomySnapshot.read(snapshot);
+        } catch (java.io.IOException e) {
+            MCphone.LOGGER.warn("[MCphone] 货币的原子快照 {} 读不出来（{}），回退 SavedData 那份", snapshot, e.toString());
+            return null;
+        }
+    }
+
+    private static long generationOf(CompoundTag tag) {
+        return tag.contains("generation", Tag.TAG_LONG) ? tag.getLong("generation") : 0;
+    }
+
+    /** 之后每次保存都把同一个 tag 原子写到这里。 */
+    void snapshotTo(Path file) {
+        this.snapshotFile = file;
     }
 
     // ---------------------------------------------------------------- 状态
@@ -204,6 +254,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     @Override
     protected CompoundTag write(CompoundTag tag) {
         tag.putInt("dataVersion", DATA_VERSION);
+        tag.putLong("generation", ++generation);
 
         CompoundTag currencies = new CompoundTag();
         Set<String> ids = new TreeSet<>(balances.keySet());
@@ -238,6 +289,14 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         });
         for (Tag raw : lockedEscrow) list.add(raw.copy());
         tag.put("escrow", list);
+        // 同一个 tag 先原子写快照，再交给 MC 写 SavedData。写失败不抛：SavedData 那份照写，它的代数更新，下次开服会选它
+        if (snapshotFile != null) {
+            try {
+                EconomySnapshot.write(snapshotFile, tag);
+            } catch (java.io.IOException e) {
+                MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份", e.toString());
+            }
+        }
         onSave.run();
         return tag;
     }
@@ -272,6 +331,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         }
 
         EconomyData d = new EconomyData(clock, null);
+        d.generation = generationOf(t);
 
         Map<String, Tag> rawCurrencies = new LinkedHashMap<>();
         if (t.contains("currencies")) {
