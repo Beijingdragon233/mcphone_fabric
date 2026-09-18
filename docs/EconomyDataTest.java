@@ -169,10 +169,7 @@ public class EconomyDataTest {
                 .putLong("1-1-1-1-1", 700));
         bad.put("铸造累计是负数", t -> t.getCompound("currencies").getCompound(COIN).putLong("minted", -1));
         bad.put("销毁累计是负数", t -> t.getCompound("currencies").getCompound(COIN).putLong("burned", -1));
-        bad.put("托管建立时刻是 0（超时判断会溢出，永远不退）", t -> escrowOf(t).putLong("createdAt", 0));
-        bad.put("托管建立时刻是 Long.MIN_VALUE", t -> escrowOf(t).putLong("createdAt", Long.MIN_VALUE));
         bad.put("托管 settledAt 不是 long", t -> escrowOf(t).putInt("settledAt", 5));
-        bad.put("托管建立时刻在远远的将来（永远不到期）", t -> escrowOf(t).putLong("createdAt", Long.MAX_VALUE));
         for (var c : bad.entrySet()) {
             CompoundTag tag = goodTag(a);
             c.getValue().accept(tag);
@@ -218,7 +215,7 @@ public class EconomyDataTest {
         TxnLog log = new TxnLog(old, ZoneOffset.UTC);
         eq(log.noteRestart(Instant.EPOCH), 0, "没有存档点的老流水：判断不了，不报");
         List<String> lines = Files.readAllLines(old.resolve("ledger").resolve(logName(0)));
-        check(lines.get(lines.size() - 1).startsWith("# 存档点"), "但补了一个存档点，之后的强杀就判断得了：" + lines);
+        check(lines.get(lines.size() - 1).startsWith(TxnLog.CHECKPOINT), "但补了一个存档点，之后的强杀就判断得了：" + lines);
 
         // 世界第一次用货币：开服时没有目录、不补存档点；头一次写流水时补。之后被强杀，照样报得出来
         Path first = tmp("first");
@@ -241,7 +238,7 @@ public class EconomyDataTest {
         // 写坏了半行（非法 UTF-8）：坏字节换掉接着读，不因此整个文件读不出来
         Path torn = tmp("torn");
         Files.createDirectories(torn.resolve("ledger"));
-        byte[] good = ("# 存档点 x\n1970-01-01T00:00:00Z|" + COIN + "|mint|-|" + UUID.randomUUID() + "|5|-|test|r|OK\n")
+        byte[] good = (TxnLog.CHECKPOINT + "x\n1970-01-01T00:00:00Z|" + COIN + "|mint|-|" + UUID.randomUUID() + "|5|-|test|r|OK\n")
                 .getBytes(java.nio.charset.StandardCharsets.UTF_8);
         byte[] bad = {(byte) 0xE5, (byte) 0xAD, '\n'};
         byte[] all = new byte[good.length + bad.length];
@@ -249,6 +246,18 @@ public class EconomyDataTest {
         System.arraycopy(bad, 0, all, good.length, bad.length);
         Files.write(torn.resolve("ledger").resolve(logName(0)), all);
         eq(new TxnLog(torn, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "半行坏字节不妨碍数出存档点之后那 1 笔");
+
+        // 被人用 GBK 另存过、或者带了 BOM：存档点标记是 ASCII，照样认得出
+        String okLine = "1970-01-01T00:00:00Z|" + COIN + "|mint|-|" + UUID.randomUUID() + "|5|-|test|r|OK";
+        String text = okLine + "\n# 重启：中文说明\n" + TxnLog.CHECKPOINT + "x\n" + okLine + "\n";
+        Path gbk = tmp("gbk");
+        Files.createDirectories(gbk.resolve("ledger"));
+        Files.write(gbk.resolve("ledger").resolve(logName(0)), text.getBytes(java.nio.charset.Charset.forName("GBK")));
+        eq(new TxnLog(gbk, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "GBK 另存过：存档点之后那 1 笔数得对");
+        Path bom = tmp("bom");
+        Files.createDirectories(bom.resolve("ledger"));
+        Files.writeString(bom.resolve("ledger").resolve(logName(0)), (char) 0xFEFF + TxnLog.CHECKPOINT + "x\n" + okLine + "\n");
+        eq(new TxnLog(bom, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "带 BOM：第一行的存档点也认得出");
     }
 
     /** 孤立的代理字符换成 U+FFFD；合法的代理对（emoji）原样留着。 */
@@ -296,6 +305,34 @@ public class EconomyDataTest {
 
     static CompoundTag escrowOf(CompoundTag tag) {
         return tag.getList("escrow", 10).getCompound(0);
+    }
+
+    /**
+     * 托管的建立时刻在将来、或不是正数：这笔永远不会到期。没结清的按读档那一刻重新计时并标脏（改正要落盘），不锁整种货币；
+     * 已结清的不会再到期，不管它。
+     */
+    static void badCreatedAtReset() {
+        long now = 1_700_000_000_000L;
+        for (long bad : new long[]{0, -5, Long.MIN_VALUE, now + 1, now + 10L * 365 * 86_400_000L, Long.MAX_VALUE}) {
+            CompoundTag tag = goodTag(UUID.randomUUID());
+            escrowOf(tag).putLong("createdAt", bad);
+            EconomyData d = EconomyData.load(tag, () -> now);
+            eq(d.lockedCurrencies(), Set.of(), "建立时刻 " + bad + "：不锁整种货币");
+            var e = d.escrow().snapshot().values().iterator().next();
+            eq(e.createdAt(), now, "建立时刻 " + bad + "：按读档那一刻重新计时");
+            check(d.isDirty(), "建立时刻 " + bad + "：改正要落盘，不然每次开服都重新计时、永远等不到期");
+        }
+        CompoundTag ok = goodTag(UUID.randomUUID());
+        escrowOf(ok).putLong("createdAt", now - 1);
+        EconomyData fine = EconomyData.load(ok, () -> now);
+        eq(fine.escrow().snapshot().values().iterator().next().createdAt(), now - 1, "正常的不动");
+        check(!fine.isDirty(), "正常的不标脏");
+
+        CompoundTag settled = goodTag(UUID.randomUUID());
+        escrowOf(settled).putLong("createdAt", Long.MAX_VALUE);
+        escrowOf(settled).putBoolean("settled", true);
+        eq(EconomyData.load(settled, () -> now).escrow().snapshot().values().iterator().next().createdAt(), Long.MAX_VALUE,
+                "已结清的不会再到期，不管它");
     }
 
     /** 原版读档失败时回头要一本新的：文件在就给整份锁住的，文件不在才给空账。 */
@@ -425,7 +462,7 @@ public class EconomyDataTest {
         CompoundTag saved = d.toTag();                     // 世界保存
         long totalAtSave = total(d, COIN);
         List<String> atSave = Files.readAllLines(dir.resolve("ledger").resolve(logName(t.get())));
-        check(atSave.get(atSave.size() - 1).startsWith("# 存档点"), "世界保存时流水里写了存档点：" + atSave);
+        check(atSave.get(atSave.size() - 1).startsWith(TxnLog.CHECKPOINT), "世界保存时流水里写了存档点：" + atSave);
 
         t.addAndGet(1000);
         p.transfer(a, b, 300, RSN);                        // 这两笔发生在保存之后
@@ -562,14 +599,14 @@ public class EconomyDataTest {
     /** 各档读不到余额都抛，不返回 0（计分板档例外：S15b 钉着"服务器不在时读成 0"，待定）。 */
     static void unavailableBalanceThrows() {
         String k = refusal(() -> new LegacyWalletProvider(currency(COIN)).balance(UUID.randomUUID()));
-        check(k != null, "emc_legacy 读不到余额要抛：它本来就不提供读余额");
+        eq(k, LegacyWalletProvider.KEY_NO_BALANCE, "emc_legacy 读余额要抛，原因是它不提供读余额（不是没有托管）");
         AdapterProvider off = new AdapterProvider(currency(COIN), new AdapterProvider.ExternalWallet() {
             public boolean available() {
                 return false;
             }
 
             public long balance(UUID x) {
-                return 0;
+                throw new AssertionError("钱包不在时不许去问它余额");
             }
 
             public boolean deposit(UUID x, long n) {
@@ -1055,6 +1092,7 @@ public class EconomyDataTest {
         missingAndUnknownFields();
         strictLoad();
         createForFileState();
+        badCreatedAtReset();
         restartCheckpoint();
         encodableEdges();
         loneSurrogateStillLogged();

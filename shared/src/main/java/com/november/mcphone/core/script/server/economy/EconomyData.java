@@ -293,6 +293,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             }
             Map<UUID, EscrowLedger.Entry> ok = new LinkedHashMap<>();
             List<CompoundTag> pending = new ArrayList<>();
+            int[] fixed = {0};
             for (int i = 0; i < list.size(); i++) {
                 CompoundTag e = list.getCompound(i);
                 if (!e.contains("currency", Tag.TAG_STRING)) {
@@ -300,7 +301,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
                 }
                 String currency = e.getString("currency");
                 // 大写之类的 id 不锁的话，这笔就成了哪种货币都不认领的孤儿
-                String why = canonicalCurrency(currency) ? readEscrow(e, ok, clock.getAsLong()) : "的货币 id 不是规范写法";
+                String why = canonicalCurrency(currency) ? readEscrow(e, ok, clock.getAsLong(), fixed) : "的货币 id 不是规范写法";
                 if (why != null) d.lockCurrency(currency, rawCurrencies.get(currency), "第 " + (i + 1) + " 笔托管" + why);
                 pending.add(e);
             }
@@ -316,6 +317,8 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
                 }
             }
             d.escrow.restore(live);
+            // 改正过的建立时刻要落盘：不落的话每次开服都按那一刻重新计时，这笔永远等不到期
+            if (fixed[0] > 0) d.setDirty();
         }
         return d;
     }
@@ -350,7 +353,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     }
 
     /** 读一笔托管。读不懂返回原因。 */
-    private static String readEscrow(CompoundTag e, Map<UUID, EscrowLedger.Entry> out, long now) {
+    private static String readEscrow(CompoundTag e, Map<UUID, EscrowLedger.Entry> out, long now, int[] fixed) {
         UUID id = canonicalUuid(e.getString("id"));
         UUID owner = canonicalUuid(e.getString("owner"));
         UUID beneficiary = canonicalUuid(e.getString("beneficiary"));
@@ -359,20 +362,24 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             return "缺 amount 或 createdAt，或者不是 long";
         }
         if (e.getLong("amount") <= 0) return "的金额不是正数";
-        // 超时判断是 now - createdAt ≥ 超时：负得离谱会溢出，在未来就永远不到期 —— 两种都是这笔永远不会被退款。
-        // 未来放宽一个超时周期，容得下服务器时钟往回拨一点
         long createdAt = e.getLong("createdAt");
-        if (createdAt <= 0) return "的建立时刻不是正数";
-        if (createdAt > now + EscrowLedger.DEFAULT_TIMEOUT_MS) return "的建立时刻在将来";
         // settled 缺了不取默认：按"没结清"读，放过款的那笔就能再放一次
         if (!e.contains("settled", Tag.TAG_BYTE)) return "缺 settled，或者不是布尔";
         if (out.containsKey(id)) return "的号 " + id + " 重复了";
         boolean settled = e.getBoolean("settled");
+        // 超时判断是 now - createdAt ≥ 超时：建立时刻在将来（建托管时服务器时钟快了）或不是正数（负得离谱会溢出），
+        // 这笔就永远不会被退款。没结清的改成此刻、从现在起再等满一个超时周期；不锁 —— 为一笔时间戳停掉整种货币代价太大。
+        // 已结清的不会再到期，不管它
+        if (!settled && (createdAt <= 0 || createdAt > now)) {
+            MCphone.LOGGER.warn("[MCphone] 托管 {} 的建立时刻 {} 不对（在将来或不是正数），按此刻 {} 重新计时", id, createdAt, now);
+            createdAt = now;
+            fixed[0]++;
+        }
         // settledAt 只决定已结清的条目留多久，缺了按建立时刻算，不动钱；但写了就得是 long
         if (e.contains("settledAt") && !e.contains("settledAt", Tag.TAG_LONG)) return "的 settledAt 不是 long";
         long settledAt = !settled ? 0 : e.contains("settledAt") ? e.getLong("settledAt") : e.getLong("createdAt");
         out.put(id, new EscrowLedger.Entry(owner, beneficiary, e.getString("currency"),
-                e.getLong("amount"), e.getLong("createdAt"), settled, settledAt));
+                e.getLong("amount"), createdAt, settled, settledAt));
         return null;
     }
 

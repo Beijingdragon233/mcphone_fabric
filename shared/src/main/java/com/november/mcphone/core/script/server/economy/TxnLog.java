@@ -97,8 +97,11 @@ public final class TxnLog {
         write(at, line);
     }
 
-    /** 注释行的开头。{@link #sumMintAndBurn} 这类按竖线切的解析，切出来不满 10 格，自然跳过。 */
-    private static final String CHECKPOINT = "# 存档点 ";
+    /**
+     * 存档点那一行的开头。{@link #sumMintAndBurn} 这类按竖线切的解析，切出来不满 10 格，自然跳过。
+     * <b>只用 ASCII</b>：流水被人用别的编码另存过，中文标记就成了乱码、再也认不出来。
+     */
+    static final String CHECKPOINT = "# checkpoint ";
 
     /**
      * 世界保存时写一行存档点（{@link EconomyData} 在序列化时调）。开服时拿它判断流水比存档超前了几笔。
@@ -142,7 +145,7 @@ public final class TxnLog {
             }
             files.sort((x, y) -> {
                 try {
-                    return Files.getLastModifiedTime(y).compareTo(Files.getLastModifiedTime(x));
+                    return Files.getLastModifiedTime(x).compareTo(Files.getLastModifiedTime(y));
                 } catch (IOException e) {
                     return 0;
                 }
@@ -151,25 +154,30 @@ public final class TxnLog {
             com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
             return -1;
         }
+        // 最新的两个，从旧往新顺着读：每遇到一个存档点就清零。逐行流式读 —— 单个文件能有 64 MiB，整个读进内存要几百兆堆。
+        // InputStreamReader 遇到坏字节换成 U+FFFD 接着读（Files.newBufferedReader 会直接报错）：写到一半断电的文件不至于整个读不出
         int unsaved = 0;
-        for (Path p : files.subList(0, Math.min(2, files.size()))) {
-            List<String> lines;
-            try {
-                // 按字节读、坏字节换成 U+FFFD：写到一半断电、被人用别的编码另存过，readAllLines 会整个文件都读不出来，
-                // 之后每次开服都是 -1，再也报不出任何东西
-                lines = new String(Files.readAllBytes(p), StandardCharsets.UTF_8).lines().toList();
+        boolean found = false;
+        for (Path p : files.subList(Math.max(0, files.size() - 2), files.size())) {
+            try (java.io.BufferedReader r = new java.io.BufferedReader(
+                    new java.io.InputStreamReader(Files.newInputStream(p), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (!line.isEmpty() && line.charAt(0) == '\uFEFF') line = line.substring(1);
+                    if (line.startsWith(CHECKPOINT)) {
+                        found = true;
+                        unsaved = 0;
+                        continue;
+                    }
+                    String[] f = line.split("\\|", -1);
+                    if (f.length >= 10 && "OK".equals(f[9])) unsaved++;
+                }
             } catch (IOException e) {
                 com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
                 return -1;
             }
-            for (int i = lines.size() - 1; i >= 0; i--) {
-                String line = lines.get(i);
-                if (line.startsWith(CHECKPOINT)) return unsaved;
-                String[] f = line.split("\\|", -1);
-                if (f.length >= 10 && "OK".equals(f[9])) unsaved++;
-            }
         }
-        return 0;
+        return found ? unsaved : 0;
     }
 
     private void write(Instant at, String line) {
@@ -178,7 +186,7 @@ public final class TxnLog {
                 Files.createDirectories(dir);
                 // 头一次写：此刻盘上的存档就是现状（之前没有任何变动），先落一个存档点。
                 // 不落的话，这之后到第一次世界保存之间被强杀，开服时找不到存档点，那几笔就永远报不出来。
-                // 只有接着存档的流水（有 Journal）才谈得上存档点
+                // 没接存档的流水（没有 Journal）不补：它没有存档可对，CurrencyTest 也钉着它的文件里只有交易行
                 if (journal != null && !line.startsWith(CHECKPOINT)) write(at, CHECKPOINT + at);
             }
             Path f = fileFor(at);

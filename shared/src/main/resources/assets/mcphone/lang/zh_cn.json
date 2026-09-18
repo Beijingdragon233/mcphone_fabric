@@ -410,5 +410,8 @@
   "mcphone.economy.unavailable.queue_full": "货币请求排队太多，这笔没办，稍后再试。",
   "mcphone.economy.unavailable.stopping": "服务器正在停止，这笔没办。",
   "mcphone.economy.unavailable.interrupted": "请求被打断了，这笔没办。",
-  "mcphone.economy.unavailable.wait_budget": "这一次等服务器等得太久了，后面的货币操作没办。"
+  "mcphone.economy.unavailable.wait_budget": "这一次等服务器等得太久了，后面的货币操作没办。",
+  "mcphone.economy.adapter.unavailable": "外部经济模组现在用不了（没装、没加载完，或者它自己报了不可用）。",
+  "mcphone.economy.emc_legacy.no_escrow": "旧版钱包接口不支持托管，这种货币做不了市场类交易。",
+  "mcphone.economy.emc_legacy.no_balance": "旧版钱包接口不提供读余额。"
 }

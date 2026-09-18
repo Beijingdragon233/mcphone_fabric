@@ -30,7 +30,7 @@ import java.util.UUID;
  *       市场要"买家付款先押着、发货再放款"，没有托管就只能裸转，卖家跑单就没法退</li>
  *   <li>{@link #mint} / {@link #transfer} 同样不行：旧接口没有存入这一侧，
  *       只能扣不能加，转账是"一端扣一端加"，做不到</li>
- *   <li>{@link #balance} 返回 0 并不代表没钱 —— 旧接口<b>刻意不提供读余额</b>
+ *   <li>{@link #balance} 一律读不到、抛 {@link CurrencyUnavailableException} —— 旧接口<b>刻意不提供读余额</b>
  *       （ProjectE 的 EMC 用 BigInteger，写死 long 就得截断）</li>
  * </ul>
  *
@@ -40,6 +40,9 @@ public final class LegacyWalletProvider implements ICurrencyProvider {
 
     /** 选了它但想干托管/转账时给的本地化键。 */
     public static final String KEY_NO_ESCROW = "mcphone.economy.emc_legacy.no_escrow";
+
+    /** 读余额失败时的原因：旧接口不提供读余额。 */
+    public static final String KEY_NO_BALANCE = "mcphone.economy.emc_legacy.no_balance";
 
     private final Currency currency;
 
@@ -69,7 +72,7 @@ public final class LegacyWalletProvider implements ICurrencyProvider {
      */
     @Override
     public long balance(UUID player) {
-        throw new CurrencyUnavailableException(unavailableReasonKey());
+        throw new CurrencyUnavailableException(KEY_NO_BALANCE);
     }
 
     @Override

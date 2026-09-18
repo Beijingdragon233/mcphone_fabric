@@ -410,5 +410,8 @@
   "mcphone.economy.unavailable.queue_full": "Too many currency requests are queued. Nothing was done; try again shortly.",
   "mcphone.economy.unavailable.stopping": "The server is stopping. Nothing was done.",
   "mcphone.economy.unavailable.interrupted": "The request was interrupted. Nothing was done.",
-  "mcphone.economy.unavailable.wait_budget": "This call waited too long for the server; the remaining currency operations were skipped."
+  "mcphone.economy.unavailable.wait_budget": "This call waited too long for the server; the remaining currency operations were skipped.",
+  "mcphone.economy.adapter.unavailable": "The external economy mod is unavailable right now (not installed, not loaded yet, or reporting itself unavailable).",
+  "mcphone.economy.emc_legacy.no_escrow": "The legacy wallet interface has no escrow, so this currency cannot be used for marketplace trades.",
+  "mcphone.economy.emc_legacy.no_balance": "The legacy wallet interface does not expose balances."
 }

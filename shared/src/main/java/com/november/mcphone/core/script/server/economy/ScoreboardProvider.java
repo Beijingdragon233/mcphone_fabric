@@ -233,9 +233,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
     /**
      * 余额。
      *
-     * <p><b>用不了的时候返回 0，与「真的有 0 块」分不出来</b> —— 接口这个方法只有一个 long，
-     * 没有报错的通道（{@link ICurrencyProvider#balance}）。调用方要先问 {@link #isAvailable()}；
-     * 那才是这一档说得出「差哪一条」的地方。
+     * <p><b>用不了的时候返回 0，与「真的有 0 块」分不出来</b>。别的几档这时抛 {@link CurrencyUnavailableException}；
+     * 这一档没改，因为 S15b 的断言钉着「服务器不在时读成 0，不抛」（待产品经理定）。调用方要先问 {@link #isAvailable()}。
      */
     @Override
     public long balance(UUID player) {
