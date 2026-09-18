@@ -220,7 +220,7 @@ public final class CtxBuilder {
 
         // ---- ctx.currency（§22.5）。金额进出都是 BigInt（勘误 E18），宿主在边界切 BigInt ↔ long
         // 【被拒的调用、玩家输错的数据是返回值，不中断】（S15h）：中断记过失，连着几次禁玩家、熔断整个 App ——
-        // 那是在罚玩家。只有脚本自己写错（类型不对）才中断（记过失）；provider 在动钱时抛了是结果不明，见 moneyCall
+        // 那是在罚玩家。只有脚本自己写错（类型不对）才中断（记过失）；provider 在动钱时抛了或没给结果是结果不明，见 moneyCall
         if (backends.currencies() != null) {
             CurrencyRegistry reg = backends.currencies();
             ScriptableObject cur = HostFn.obj(cx, scope);
@@ -369,21 +369,32 @@ public final class CtxBuilder {
     static final String NO_SUCH_CURRENCY = "mcphone.economy.no_such_currency";
 
     /**
-     * 会动钱的 provider 调用。provider 抛了 = 结果不明（可能已经动了一半）：先打一条带来龙去脉的 ERROR 给服主核对，
-     * 再原样抛出去 —— 脚本接不住、拿到 INTERNAL、不记过失。不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
+     * 会动钱的 provider 调用。provider 抛了、或者没给结果 = 结果不明（可能已经动了一半）：打一行带来龙去脉的 ERROR 给服主核对，
+     * 再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失；堆栈在 RhinoEvaluator 那条 ERROR 里。
+     * 不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
      */
     private static <T> T moneyCall(String what, String appId, java.util.UUID player, String currencyId,
                                    java.util.UUID other, Long amount, java.util.function.Supplier<T> op) {
+        Throwable failure;
         try {
-            return op.get();
-        } catch (ScriptAbort | VirtualMachineError e) {
+            T r = op.get();
+            if (r != null) return r;
+            failure = new NullPointerException("provider 返回了 null");
+        } catch (ScriptAbort e) {
             throw e;
-        } catch (RuntimeException | Error e) {
-            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ 货币调用结果不明：app={} 玩家={} {} {} 对方或托管号={} 金额={}（最小单位）"
-                    + "—— provider 抛了异常，钱可能已经动了一半，请核对", appId, player, what, currencyId, other,
-                    amount == null ? "-" : amount, e);
-            throw e;
+        } catch (Throwable e) {
+            failure = e;
         }
+        String detail = "货币调用结果不明：app=" + appId + " 玩家=" + player + " " + what + " " + currencyId
+                + " 对方或托管号=" + other + " 金额=" + (amount == null ? "-" : amount + "（最小单位）")
+                + " —— provider 抛了异常或没给结果（" + failure + "），钱可能已经动了一半，请核对";
+        try {
+            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ {}", detail);
+        } catch (Throwable ignored) {
+            // 栈溢出、内存不够时打不出来也别换掉原来那个错
+        }
+        if (failure instanceof VirtualMachineError vm) throw vm;
+        throw new OutcomeUnknown(detail, failure);
     }
 
     /**

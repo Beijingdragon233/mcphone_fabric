@@ -955,9 +955,41 @@ public class EconomyDataTest {
         EconomyData locked = EconomyData.loadPreferring(saved, snap, () -> 1);
         String why = locked.wholeLock();
         check(why != null && why.contains("原子快照 " + snap), "原因里点名是快照那一份 —— " + why);
-        check(why.contains("先只把上面点名的那一份挪走"), "先说只挪走坏的那份");
+        check(why.contains("修好或换回备份后重启") && !why.contains("另一份完好"),
+                "先说修好或换备份；不许说\"另一份完好\"—— 程序没核对过另一份 —— " + why);
         Files.delete(snap);
         eq(EconomyData.loadPreferring(saved, snap, () -> 1).get(a, COIN), 500L, "只挪走快照：SavedData 那份照常开，钱都在");
+
+        // 读档时锁住的每一种原因都点名是哪一份
+        java.util.List<java.util.function.Consumer<CompoundTag>> breakers = List.of(
+                x -> x.remove("dataVersion"),
+                x -> x.putInt("dataVersion", EconomyData.DATA_VERSION + 1),
+                x -> x.putInt("dataVersion", EconomyData.DATA_VERSION - 1),
+                x -> x.putString("currencies", "坏"),
+                x -> x.putString("escrow", "坏"),
+                x -> {
+                    ListTag l = new ListTag();
+                    l.add(StringTag.valueOf("坏"));
+                    x.put("escrow", l);
+                },
+                x -> escrowOf(x).remove("currency"));
+        for (int i = 0; i < breakers.size(); i++) {
+            CompoundTag bad = goodTag(a);
+            bad.putLong("generation", 9);
+            breakers.get(i).accept(bad);
+            EconomySnapshot.write(snap, bad);
+            String w = EconomyData.loadPreferring(saved, snap, () -> 1).wholeLock();
+            check(w != null && w.startsWith("原子快照 " + snap + "："), "第 " + (i + 1) + " 种读档锁住：原因开头点名快照 —— " + w);
+        }
+        // SavedData 读不出、快照读得出却锁住：createFor 那条路同样点名快照
+        Path mcFile = dir.resolve("mcphone_economy.dat");
+        Files.write(mcFile, new byte[]{1, 2, 3});
+        CompoundTag noVer = goodTag(a);
+        noVer.remove("dataVersion");
+        EconomySnapshot.write(snap, noVer);
+        String cw = EconomyData.createFor(mcFile, snap, () -> 1).wholeLock();
+        check(cw != null && cw.startsWith("原子快照 " + snap + "："), "createFor 里快照锁住：同样点名快照 —— " + cw);
+        Files.delete(snap);
 
         CompoundTag badSaved = new CompoundTag();
         badSaved.putInt("dataVersion", EconomyData.DATA_VERSION);
@@ -1108,7 +1140,7 @@ public class EconomyDataTest {
      * 经注册表交出去的那一层（包了网关）：provider 自己在里面抛的 CurrencyUnavailableException 不许被改写成"被拒"——
      * 它可能已经动了一半，改成 UNAVAILABLE 扫描就会每 5 分钟重试一次。网关自己拒的（provider 没跑）照样是 UNAVAILABLE。
      */
-    static void gatedKeepsProviderThrows() {
+    static void gatedKeepsProviderThrows() throws Exception {
         AtomicLong t = new AtomicLong(1_700_000_000_000L);
         EconomyData d = EconomyData.empty(t::get);
         BuiltinProvider raw = builtin(COIN, d, null, t);
@@ -1191,6 +1223,22 @@ public class EconomyDataTest {
         }
         check(threw && nested.get() == 1, "嵌套网关的拒绝发生在 provider 跑起来之后：原样抛出，不改写成 UNAVAILABLE");
 
+        // 真的从 worker 交给主线程：ran 在主线程上记、在 worker 上读
+        try (Main m = new Main()) {
+            CurrencyRegistry cross = new CurrencyRegistry(m.gateway(8, 1_000));
+            cross.register(halfway, true);
+            for (String op : new String[]{"transfer", "hold"}) {
+                boolean propagated = false;
+                try {
+                    if (op.equals("transfer")) cross.get(COIN).transfer(a, UUID.randomUUID(), 1, RSN);
+                    else cross.get(COIN).hold(a, UUID.randomUUID(), 1, RSN);
+                } catch (CurrencyUnavailableException e) {
+                    propagated = true;
+                }
+                check(propagated, op + "：在主线程上跑了才抛的，worker 这边认得出\"跑了\"，原样抛出");
+            }
+        }
+
         CurrencyRegistry refusing = new CurrencyRegistry(new CurrencyGateway(Runnable::run, () -> false));   // 不在主线程、网关没开
         refusing.register(halfway, true);
         int before = credited.get();
@@ -1237,6 +1285,23 @@ public class EconomyDataTest {
         r.sweepIfDue(5 * EconomyRuntime.SWEEP_INTERVAL_MS);
         eq(d.escrow().held(GEM), 0L, "明确被拒的，下次再试就退成了");
         eq(credited.get(), 1, "抛过的那笔还是没再试");
+
+        // provider 的 refund 返回 null：没给结果和抛了一样是结果不明，不当成"拒了"每趟重试
+        EconomyData nd = EconomyData.empty(t::get);
+        BuiltinProvider ncoin = builtin(COIN, nd, null, t);
+        ncoin.mint(a, 100, RSN);
+        ncoin.hold(a, UUID.randomUUID(), 40, RSN);
+        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);
+        AtomicInteger nulls = new AtomicInteger();
+        ICurrencyProvider givesNull = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    nulls.incrementAndGet();
+                    return null;
+                });
+        EconomyRuntime nr = new EconomyRuntime(nd, null, null, id -> givesNull, 0);
+        for (int i = 1; i <= 4; i++) nr.sweepIfDue(i * EconomyRuntime.SWEEP_INTERVAL_MS);
+        eq(nulls.get(), 1, "返回 null 的只试一次，记成结果不明");
 
         AtomicBoolean vmClock = new AtomicBoolean();
         EconomyData vd = EconomyData.empty(() -> {

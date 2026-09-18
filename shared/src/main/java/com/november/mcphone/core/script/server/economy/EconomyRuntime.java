@@ -183,6 +183,8 @@ public final class EconomyRuntime {
                     continue;
                 }
                 TxnResult r = p.refund(e.getKey(), new TxnReason(TIMEOUT_REFUND_KIND, e.getKey().value().toString()));
+                // 没给结果和抛了一样是结果不明：当成"拒了"就会每 5 分钟再退一次
+                if (r == null) throw new IllegalStateException("provider 的 refund 返回了 null");
                 if (r == TxnResult.OK) refunded++;
                 else failed++;
             } catch (VirtualMachineError fatal) {

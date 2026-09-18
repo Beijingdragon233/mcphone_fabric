@@ -97,8 +97,8 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     private static final String SAVED_DATA = "SavedData 那份（<世界>/data/" + FILE_NAME + ".dat）";
 
     /** 整份锁住时怎么解：每一条锁住原因后面都跟着它。 */
-    static final String UNLOCK_HINT = "。只有一份坏的话，先只把上面点名的那一份挪走再开服，另一份完好就能照常开；"
-            + "都坏了就修好或换回备份后重启。确认这些钱都不要了，把 <世界>/data/" + FILE_NAME
+    static final String UNLOCK_HINT = "。修好或换回备份后重启（只挪走其中一份的话，开服会用另一份 —— 它可能更旧、也可能同样读不通，"
+            + "程序没替你核对过）。确认这些钱都不要了，把 <世界>/data/" + FILE_NAME
             + ".dat 与 <世界>/mcphone/economy/ 下的 economy.dat、economy.dat.stale 都挪走再开服，就按新世界开："
             + "这份存档里记的余额与托管全部清零（计分板、外部钱包里的余额不记在这里，不受影响；从那里押进托管的钱随托管一起没了）";
 

@@ -555,8 +555,24 @@ public class ScriptEngineTest {
         for (String call : new String[]{"pay(" + c + ", " + to + ", 5n)", "hold(" + c + ", " + to + ", 5n)",
                 "release(" + c + ", " + u + ")", "refund(" + c + ", " + u + ")"}) {
             String got = withCtx("try { ctx.currency." + call + " } catch (e) { 'caught' }", gb);
-            check(got.startsWith("CurrencyUnavailableException"), call + "：provider 抛的原样穿出、脚本接不住 —— " + got);
+            check(got.startsWith("OutcomeUnknown"), call + "：结果不明、脚本接不住 —— " + got);
+            got = withCtx("(function () { try { return ctx.currency." + call + " } finally { return 'SWALLOWED' } })()", gb);
+            check(got.startsWith("OutcomeUnknown"), call + "：finally { return } 也吞不掉（吞掉了 App 就当\"没动\"再付一次）—— " + got);
         }
+        // provider 没给结果（返回 null）：同样是结果不明，不是桥里的 NullPointerException
+        var nullReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
+        nullReg.register((com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                (proxy, m, args) -> java.util.Set.of("transfer", "hold", "release", "refund").contains(m.getName())
+                        ? null : m.invoke(provider, args)), true);
+        var nb2 = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, nullReg);
+        for (String call : new String[]{"pay(" + c + ", " + to + ", 5n)", "hold(" + c + ", " + to + ", 5n)",
+                "release(" + c + ", " + u + ")", "refund(" + c + ", " + u + ")"}) {
+            String got = withCtx("(function () { try { return ctx.currency." + call + " } finally { return 'SWALLOWED' } })()", nb2);
+            check(got.startsWith("OutcomeUnknown"), call + "：provider 返回 null 也是结果不明 —— " + got);
+        }
+        check(!ScriptAbort.class.isAssignableFrom(OutcomeUnknown.class), "结果不明不是 ScriptAbort：不记过失");
         var refusingReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(
                 new com.november.mcphone.core.script.server.economy.CurrencyGateway(Runnable::run, () -> false));
         refusingReg.register(halfway, true);
