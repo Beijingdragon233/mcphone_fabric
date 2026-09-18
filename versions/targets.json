@@ -198,8 +198,13 @@
     "gradle": "9.2.1",
     "project": "platforms/26.3-neoforge",
     "buildable": false,
-    "note": "26.x 的主路径。工程目录已经建出来了，所以 CI 从下一次推送起就会真编这一支。骨架在 2026-09-19 本地编过：platforms/26.3-neoforge 下 ./gradlew build 用 8m43s 编到 BUILD SUCCESSFUL，ModDevGradle 2.0.147 + neo_version 26.3.0.3-beta + Java 25 工具链，neoform-runtime 那条 26.3 的流水线全程走通（decompile 43.36s、recompile 37.49s），产物 build/libs/mcphone-1.10.2.jar 里 META-INF/jarjar/ 嵌着 rhino-1.9.1 与 javamp3-1.0.1 —— 嵌库那条路在 26.3 上也通。原先那个最大的未知数答掉了：26.3 的 client jar 确实不混淆（那个 jar 里 11266 个 net/minecraft/** 条目、0 个 class_N，piston-meta 里 26.3 的 downloads 也只剩 client 与 server、没有 client_mappings），而构建插件吃得下这个已经命名好的输入 jar —— 骨架里那一个探针类 import 的就是 26.x 的新名字（Identifier、GuiGraphicsExtractor），javac 解析得到。java 25 来自 piston-meta 里 26.3 的 java_version，现在也被这次构建验着。【这一支现在不挂共用代码】：build.gradle 里 mountSharedSources = false，这里的 layers 于是也写 []，两处要一起翻回完整形态。理由是共用代码有 201 个文件碰到 26.x 改名或消失的 API，接上来的第一刻就是一片 javac 错，那一轮日志该专门用来收集错误清单，而不是和工具链的成败混在一份输出里。gradle/mcphone-checks.gradle 也还没 apply —— 里面的 assertTests 会把仓库级 docs/ 那批断言测试对着 sourceSets.main 的产物与编译类路径编一遍，不挂共用代码时它们引用的类一个都不在。",
-    "layers": []
+    "note": "26.x 的主路径。工程目录已经建出来了，所以 CI 从下一次推送起就会真编这一支。骨架在 2026-09-19 本地编过：platforms/26.3-neoforge 下 ./gradlew build 用 8m43s 编到 BUILD SUCCESSFUL，ModDevGradle 2.0.147 + neo_version 26.3.0.3-beta + Java 25 工具链，neoform-runtime 那条 26.3 的流水线全程走通（decompile 43.36s、recompile 37.49s），产物 build/libs/mcphone-1.10.2.jar 里 META-INF/jarjar/ 嵌着 rhino-1.9.1 与 javamp3-1.0.1 —— 嵌库那条路在 26.3 上也通。原先那个最大的未知数答掉了：26.3 的 client jar 确实不混淆（那个 jar 里 11266 个 net/minecraft/** 条目、0 个 class_N，piston-meta 里 26.3 的 downloads 也只剩 client 与 server、没有 client_mappings），而构建插件吃得下这个已经命名好的输入 jar —— 骨架里那一个探针类 import 的就是 26.x 的新名字（Identifier、GuiGraphicsExtractor），javac 解析得到。java 25 来自 piston-meta 里 26.3 的 java_version，现在也被这次构建验着。【1c：共用代码已挂上】build.gradle 里 mountSharedSources 与这里的 layers 同时翻成完整四层，gradle/mcphone-checks.gradle 也一并 apply —— 挂上来的 :compileJava 是【预期红】：422 个源文件编出 1523 条错误、214 个文件，其中约 690 条是本平台文件没补导致的级联，真断 245 条 / 69 个文件，另有 208 个文件一个字没改就编过了。逐条归因、26.3 官方源对照、以及【fill 不用改】这条翻案，全部在 docs/PORTING-26.3.md；本条 note 只留结论，别把那份表抄第二遍。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "neoforge"
+    ]
   },
   "26.3-fabric": {
     "minecraft": "26.3",

@@ -1,0 +1,358 @@
+# 适配 Minecraft 26.3：共用代码挂上来之后的实测
+
+> 本文件是 1c 的产出：把 `platforms/26.3-neoforge` 的共用代码开关从 `false` 翻成
+> `true`，让 javac 把整片红吐出来，然后把这堆红**归因**。所有数字来自那一轮日志
+> 与 26.3 官方源，不是估计。结论落在 §4。
+
+## 复现
+
+```
+$ cd platforms/26.3-neoforge
+$ .\gradlew.bat compileJava --console=plain
+BUILD FAILED in 21s
+1,523 个错误（build.gradle 里 -Xmaxerrs 100000，未被默认的 100 条截断）
+```
+
+对照的「26.3 官方源」是
+`~/.gradle/caches/neoformruntime/intermediate_results/mergeWithSources_*_output.jar`
+里那 7,301 个 `.java`（26.3 不混淆，见 `versions/targets.json` 的 26.3-neoforge note）。
+下面每一行「26.3 是什么形状」都是在那个 jar 里查到的，带 `文件:行号`。
+
+## 0. 先说两条翻案
+
+- **`fill` 不要改。** `GuiGraphicsExtractor.fill(int,int,int,int,int)` 还在
+  （`GuiGraphicsExtractor.java:184`，内部自己填 `RenderPipelines.GUI`）。原先记着
+  「26.x 起 fill/blit 强制 RenderPipeline 首参」，对 `fill` 不成立。
+- **`Screen` 的 `width`/`height`/`font`/`minecraft` 都还在**
+  （`Screen.java:66`、`:68`、`:69`、`:71`，宽高还从 `protected` 变成了 `public`）。
+  所以这一轮日志里那 220 多条「找不到 `font`/`width`/`height`」**不是 26.x 的断裂**，
+  是级联，见 §2。
+
+## 一、七个桶
+
+`javac` 报 **1523 条错误、214 个文件**。归因规则写在 §2、§5、§7 里，规则本身也是结论的一部分。
+
+| 桶 | 条数 | 占比 | 涉及文件 |
+|---|---:|---:|---:|
+| A 26.x 改名（`GuiGraphics`、`ResourceLocation` 一族） | 588 | 38.6% | 132 |
+| B 本平台文件还没补（连带它的直接引用） | 504 | 33.1% | 157 |
+| E 级联：26.3 里该成员仍在，父类修好就自己消失 | 186 | 12.2% | 23 |
+| G 真断：其它 API 形变 | 134 | 8.8% | 57 |
+| D 真断：附属模组在 26.3 没有构件 | 54 | 3.5% | 14 |
+| C 真断：覆写签名变了 | 41 | 2.7% | 13 |
+| F 真断：GLFW 整个没了 | 16 | 1.1% | 4 |
+
+**真断小计（C+D+F+G）= 245 条，落在 69 个文件里。**
+剩下 145 个文件只被「改名 / 补平台文件 / 级联」卡着 —— 它们不构成设计问题。
+这一支挂载一共 **422 个源文件**（`shared/` 354 + 四层 67 + 本平台 1），其中 **208 个
+一个字都没改就编过了**（49.3%）。然后下面那三块（级联、`until`、`MCphone.java`）才是本轮的产出。
+
+---
+
+## 二、级联为什么白占三分之一
+
+`platforms/26.3-neoforge/` 到现在只有**一个** java 文件（那个探针 `MCphone.java`），
+而 `1.21.1-neoforge/` 有 **48 个**。共用代码里 `PhoneScreen extends PhoneScreenBase`，
+而 `PhoneScreenBase` 是每平台一份的 —— 26.3 没有，于是：
+
+1. `PhoneScreen` 的父类成了 error type，它从 `Screen` 继承来的 `font` / `width` / `height`
+   / `minecraft` 全部报「找不到符号」（186 条，E 桶）；
+2. 它自己写的 `@Override removed()` / `isPauseScreen()` / `onClose()` / `init()` /
+   `onFilesDrop()` 全部报「方法不会覆盖或实现超类型的方法」—— 而这些方法在 26.3 的
+   `Screen.java` 里一字未改（`:387`、`:438`、`:208`、`:381`、`:477`）。
+
+**所以这一轮日志不能当工作量表用**：1523 条里约 690 条（B 的直接引用 504 + E 的级联 186，
+其中含 11 条「签名其实没变却报不会覆盖」的覆写）会在补完平台文件之后自己消失。
+
+顺带纠正一个原先记着的判断：**`Screen` 的 `width`/`height`/`font`/`minecraft` 在 26.3 都还在**，
+宽高还从 `protected` 变成 `public`（`Screen.java:66`、`:68`、`:69`、`:71`）。
+220 多条「找不到 `font`/`width`」不是 26.x 的断裂。
+
+---
+
+## 三、A 桶：改名一族，逐条对着 26.3 的源验过
+
+| 旧 | 新（26.3 里在哪） | 条数 |
+|---|---|---:|
+| `GuiGraphics` | `GuiGraphicsExtractor` | 244 |
+| `ResourceLocation` | `net.minecraft.resources.Identifier`，`fromNamespaceAndPath`/`withDefaultNamespace`/`parse`/`STREAM_CODEC` 形状不变 | 315 |
+| `ToastComponent` | `ToastManager#addToast(Toast)`；`Toast` 变接口，覆写点是 `extractRenderState(GuiGraphicsExtractor, Font, long)` | 4 |
+| `GameProfileCache`、`MinecraftServer#getProfileCache()` | `net.minecraft.server.players.ProfileResolver`（经 `Services`） | 10 |
+| `MetadataSectionSerializer<T>` | `record MetadataSectionType<T>(String name, Codec<T> codec)` —— 匿名类要改写成 `Codec` | 3 |
+| `PlayerFaceRenderer` | `PlayerFaceExtractor` | 2 |
+| `InteractionResultHolder<T>` | `net.minecraft.world.InteractionResult` | 3 |
+| `Util#isWindows()` / `openPath` | `Util.getPlatform() == Util.OS.WINDOWS`；`Blaze3D.openPath(Path)` | 21 |
+| `ServerPlayer#server` | 字段还在但**私有**（`ServerPlayer.java:1057` 自己用 `this.server`），要换 getter | 21 |
+| `Player#displayClientMessage` | 0 命中；`sendSystemMessage(Component)` 到处在用 | 5 |
+| `NativeImage#setPixelRGBA` | `setPixel(x, y, int)` | 2 |
+| `DynamicTexture(NativeImage)` | 构造器变成 `(Supplier<String>, NativeImage)` | 2 |
+| `Biome#getPrecipitationAt(BlockPos)` | `(BlockPos, int seaLevel)`，`Biome.java:107` | 1 |
+| `KeyMapping#getKey(int,int)` / `getScanCode()` | `getKey()` 现在返回 `InputConstants.Key`；`getScanCode` 0 命中 | 3 |
+| `ItemStack#appendHoverText` | 挪到 `Item`：`ItemStack.java:951` 转调 `getItem().appendHoverText(...)` | 1 |
+| `GameProfile#getName()` | 类在 authlib 不在 26.3 源里，`getName` 0 命中，大概率 record 化成 `name()` | 3 |
+| `FriendlyByteBuf#writeCollection` / `StackCodecs` | 待查 | 5 |
+| `Options#hideGui` | 0 命中，去处未定 | 3 |
+| `Level`/`ServerLevel#getDayTime()` | 0 命中；`LevelData` 那侧只剩 `getDayTimeFraction()` | 2 |
+
+---
+
+## 四、`fill` / `blit` 这一族：本轮翻案
+
+原先记着的是「26.x 起 `fill`/`blit` 强制 `RenderPipeline` 首参」，据此估出「139 个 `fill`、
+80 个文件要接渲染管线」。**实测不成立**：
+
+```java
+// GuiGraphicsExtractor.java:184 —— 无 pipeline 的 5 参 fill 还在，内部自己转
+public void fill(int x0, int y0, int x1, int y1, int col) {
+    this.fill(RenderPipelines.GUI, x0, y0, x1, y1, col);
+}
+```
+
+共用代码里这些调用的**实参个数分布**（扫 `shared/` + 三层，不看错误日志）：
+
+| 调用 | 实参个数 → 处数 | 26.3 的对应 | 要改什么 |
+|---|---|---|---|
+| `fill(` | 5 参 → 139（另有 2 参 4 处、0 参 1 处是别的同名方法） | `fill(int,int,int,int,int)` 存在 | 只换接收者类型名 |
+| `drawString(` | 6 参 → 217 | `text(Font,String,int,int,int,boolean)` 同 6 参 | 换方法名 |
+| `drawCenteredString(` | 5 参 → 5 | `centeredText(Font,String,int,int,int)` 同 5 参 | 换方法名 |
+| `pose()` | 0 参 → 45 | `pose()` 存在，返回 `Matrix3x2fStack` | 不用改 |
+| `blit(` | **11 参 → 2** | 长形态全部要 `RenderPipeline` 首参 | 这 2 处插 `RenderPipelines.GUI_TEXTURED` |
+| `blitSprite(` / `drawSpecial` / `hLine` / `vLine` / `drawItem` / `renderItemDecorations` | **0 处** | —— | 这几条改名对本仓零成本，物品绘制走 `Draw` 那个平台门面 |
+
+也就是说：**绘制族的真实工作量是「改名字」，不是「接管线」**。需要动签名的 `blit` 只有 2 处，
+不是几十处。这件事必须在补完平台文件之后再复核一遍 —— 现在有些 `fill` 调用可能因为
+父类不可解析而没被计数到。
+
+那 2 处 `blit` 分别在 `shared/src/main/java/com/november/mcphone/core/client/GuiUtil.java:93`
+与 `layers/loader/neoforge/docs/AddonApiExamples.java:86`（后者是文档里那份可编译副本）。
+
+---
+
+## 五、C 桶：覆写签名，41 条，落在 13 个文件
+
+26.3 的输入事件全线换成记录类型（`GuiEventListener.java`）：
+
+```java
+default boolean mouseClicked(MouseButtonEvent event, boolean doubleClick)   // record(double x, double y, MouseButtonInfo)
+default boolean mouseReleased(MouseButtonEvent event)
+default boolean mouseDragged(MouseButtonEvent event, double dx, double dy)
+default boolean mouseScrolled(double x, double y, double scrollX, double scrollY)
+default boolean keyPressed(KeyEvent event)      // record(int key, int keycode, int modifiers)
+default boolean keyReleased(KeyEvent event)
+default boolean charTyped(CharacterEvent event) // record(int codepoint)
+default void mouseMoved(double x, double y)
+```
+
+绘制侧 `Renderable.extractRenderState(GuiGraphicsExtractor, int, int, float)` 取代 `render(...)`，
+`Screen.extractRenderState` 在 `Screen.java:121`；`Screen.resize` 变成 `resize(int,int)`（`:454`，
+1.21.1 那个 `resize(Minecraft,int,int)` 没了）；`AbstractContainerScreen` 的 `renderBg` **0 命中**，
+`imageWidth` / `imageHeight` 变 `protected final` 且从构造器传入（`:38`、`:39`、`:64`）——
+这就是那 6 条「无法为 final 变量分配值」的来历。
+
+按方法名分：`render` 7、`renderBg` 3、`resize` 3、`mouseClicked` 3、`mouseReleased` 3、
+`onScroll` 3、`keyPressed` 3、`mouseDragged` 2、`charTyped` 2、`write` 2（`SavedData#save` 一族），
+以及 `getMetadataSectionName`、`fromJson`、`renderLabels`、`appendHoverText`、`keyReleased`、
+`extractRenderState`（`PhoneToast` 没实现新抽象方法）等单条。
+
+另有 11 条「不会覆盖」的 `removed` / `isPauseScreen` / `onClose` / `init` / `onFilesDrop` /
+`mouseMoved` 归进了 E 桶：它们在 26.3 的 `Screen` 里签名一字未改，是父类不可解析造成的。
+
+**这批覆写集中在三个文件。** 按文件数（含那 11 条级联，共 52 条）：`PhoneScreen` 13、
+`BrowserScreen` 13、`PhoneHudEditor` 9 —— 这三家占掉 35 条；剩下散在 10 个文件里：
+`TerminalSlotScreen` 3、`TerminalSlotReference` 3、`PhoneSkin` 2、`PhoneContainerScreen` 2、
+`DiscBayScreen` 2，`FriendData` / `PhoneToast` / `ChatData` /
+`TerminalSlotReferenceFactory` / `PhoneItem` 各 1。
+
+---
+
+## 六、四处硬骨头（改不动的，只能重写的）
+
+**1. GLFW 整个没了（16 条 / 4 文件）。** 26.3 的源里 `glfw` 0 命中，
+`com/mojang/blaze3d/platform/` 下换成了 `SDLEventHandler`、`Window`、`WindowEventHandler`、
+`TextInputManager`、`MonitorManager`、`ClipboardManager`、`VideoMode`、`InputConstants` 这一套。
+本模组用 GLFW 的地方是热键与组合键：`PhoneKeys`、`AppHotkeyHandler`、`AppManagerDetail`
+（`GLFW.glfwGetKey` 之类 + `GLFW_KEY_*` 常量），共 12 处。
+这不是改名，是换一套输入后端 —— 而且 `AppHotkeys` / `KeyModifiers` 本来就是每平台一份，
+**正好落在平台文件那一层里改**，不用碰 `shared/`。
+
+**2. `RenderSystem` 的 GL 状态方法没了（13 条）。** `setShaderColor`、`setShaderTexture`、
+`enableBlend` / `disableBlend`、`defaultBlendFunc`、`enableDepthTest` / `disableDepthTest`
+在 `com/mojang/blaze3d/systems/RenderSystem.java` 里全部 0 命中。混合现在是**声明式**的：
+`com.mojang.renderpearl.api.pipeline.BlendFunction` / `ColorTargetState` / `RenderPipeline`，
+现成的管线常量在 `net.minecraft.client.renderer.RenderPipelines`。
+也就是说这几处要改成「挑一条既有 pipeline」或「自己声明一条」，不是换个方法名。
+本轮挂上的代码里用到这批方法的是四个文件：`shared/.../core/client/GuiUtil.java`、
+`shared/.../feature/browser/client/BrowserScreen.java`、
+`shared/.../core/script/client/render/IconAtlas.java`，外加
+`layers/loader/neoforge/docs/AddonApiExamples.java`（文档里那份可编译副本）。
+
+**3. `OggAudioStream` 没了，但本仓只有一层薄皮依赖它。** `com/mojang/blaze3d/audio/` 只剩
+12 个类（`SoundBuffer`、`OpenAlUtil`、`Library`、`Channel`、`Listener`、`DeviceTracker` 一族），
+**没有任何 Ogg 解码**；`AudioStream` 接口在 `net/minecraft/client/sounds/AudioStream.java`。
+好消息是本模组的解码早就是自己的：`shared/.../feature/music/client/playback/` 下有
+`AudioDecoder`、`OggDecoder`、`Mp3Decoder`、`WavDecoder`、`PcmAudioStream` 一整族，
+`OggAudioStream` 全仓只出现在**每平台一份**的 `platform/client/VanillaAudio.java`
+（1.20.1 三处、1.21.1 各一处）与 `shared/.../KnownDuration.java` 的一句注释里。
+所以真正的活是：给 26.3 写一份 `VanillaAudio`，把现成的 `PcmAudioStream` 接到 26.3 的
+`AudioStream` 上。26.x 的声音引擎怎么供流（`SoundBuffer` 直喂？还是要 `Library` 侧改动），
+本轮未取证 —— 挂上 `VanillaAudio` 之后自然就量得出来。
+
+**4. `ItemProperties` 那套换成数据驱动。** `ItemProperties` 与 `ClampedItemPropertyFunction`
+两个类都不存在了，新框架在 `net/minecraft/client/renderer/item/properties/conditional/`
+（那里只有 `ItemModelPropertyTest` 这类条件属性实现，没有旧的注册表）。
+本轮日志里它只报了 3 条，全在 `shared/.../core/client/PhoneItemProperties.java`；
+另外 8 处引用在 `MCphoneClient`、`ModItems`、`ModDataComponents`、`PhoneItemData`
+这些**还没挂上的平台文件**里 —— 等 §八 补进来才会真正暴露。
+
+另外 `Tesselator` / `BufferUploader` 没了但 `BufferBuilder` + `MeshData` 还在（改用
+`buildOrThrow()` + `try (MeshData …)`），`VertexFormat` 搬去 `com.mojang.renderpearl.api.vertex`。
+`PostChain` 类还在，但 `process` 多了个 `GraphicsResourceAllocator` 参数、`setUniform` 0 命中 ——
+本仓用它的全在**每平台一份**的 `feature/camera/client/CameraFlash.java`（1.20.1 七处、
+1.21.1 各五处），26.3 那份还没写，所以本轮日志里一条都没报。
+`BakedModel`、`RecordItem` 两个类整体消失，去处未定。
+
+---
+
+## 七、D 桶：附属模组在 26.3 没有构件（54 条 / 14 文件）
+
+这些不是 Mojang 改了什么，是**26.3 上根本没有那个 jar**。骨架的 `gradle.properties`
+一个联动都没挂，所以一挂上带联动的代码就红在这里。
+
+上一轮在 Modrinth 查过（2026-09-19）：Curios、Patchouli、MCEF、Refined Storage 在 26.3
+**零构建**；Fabric API、Waystones、Balm 有。AE2、FTB Quests、NetMusic、GuideME 当时
+slug 猜错拿到 404，**未取证**。
+
+落到代码上，受影响的就是 `feature/reader/client/source/PatchouliSource`(11)、
+`GuideMeSource`(9 条，多在本平台文件未补那几类里)、`feature/browser/client/McefBackend`(7)、
+`feature/terminal/integration/{ae2,refinedstorage}/*`、`compat/CuriosCompat`(4)、
+`compat/NetMusicCompat`(3)、`feature/waystone/client/WaystoneApp`(3) 等。
+
+这一桶要的不是改代码，是**决定 26.3 首发支持哪几个联动**。在有人给出 26.3 构建之前，
+这些文件要么按目标排除，要么留到附属接口那层做适配 —— 这是产品决策，不是技术问题。
+
+---
+
+## 八、B 桶：本平台还缺 47 个文件、5279 行
+
+`platforms/1.21.1-neoforge/src/main/java` 有 48 个文件，`platforms/26.3-neoforge` 只有 1 个。
+缺的这 47 个就是 1d 的活，其中最大几块：
+
+```text
+ 444  core/client/PhoneHud.java              394  core/client/ClientConfig.java
+ 363  feature/chat/net/ChatNetworking.java   275  core/client/AppHotkeys.java
+ 275  feature/music/DiscService.java         265  core/net/NetworkHandler.java
+ 201  core/PhonePlayerData.java              192  compat/WaystonesCompat.java
+ 192  MCphoneClient.java                     167  feature/camera/client/CameraFlash.java
+ 152  feature/store/net/StoreNetworking.java 147  core/ServerConfig.java
+ 140  compat/IntegratedDynamicsCompat.java   129  core/net/MCphoneNetwork.java
+ 127  core/ModAttachments.java                86  platform/client/Draw.java
+  78  .../refinedstorage/RefinedStorageIntegration.java
+  72  api/client/ui/PhoneMultiLineEditBox.java
+  48  platform/client/PhoneScreenBase.java    34  platform/client/VanillaAudio.java
+```
+
+**`MCphone.java` 不是「缺文件」，是缺成员**：骨架那一份只有探针，缺 `LOGGER`、`MODID`、
+`getVersion()`。就这三个符号，直接报出 **279 条**（`LOGGER` 216 + `MODID` 61 + `getVersion` 2），
+占总量的 18%。补它是 1d 的第一步，也是把这份日志变干净的第一步。
+
+`shared/PLATFORM-SEAMS.md` 里 26.3-neoforge 那一段现在只列了 `MCphone` 一个，因为它只
+编译了那一个文件；这一节（§1）里那三处「`updateSeamsDoc` 数不到」的计数它已经说明了。
+
+---
+
+## 九、那个结构性问题：要不要给层加「到 X 为止」的谓词
+
+**结论：不要。本轮实测不支持它。**
+
+理由分三层说：
+
+1. **层的准入条件本仓写死了**：一层里的代码必须对挂载它的每个目标**逐字相同**、且已经在
+   那些版本上各自编过（`versions/layers.json` 的 note 就是这个意思）。而 26.x 这批改的是
+   **方法签名**，签名不同的同一段代码不可能同时在 1.21.1 和 26.3 上编过 —— 它连入层的
+   资格都没有。加一个 `until` 谓词只是把「不能共用」变成「可以分开抄」，那是 `platforms/`
+   已经在做的事。
+2. **真断的覆写只有 41 条、13 个文件**，而且高度集中：`render`/`extractRenderState` 一处，
+   七个输入事件一处，`resize`、`renderBg`、`imageWidth/Height` 各一处。这种形状正是
+   `platform/client/PhoneScreenBase` 存在的理由 —— 本仓已经有这个先例，而且 seams 文档
+   写明了「覆写签名差异要用平台侧抽象基类」。为它新增一条谓词轴、一份 Gradle 语义、
+   CI 里那份同语义的 jq，代价远大于把这三个基类下沉到各平台。
+3. **A 桶那 588 条改名不需要任何新机制**：它们要的是「一份源码在两个名字下都能编」，
+   而这在 Java 里做不到 —— 所以只能各平台各留一份 facade。本仓的 `platform/client/Draw`、
+   `StackCodecs`、`ModPresence` 这些 facade 类就是干这个的，26.3 补上同名文件即可。
+
+**建议的形状**（不需要改任何构建脚本，等 1d 印证）：
+
+- `extractRenderState` / 输入事件 / `resize` / 容器背景 → 下沉到 `platform/client/PhoneScreenBase`
+  与一个新的 `PhoneContainerScreenBase`，各平台各写一份，`shared/` 只调自己定义的方法名。
+- `GuiGraphicsExtractor` / `Identifier` 两个类型名 → 各平台一个 `Draw` facade 收口，
+  `shared/` 里不再出现原版绘制类型。
+- GLFW / `RenderSystem` GL 状态 → 同上，收进平台层，别漏进 `shared/`。
+
+这件事要落定，得先把平台文件补齐、让日志干净一遍。所以下面第十节的建议里，
+`until` 这个选项**暂时按「不做」处理**，等补完再看数字有没有翻。
+
+---
+
+## 十、附带挖出来的一道闸在重复计数
+
+翻完开关顺手在 `1.21.1-neoforge` 上跑 `verifyPlatformTwins`，它红了，报 62 对「漂开」，
+而且**每一条都是基线的 1.5 倍**：`44 → 66`、`86 → 129`、`120 → 180`。
+
+不是代码漂了，是那道闸的分数算重了。`collect()` 早就写明「同一个文件被两个目标看到，
+不算两份拷贝」，但它只在**要不要盯这一组**时按绝对路径去了重；`measure()` 算分仍按
+「名义目标」逐个算。于是当一个层文件被 N 个目标挂上，同一份真实差异就被加进 N-1 次。
+26.3-neoforge 一挂上 `1.20.5+` 层，那批 `feature/chat/net/*` 就从「2 份拷贝」变成
+「3 份名义拷贝」，分数齐刷刷 ×1.5。
+
+修法是把去重挪到算分之前（`gradle/mcphone-checks.gradle` 的 `measure()`：按
+`canonicalPath` 收敛，每个物理文件留一个代表）。**方向是反的**：去重之后 55 对报的是
+「差异变小了」，说明仓库里那份基线一直含着这份重复计数。按这道闸自己的规矩
+（降了也红，要求把基线跟着调下去），已跑 `updateTwinBaseline` 重算：
+
+```text
+110 对，差异合计  5986 行（旧，含重复计数）→ 4728 行（新）
+```
+
+对数一条没变，只是那 55 对回到真实值。顺带一提，这个 bug 在只有一对目标挂同一个层时
+显不出来 —— 它需要**第二个**挂同一层的目标，所以 1c 是它第一次露出来的时候。
+
+---
+
+## 十一、本轮的构建事实
+
+| 项 | 值 |
+|---|---|
+| 提交 | `mountSharedSources = true` + `26.3-neoforge` 的 `layers` 同时翻成四层（两处一起，见 §1） |
+| 声明闸 | 十道全绿，CI 矩阵会编的目标：`1.20.1-forge`、`1.21.1-fabric`、`1.21.1-neoforge`、`26.3-neoforge` |
+| `:compileJava` | **FAILED**，1523 条错误，214 个文件，21 秒 |
+| 未截断 | 骨架阶段加的 `-Xmaxerrs 100000` 生效：javac 默认在 100 条停，这次 1523 条全打出来了 |
+| 工具链 | MDG 2.0.147 + NeoForge 26.3.0.3-beta + Java 25，配置阶段与 neoform 流水线全过 —— 红只在 `:compileJava`，工具链那一问仍然是绿的 |
+
+`mcphone-checks.gradle` 挂上了，但 `:build` 这条路只到 `:compileJava` 就停，所以四道
+**不依赖编译产物**的闸是单独在 26.3 上跑的，全绿：
+
+```text
+verifySharedIsTargetNeutral  shared/ 校验通过：354 个文件，禁 版本、加载器轴
+verifyPlatformTwins          110 对，差异合计 4728 行（基线内）
+verifyLoaderTwins            7 组（7 组各 2 份），层：forge、neoforge
+verifySeamsDocCurrent        通过（26.3 那段标记早就手工加好了）
+```
+
+`assertTests`（把仓库级 `docs/**` 那批断言测试对着 `sourceSets.main` 的产物编一遍）
+仍然够不着 —— 它要 `compileJava` 绿。所以「挂了 checks 会不会多引出别的红」这句话，
+本轮只答了一半，剩下那一半等 §十二 第 3 步。
+
+## 十二、下一步（1d）的顺序，按收益排
+
+1. 补 `MCphone.java` 的 `LOGGER` / `MODID` / `getVersion()` —— 279 条当场消失。
+2. 补 `platform/client/PhoneScreenBase`、`Draw`、`ModPresence`、`SystemFiles`、
+   `KeyModifiers`、`EditBoxes`、`CameraGui`、`VanillaAudio`、`PlayerSkins`、`Slots`、
+   `StackCodecs`、`ClientTicks`、`CompatModules` 这批**小门面**（13 个文件、约 560 行），
+   它们能同时压掉 B 的大半和 E 的全部 186 条级联。
+3. 重跑一次，取**干净**的直方图。这时候量出来的才是真工作量。
+4. 再往下是 `PhonePlayerData` / 各 `*Networking` / `ClientConfig` 这批大的（约 1500 行），
+   以及 §六 那四处硬骨头 —— 其中 Ogg 解码的去处要先查。
+5. 附属模组那一桶（14 文件）等首发范围定下来再动。
+
+一句话：**这一支现在离「能玩」还差 47 个平台文件 + 69 个真改文件，但原先估的「绘制族要
+全面接渲染管线」是错的，那一族其实只是改名。**

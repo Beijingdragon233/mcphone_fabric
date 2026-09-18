@@ -28,21 +28,29 @@ plugins {
 //   三、jarJar 那条嵌库的路在 26.3 上还走不走得通（它要跑 NeoForm Runtime，
 //       是「原版 + 加载器」之外最容易在版本跳档时坏的一环）。
 //
-// 【骨架】：这一支现在【不挂】shared/ 与任何共享层，也【不 apply】
-// gradle/mcphone-checks.gradle。原因不是省事 —— 共用代码里有 201 个文件碰到 26.x
-// 改名或消失的 API，接上来的第一刻就是一片 javac 错，而那一轮日志回答不了上面三个
-// 问题里任何一个：配置阶段的失败与编译阶段的失败混在一份输出里，分不清是工具链不通
-// 还是代码不通。先让骨架绿，再把共用代码接上来专门收集错误清单，那是下一步。
+// 【骨架阶段结束】：上面三个问题 2026-09-19 全答掉了（结论在 targets.json 里
+// 26.3-neoforge 的 note）。这一支从这儿起【挂】shared/ 与共享层，也【apply】
+// gradle/mcphone-checks.gradle。
 //
-// checks 不 apply 还有一层硬原因：里面的 assertTests 会把仓库级 docs/ 那批断言测试
-// 对着 sourceSets.main 的产物与编译类路径编一遍。不挂共用代码时它们引用的类一个都不在，
-// 那是几百个「找不到符号」，不是这条目标的健康度。
+// 挂上来的预期是【红】，这是故意的：这一轮红日志要回答的不是「编得过吗」——那已经知道
+// 编不过——而是【改名之外还剩什么】。答案在 docs/PORTING-26.3.md，摘要：
 //
-// 翻回来的动作是一次性的，两个地方一起改：下面 mountSharedSources 改成 true，
-// 以及 versions/targets.json 里 26.3-neoforge 的 layers 从 [] 改回
-// ["1.20.3+", "1.20.5+", "1.21+", "neoforge"]。声明与实际必须同时翻，
+//   挂载 422 个源文件 -> 1523 条错误 / 214 个文件（208 个文件一个字没改就编过了）。
+//   其中 26.x 改名 588 条，本平台文件没补导致的直接引用与级联 690 条，
+//   【真断】245 条 / 69 个文件。
+//   两个原先的假设翻了案：fill 的 5 参形态在 26.3 还在（139 处一处不用动），
+//   Screen 的 width/height/font/minecraft 也还在 —— 那 186 条是级联不是断裂。
+//   要不要给层加一条「到 X 为止」的谓词：实测的答案是【不加】，签名不同的代码
+//   本来就不符合层的准入条件，那 41 条覆写该走 platform/client/PhoneScreenBase
+//   这条已有路子（判据与清单都在那份文档里）。
+//
+// 下面 tasks.withType(JavaCompile) 里的 -Xmaxerrs 就是为了让 javac 别在 100 条处截断，
+// 把那一份清单收全 —— 这次 1523 条一条没丢。
+//
+// 翻是成对翻的：这里 true，versions/targets.json 里 26.3-neoforge 的 layers 也同时
+// 从 [] 改回 ["1.20.3+", "1.20.5+", "1.21+", "neoforge"]。声明与实际必须同时翻，
 // 否则「这个目标挂哪几层」就又是一句没人验的声明。
-def mountSharedSources = false
+def mountSharedSources = true
 
 tasks.named('wrapper', Wrapper).configure {
     distributionType = Wrapper.DistributionType.BIN
