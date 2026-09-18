@@ -10,7 +10,9 @@ import net.minecraft.world.level.storage.LevelResource;
 
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -43,6 +45,8 @@ public final class EconomyRuntime {
     private long nextSweepAt;
     private int lastOrphaned;
     private int lastFailed;
+    /** 退款时 provider 抛过异常的托管：钱退没退出去不知道，这次运行里不再自动退（见 {@link #sweepEscrow}） */
+    private final Set<EscrowId> suspect = new HashSet<>();
 
     EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
                    Function<String, ICurrencyProvider> providers, long now) {
@@ -95,7 +99,7 @@ public final class EconomyRuntime {
      */
     void sweepNow() {
         try {
-            report(sweepEscrow(data.escrow(), providers));
+            report(sweepEscrow(data.escrow(), providers, suspect));
         } catch (VirtualMachineError fatal) {
             throw fatal;
         } catch (Throwable e) {
@@ -110,14 +114,9 @@ public final class EconomyRuntime {
         }
         lastOrphaned = s.orphaned();
         if (s.refunded() > 0) MCphone.LOGGER.info("[MCphone] 超时托管：退了 {} 笔", s.refunded());
-        // 被拒的每 5 分钟会再试一次、再被拒一次：同一个数只说一次，堆栈也只在这时候打
+        // 被拒的每 5 分钟会再试一次、再被拒一次：同一个数只说一次
         if (s.failed() != lastFailed && s.failed() > 0) {
-            if (s.error() == null) {
-                MCphone.LOGGER.warn("[MCphone] 超时托管：{} 笔退款被拒（那种货币现在用不了），下次再试", s.failed());
-            } else {
-                MCphone.LOGGER.error("[MCphone] 超时托管：{} 笔退款没成（有 provider 抛了异常，下面是第一个），下次再试",
-                        s.failed(), s.error());
-            }
+            MCphone.LOGGER.warn("[MCphone] 超时托管：{} 笔退款被拒（那种货币现在用不了），下次再试", s.failed());
         }
         lastFailed = s.failed();
     }
@@ -148,12 +147,12 @@ public final class EconomyRuntime {
 
     /**
      * @param refunded 退成了几笔
-     * @param failed   provider 拒了或抛了几笔（比如那种货币的存档锁住了）—— 还在托管里，下次再试
+     * @param failed   provider 拒了几笔（比如那种货币的存档锁住了）—— 还在托管里，下次再试
      * @param orphaned 找不到 provider 的几笔 —— 没动
      * @param pruned   清掉了几条很久以前已结清的
-     * @param error    第一笔抛出来的异常；没有是 null
+     * @param suspect  这一趟新出现的、退款时 provider 抛了异常的几笔 —— 之后不再自动退
      */
-    public record Sweep(int refunded, int failed, int orphaned, int pruned, Throwable error) {
+    public record Sweep(int refunded, int failed, int orphaned, int pruned, int suspect) {
     }
 
     /**
@@ -163,9 +162,18 @@ public final class EconomyRuntime {
      * 流水也由它记。<b>不许绕过 provider 直接改账</b> —— 那样计分板档的钱会退进一本它根本不用的账里。
      */
     public static Sweep sweepEscrow(EscrowLedger escrow, Function<String, ICurrencyProvider> providers) {
-        int refunded = 0, failed = 0, orphaned = 0;
-        Throwable error = null;
+        return sweepEscrow(escrow, providers, new HashSet<>());
+    }
+
+    /**
+     * <b>provider 拒了（返回不是 OK）下次再试，provider 抛了就不再自动试</b>：拒了说明它没动钱；抛了则不知道 ——
+     * 外部钱包可能先记上了钱、再在通知或保存那一步抛出来，每 5 分钟自动再退一次就是每 5 分钟多给一份。
+     * 抛过的记进 {@code suspect}，逐笔打 ERROR 带上托管号与金额，由服主核对。
+     */
+    static Sweep sweepEscrow(EscrowLedger escrow, Function<String, ICurrencyProvider> providers, Set<EscrowId> suspect) {
+        int refunded = 0, failed = 0, orphaned = 0, suspected = 0;
         for (Map.Entry<EscrowId, EscrowLedger.Entry> e : escrow.expired()) {
+            if (suspect.contains(e.getKey())) continue;
             // 逐笔接住：一种货币的 provider 抛了，别的货币照样退、已结清的照样清
             try {
                 ICurrencyProvider p = providers.apply(e.getValue().currencyId());
@@ -180,10 +188,14 @@ public final class EconomyRuntime {
                 throw fatal;
             } catch (Throwable ex) {
                 // 不只接 RuntimeException：外部经济模组换了版本，抛的是 NoSuchMethodError 之类的 LinkageError
-                failed++;
-                if (error == null) error = ex;
+                suspect.add(e.getKey());
+                suspected++;
+                EscrowLedger.Entry v = e.getValue();
+                MCphone.LOGGER.error("[MCphone] ⚠ 超时托管 {}（{} {}，原主 {}）退款时 provider 抛了异常，钱退没退出去不知道。"
+                        + "这次运行里不再自动退；核对那种货币的钱包后重启，开服时会再试一次", e.getKey().value(),
+                        v.amount(), v.currencyId(), v.owner(), ex);
             }
         }
-        return new Sweep(refunded, failed, orphaned, escrow.pruneSettled(), error);
+        return new Sweep(refunded, failed, orphaned, escrow.pruneSettled(), suspected);
     }
 }

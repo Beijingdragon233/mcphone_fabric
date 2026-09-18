@@ -455,7 +455,14 @@ public class EconomyDataTest {
 
         walletUp.set(false);
         eq(p.release(h.id(), RSN), TxnResult.ALREADY_SETTLED, "结过的再来、钱包又正好不在：仍答 ALREADY_SETTLED（结没结过先于用不了）");
+        HoldResult down = p.hold(a, b, 1, RSN);
+        eq(down.result(), TxnResult.UNAVAILABLE, "对照：钱包不在时建不了托管");
         walletUp.set(true);
+        HoldResult h0 = p.hold(a, b, 1, RSN);
+        walletUp.set(false);
+        eq(p.refund(h0.id(), RSN), TxnResult.UNAVAILABLE, "没结清、钱包不在：UNAVAILABLE");
+        walletUp.set(true);
+        eq(p.refund(h0.id(), RSN), TxnResult.OK, "钱包回来就能退：被拒那次没留下\"正在结算\"的标记");
 
         // 外部钱包在 deposit 里同步再来结算这一笔：答 UNAVAILABLE —— 不放第二次，也不谎称已结清（外层还可能失败）
         HoldResult h2 = p.hold(a, b, 40, RSN);
@@ -624,6 +631,24 @@ public class EconomyDataTest {
         check(!fd.isDirty(), "时钟快过：不标脏");
         eq(fd.escrow().expired().size(), 0, "时钟快过：恢复后 7 天也不到期");
         eq(fd.toTag().getLong("savedAt"), fast, "时钟快过：savedAt 停在快的那一刻");
+        eq(fd.aheadOfClock, 1, "时钟快过：开服报出 1 笔建立时刻晚于读档时刻的托管");
+        for (long ahead : new long[]{6L * 86_400_000L, 2 * 3_600_000L}) {
+            CompoundTag few = goodTag(UUID.randomUUID());
+            few.putLong("savedAt", now + ahead);
+            escrowOf(few).putLong("createdAt", now + ahead - 1_000L);
+            eq(EconomyData.load(few, () -> now).aheadOfClock, 1, "快 " + ahead / 3_600_000L + " 小时也报（不等到快一个超时周期以上）");
+        }
+        CompoundTag jitter = goodTag(UUID.randomUUID());
+        escrowOf(jitter).putLong("createdAt", now + 60_000L);
+        eq(EconomyData.load(jitter, () -> now).aheadOfClock, 0, "差一分钟（NTP 校时）不报");
+        CompoundTag noEscrow = goodTag(UUID.randomUUID());
+        noEscrow.put("escrow", new ListTag());
+        noEscrow.putLong("savedAt", fast);
+        eq(EconomyData.load(noEscrow, () -> now).aheadOfClock, 0, "没有托管就不报：没有受影响的，报了也没法照做");
+        CompoundTag settledAhead = goodTag(UUID.randomUUID());
+        escrowOf(settledAhead).putLong("createdAt", fast);
+        escrowOf(settledAhead).putBoolean("settled", true);
+        eq(EconomyData.load(settledAhead, () -> now).aheadOfClock, 0, "已结清的不会再到期，不报");
 
         // savedAt 接近 long 上限：基准加一个超时周期不许溢出成负数、把正常的托管改成永远不到期
         CompoundTag huge = goodTag(UUID.randomUUID());
@@ -854,7 +879,26 @@ public class EconomyDataTest {
         EconomyData onlyStale = EconomyData.createFor(mcFile, snap, t::get);
         check(onlyStale.wholeLock() != null && onlyStale.wholeLock().contains(stale.toString()),
                 "只剩 .stale：整份锁住并点名它 —— " + onlyStale.wholeLock());
-        check(onlyStale.wholeLock().contains("第 " + latest.getLong("generation") + " 次保存"), "锁住原因里说得出 .stale 是第几次保存");
+        String why = onlyStale.wholeLock();
+        check(why.contains("第 " + latest.getLong("generation") + " 次保存"), "锁住原因里说得出 .stale 是第几次保存");
+        check(why.contains("存于 " + Instant.ofEpochMilli(latest.getLong("savedAt"))), "也说得出它是什么时候存的");
+        check(why.contains("作废"), "说清改名回去会丢什么");
+        check(why.contains("挪走再开服就按新世界开"), "说清确认不要这些钱时怎么解锁");
+
+        // .stale 自己也读不出（只拷了一半的世界）：不许叫它"完整"、不许让人改名回去 —— 改了照样锁住
+        Files.write(stale, new byte[]{0x1f, (byte) 0x8b, 8, 0});
+        String broken = EconomyData.createFor(mcFile, snap, t::get).wholeLock();
+        check(broken.contains("也读不出来") && !broken.contains("完整") && !broken.contains("改名"),
+                ".stale 读不出：不叫它完整、不让人改名 —— " + broken);
+        check(broken.contains("挪走再开服就按新世界开"), ".stale 读不出：照样说得出怎么解锁");
+
+        // 手改过的 .stale 缺了代数与时刻：说没写，不编一个"第 0 次、1970 年"
+        CompoundTag bare = latest.copy();
+        bare.remove("generation");
+        bare.remove("savedAt");
+        EconomySnapshot.write(stale, bare);
+        String bareWhy = EconomyData.createFor(mcFile, snap, t::get).wholeLock();
+        check(bareWhy.contains("没写第几次保存") && bareWhy.contains("没写保存时刻"), "缺了就说没写 —— " + bareWhy);
         check(!onlyStale.isDirty(), "锁住的不会被保存，.stale 不会被删");
     }
 
@@ -940,33 +984,34 @@ public class EconomyDataTest {
                 });
         EconomyRuntime.Sweep s = EconomyRuntime.sweepEscrow(d.escrow(), id -> id.equals(COIN) ? boom : gem);
         eq(s.refunded(), 3, "gem 的 3 笔照样退了，不管 coin 的排在前面还是后面");
-        eq(s.failed(), 3, "coin 的 3 笔算没退成");
-        check(s.error() instanceof IllegalStateException, "第一个异常带回来打日志");
+        eq(s.suspect(), 3, "coin 的 3 笔抛了：记成结果不明");
+        eq(s.failed(), 0, "抛了的不算\"被拒\"");
         eq(s.pruned(), 1, "已结清的照样清");
         eq(d.get(a, GEM), 99L, "gem 退回来了");
         eq(d.escrow().held(COIN), 30L, "coin 还押着，下次再试");
 
         // 外部经济模组换了版本抛的是 LinkageError，不是 RuntimeException；别的 RuntimeException 同样逐笔接住
         for (Throwable kind : new Throwable[]{new NoSuchMethodError("换了版本"), new NullPointerException(),
-                new CurrencyUnavailableException("x")}) {
+                new CurrencyUnavailableException("x"), new AssertionError("第三方的断言")}) {
             ICurrencyProvider thrower = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
                     EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
                     (proxy, m, args) -> {
                         throw kind;
                     });
             EconomyRuntime.Sweep k = EconomyRuntime.sweepEscrow(d.escrow(), id -> thrower);
-            eq(k.failed(), 3, kind.getClass().getSimpleName() + "：逐笔接住，coin 的 3 笔算没退成");
-            check(k.error() == kind, kind.getClass().getSimpleName() + "：带回来打日志");
+            eq(k.suspect(), 3, kind.getClass().getSimpleName() + "：逐笔接住，coin 的 3 笔记成结果不明");
         }
-        boolean vmPassed = false;
-        try {
-            EconomyRuntime.sweepEscrow(d.escrow(), id -> {
-                throw new StackOverflowError();
-            });
-        } catch (StackOverflowError e) {
-            vmPassed = true;
+        for (VirtualMachineError vm : new VirtualMachineError[]{new StackOverflowError(), new OutOfMemoryError()}) {
+            boolean vmPassed = false;
+            try {
+                EconomyRuntime.sweepEscrow(d.escrow(), id -> {
+                    throw vm;
+                });
+            } catch (VirtualMachineError e) {
+                vmPassed = e == vm;
+            }
+            check(vmPassed, vm.getClass().getSimpleName() + "：虚拟机级别的错误不接，照样往外抛");
         }
-        check(vmPassed, "虚拟机级别的错误不接，照样往外抛");
 
         EconomyRuntime r = new EconomyRuntime(d, null, null, id -> gem, 0);
         clockBroken.set(true);
@@ -988,6 +1033,61 @@ public class EconomyDataTest {
         }
         clockLinkage.set(false);
         check(!threw, "账本这一层抛的 Error 也没有穿出 sweepNow（开服那一趟抛出去服务器就起不来）");
+    }
+
+    /**
+     * 退款时 provider 抛了：结果不明（外部钱包可能先记上了钱、再在后面一步抛出来），这次运行里不再自动退 ——
+     * 每 5 分钟再退一次就是每 5 分钟多给一份。provider 明确拒了的（返回不是 OK）照样下次再试。
+     */
+    static void sweepDoesNotRetryUnknown() {
+        AtomicLong t = new AtomicLong(1_700_000_000_000L);
+        EconomyData d = EconomyData.empty(t::get);
+        BuiltinProvider coin = builtin(COIN, d, null, t);
+        BuiltinProvider gem = builtin(GEM, d, null, t);
+        UUID a = UUID.randomUUID();
+        coin.mint(a, 100, RSN);
+        gem.mint(a, 100, RSN);
+        coin.hold(a, UUID.randomUUID(), 40, RSN);
+        gem.hold(a, UUID.randomUUID(), 40, RSN);
+        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);
+        AtomicInteger credited = new AtomicInteger();
+        ICurrencyProvider paysThenThrows = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    if (m.getName().equals("refund")) {
+                        credited.incrementAndGet();          // 外部钱包记上了钱……
+                        throw new NoSuchMethodError("……然后通知那一步找不到方法");
+                    }
+                    throw new UnsupportedOperationException(m.getName());
+                });
+        AtomicBoolean gemUp = new AtomicBoolean(false);
+        ICurrencyProvider gemGate = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
+                (proxy, m, args) -> m.getName().equals("refund") && !gemUp.get() ? TxnResult.UNAVAILABLE : m.invoke(gem, args));
+        EconomyRuntime r = new EconomyRuntime(d, null, null, id -> id.equals(COIN) ? paysThenThrows : gemGate, 0);
+        for (int i = 1; i <= 4; i++) r.sweepIfDue(i * EconomyRuntime.SWEEP_INTERVAL_MS);
+        eq(credited.get(), 1, "抛过一次的不再自动退：扫了 4 趟，外部钱包只被记了 1 次");
+        eq(d.escrow().held(COIN), 40L, "它仍押在托管里，等服主核对");
+        eq(d.escrow().held(GEM), 40L, "对照：明确被拒的还押着");
+        gemUp.set(true);
+        r.sweepIfDue(5 * EconomyRuntime.SWEEP_INTERVAL_MS);
+        eq(d.escrow().held(GEM), 0L, "明确被拒的，下次再试就退成了");
+        eq(credited.get(), 1, "抛过的那笔还是没再试");
+
+        AtomicBoolean vmClock = new AtomicBoolean();
+        EconomyData vd = EconomyData.empty(() -> {
+            if (vmClock.get()) throw new StackOverflowError();
+            return t.get();
+        });
+        EconomyRuntime vr = new EconomyRuntime(vd, null, null, id -> null, 0);
+        vmClock.set(true);
+        boolean vmPassed = false;
+        try {
+            vr.sweepNow();
+        } catch (StackOverflowError e) {
+            vmPassed = true;
+        }
+        check(vmPassed, "sweepNow 这一层也不接虚拟机级别的错误");
     }
 
     /** 超时托管每 5 分钟扫一次：没到点不扫；到点就退；再扫不会重复退（幂等）。 */
@@ -1772,6 +1872,7 @@ public class EconomyDataTest {
         snapshotSizeCap();
         snapshotHugeLengthNoOom();
         periodicSweepSurvivesThrow();
+        sweepDoesNotRetryUnknown();
         badCreatedAtReset();
         restartCheckpoint();
         multiFileOrder();
