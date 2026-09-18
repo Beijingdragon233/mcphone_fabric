@@ -175,16 +175,16 @@ default void mouseMoved(double x, double y)
 这不是改名，是换一套输入后端 —— 而且 `AppHotkeys` / `KeyModifiers` 本来就是每平台一份，
 **正好落在平台文件那一层里改**，不用碰 `shared/`。
 
-**2. `RenderSystem` 的 GL 状态方法没了（13 条）。** `setShaderColor`、`setShaderTexture`、
+**2. `RenderSystem` 的 GL 状态方法没了（本轮日志 9 条，源码侧 13 处调用点 / 4 个文件）。**
+`setShaderColor`、`setShaderTexture`、
 `enableBlend` / `disableBlend`、`defaultBlendFunc`、`enableDepthTest` / `disableDepthTest`
 在 `com/mojang/blaze3d/systems/RenderSystem.java` 里全部 0 命中。混合现在是**声明式**的：
 `com.mojang.renderpearl.api.pipeline.BlendFunction` / `ColorTargetState` / `RenderPipeline`，
 现成的管线常量在 `net.minecraft.client.renderer.RenderPipelines`。
 也就是说这几处要改成「挑一条既有 pipeline」或「自己声明一条」，不是换个方法名。
-本轮挂上的代码里用到这批方法的是四个文件：`shared/.../core/client/GuiUtil.java`、
-`shared/.../feature/browser/client/BrowserScreen.java`、
-`shared/.../core/script/client/render/IconAtlas.java`，外加
-`layers/loader/neoforge/docs/AddonApiExamples.java`（文档里那份可编译副本）。
+四个文件与处数：`core/client/GuiUtil.java` 3、`feature/browser/client/BrowserScreen.java` 5、
+`core/script/client/render/IconAtlas.java` 2，外加
+`layers/loader/neoforge/docs/AddonApiExamples.java` 3（文档里那份可编译副本）。
 
 **3. `OggAudioStream` 没了，但本仓只有一层薄皮依赖它。** `com/mojang/blaze3d/audio/` 只剩
 12 个类（`SoundBuffer`、`OpenAlUtil`、`Library`、`Channel`、`Listener`、`DeviceTracker` 一族），
@@ -201,8 +201,9 @@ default void mouseMoved(double x, double y)
 两个类都不存在了，新框架在 `net/minecraft/client/renderer/item/properties/conditional/`
 （那里只有 `ItemModelPropertyTest` 这类条件属性实现，没有旧的注册表）。
 本轮日志里它只报了 3 条，全在 `shared/.../core/client/PhoneItemProperties.java`；
-另外 8 处引用在 `MCphoneClient`、`ModItems`、`ModDataComponents`、`PhoneItemData`
-这些**还没挂上的平台文件**里 —— 等 §八 补进来才会真正暴露。
+1.21.1-neoforge 那一份里还有 5 处（`MCphoneClient` 3、`ModItems` 1、`ModDataComponents` 1），
+这些文件 26.3 还没写 —— 等 §八 补进来才会真正暴露。也就是说这一处的真实规模，
+现在看到的是下界，不是全貌。
 
 另外 `Tesselator` / `BufferUploader` 没了但 `BufferBuilder` + `MeshData` 还在（改用
 `buildOrThrow()` + `try (MeshData …)`），`VertexFormat` 搬去 `com.mojang.renderpearl.api.vertex`。
