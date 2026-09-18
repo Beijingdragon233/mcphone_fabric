@@ -397,8 +397,32 @@ public class ScriptEngineTest {
         check(!st2.recordAbort("app", a), "成功一次之后重新数");
     }
 
+    /**
+     * 余额读不到（那种货币的存档锁住了、网关拒了）时 {@code ctx.currency.balance} 给 null，<b>不中断求值</b>：
+     * 中断会记过失、把整个 App 熔断，而同一次求值里前面已经转出去的钱，客户端却收到失败。
+     */
+    static void currencyBalanceUnavailable() {
+        var tag = new net.minecraft.nbt.CompoundTag();
+        tag.putInt("dataVersion", com.november.mcphone.core.script.server.economy.EconomyData.DATA_VERSION + 1);
+        var locked = com.november.mcphone.core.script.server.economy.EconomyData.load(tag, () -> 1);
+        var reg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry();
+        reg.register(new com.november.mcphone.core.script.server.economy.BuiltinProvider(
+                new com.november.mcphone.api.economy.Currency(
+                        net.minecraft.resources.ResourceLocation.tryParse("myserver:coin"),
+                        net.minecraft.network.chat.Component.literal("coin"), "G", 0, null),
+                locked, locked.escrow(), null, () -> 1, false, 1_000_000L), true);
+        var withCurrency = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, reg);
+        eq(withCtx("String(ctx.currency.balance('myserver:coin'))", withCurrency), "null",
+                "读不到给 null，不给 0");
+        eq(withCtx("var r = ctx.currency.pay('myserver:coin', '00000000-0000-0000-0000-000000000002', 5n);"
+                        + "var b = ctx.currency.balance('myserver:coin'); r + '/' + String(b) + '/还在跑'", withCurrency),
+                "UNAVAILABLE/null/还在跑", "读不到之后脚本接着跑，能自己 ctx.fail");
+    }
+
     public static void main(String[] args) {
         escapes();
+        currencyBalanceUnavailable();
         globalsExactly();
         sealed();
         normalStillWorks();

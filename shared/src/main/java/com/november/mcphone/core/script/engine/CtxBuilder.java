@@ -244,8 +244,9 @@ public final class CtxBuilder {
                 try {
                     return Amounts.toScript(prov.balance(player.uuid()));
                 } catch (com.november.mcphone.core.script.server.economy.CurrencyUnavailableException e) {
-                    // 读不到就明说，不返回 0：App 拿 0 当余额，会告诉玩家他没钱
-                    throw new ScriptAbort(ScriptAbort.Reason.HOST, "currency.balance 暂时读不到：" + e.reasonKey());
+                    // 读不到给 null，App 该 ctx.fail('UNAVAILABLE')。不返回 0：App 会告诉玩家他没钱。
+                    // 也不中断：中断记过失、连着几次就把整个 App 熔断，而同一次求值里前面转出去的钱客户端却收到失败
+                    return null;
                 }
             });
 

@@ -113,11 +113,24 @@ public final class TxnLog {
      * 开服时调：上一个存档点之后还有成功的变动，说明它们没进存档（强杀或崩溃），写一行标出来。
      * 不标出来，服主会拿着一行「A 付给 B 100」去对一笔并没有生效的账。
      *
-     * <p>只看最新的两个文件：存档点至少每次世界保存写一次，跨两个文件还找不到就是老流水、判断不了，不报。
+     * <p>最后<b>总要补一个存档点</b>：开服这一刻盘上的存档就是现状。不补的话，重启后一直没有成功变动时存档不脏、
+     * 不会写存档点，下次开服又把同一批行报一遍。
+     *
+     * <p>只看最新的两个文件：跨两个文件还找不到存档点就是老流水、判断不了，不报。
      *
      * @return 没进存档的成功变动有几笔
      */
     public int noteRestart(Instant now) {
+        int unsaved = unsavedSinceCheckpoint();
+        if (unsaved > 0) {
+            write(now, "# " + now + " 重启：上一个存档点之后有 " + unsaved
+                    + " 笔成功的变动没进存档（强杀或崩溃），以存档为准");
+        }
+        checkpoint(now);
+        return unsaved;
+    }
+
+    private int unsavedSinceCheckpoint() {
         if (!Files.isDirectory(dir)) return 0;
         List<Path> files = new ArrayList<>();
         try (var s = Files.list(dir)) {
@@ -145,13 +158,7 @@ public final class TxnLog {
             }
             for (int i = lines.size() - 1; i >= 0; i--) {
                 String line = lines.get(i);
-                if (line.startsWith(CHECKPOINT)) {
-                    if (unsaved > 0) {
-                        write(now, "# " + now + " 重启：上一个存档点之后有 " + unsaved
-                                + " 笔成功的变动没进存档（强杀或崩溃），以存档为准");
-                    }
-                    return unsaved;
-                }
+                if (line.startsWith(CHECKPOINT)) return unsaved;
                 String[] f = line.split("\\|", -1);
                 if (f.length >= 10 && "OK".equals(f[9])) unsaved++;
             }

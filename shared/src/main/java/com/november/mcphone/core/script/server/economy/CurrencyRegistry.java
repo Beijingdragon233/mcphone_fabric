@@ -62,8 +62,8 @@ public final class CurrencyRegistry {
             return false;
         }
         if (existing == null) {
-            providers.put(id, gateway == null || provider instanceof GatedCurrencyProvider
-                    ? provider : new GatedCurrencyProvider(provider, gateway));
+            // 已经包过的也拆开重包：别的网关（比如 onMainThread 恒为真的那种）包过的等于没包，线程模型只认这一个
+            providers.put(id, gateway == null ? provider : new GatedCurrencyProvider(unwrap(provider), gateway));
         }
         if (isDefault) {
             if (defaultId != null && !defaultId.equals(id)) {

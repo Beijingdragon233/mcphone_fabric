@@ -12,7 +12,8 @@ import java.util.Set;
  * {@code /mcphone economy audit}（§22.10）：把每种货币的账对一遍，<b>不平的那一行要显眼</b>。
  *
  * <p>要 OP 3 级：余额是所有人的隐私，对账结果本身也会暴露服务器的经济规模。
- * 别的 {@code /mcphone} 子命令各自注册自己的一支就行 —— brigadier 会把同名的字面节点并到一起。
+ * <b>权限挂在 {@code economy} 上，不许挂在 {@code mcphone} 根上</b>：brigadier 合并同名节点时只留先注册那一个的
+ * requirement —— 挂在根上，别的 {@code /mcphone} 子命令先注册就让普通玩家也能对账，后注册就让它们对普通玩家消失。
  */
 public final class EconomyCommand {
 
@@ -21,8 +22,8 @@ public final class EconomyCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("mcphone")
-                .requires(src -> src.hasPermission(3))
                 .then(Commands.literal("economy")
+                        .requires(src -> src.hasPermission(3))
                         .then(Commands.literal("audit").executes(ctx -> audit(ctx.getSource())))));
     }
 

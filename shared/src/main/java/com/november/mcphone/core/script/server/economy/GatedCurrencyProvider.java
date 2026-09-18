@@ -19,7 +19,8 @@ import java.util.function.Supplier;
  */
 public final class GatedCurrencyProvider implements ICurrencyProvider {
 
-    private static final ThreadLocal<String> LAST_REFUSAL = new ThreadLocal<>();
+    /** 这条线程上、这一种货币上一次被网关拒的原因。每个实例一份：共用的话 A 币被拒，问 B 币也拿到 A 币的原因 */
+    private final ThreadLocal<String> lastRefusal = new ThreadLocal<>();
 
     private final ICurrencyProvider inner;
     private final CurrencyGateway gateway;
@@ -29,7 +30,7 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
         this.gateway = gateway;
     }
 
-    /** 注册表查重用：同一个实例再注册一次是幂等的。 */
+    /** 注册表用：查重，以及拆掉别的网关的包装、换成自己的。 */
     ICurrencyProvider inner() {
         return inner;
     }
@@ -55,10 +56,10 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
     public boolean isAvailable() {
         try {
             boolean ok = gateway.call(inner::isAvailable);
-            LAST_REFUSAL.remove();
+            lastRefusal.remove();
             return ok;
         } catch (CurrencyUnavailableException e) {
-            LAST_REFUSAL.set(e.reasonKey());
+            lastRefusal.set(e.reasonKey());
             return false;
         }
     }
@@ -66,7 +67,7 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
     /** 这条线程上一次被网关拒的原因优先；没被拒就问 provider 自己。 */
     @Override
     public String unavailableReasonKey() {
-        String refused = LAST_REFUSAL.get();
+        String refused = lastRefusal.get();
         if (refused != null) return refused;
         try {
             return gateway.call(inner::unavailableReasonKey);
@@ -80,10 +81,10 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
     public long balance(UUID player) {
         try {
             long v = gateway.call(() -> inner.balance(player));
-            LAST_REFUSAL.remove();
+            lastRefusal.remove();
             return v;
         } catch (CurrencyUnavailableException e) {
-            LAST_REFUSAL.set(e.reasonKey());
+            lastRefusal.set(e.reasonKey());
             throw e;
         }
     }
@@ -107,10 +108,10 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
     public HoldResult hold(UUID from, UUID beneficiary, long amount, TxnReason reason) {
         try {
             HoldResult h = gateway.call(() -> inner.hold(from, beneficiary, amount, reason));
-            LAST_REFUSAL.remove();
+            lastRefusal.remove();
             return h;
         } catch (CurrencyUnavailableException e) {
-            LAST_REFUSAL.set(e.reasonKey());
+            lastRefusal.set(e.reasonKey());
             return HoldResult.fail(TxnResult.UNAVAILABLE);
         }
     }
@@ -128,10 +129,10 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
     private TxnResult txn(Supplier<TxnResult> op) {
         try {
             TxnResult r = gateway.call(op);
-            LAST_REFUSAL.remove();
+            lastRefusal.remove();
             return r;
         } catch (CurrencyUnavailableException e) {
-            LAST_REFUSAL.set(e.reasonKey());
+            lastRefusal.set(e.reasonKey());
             return TxnResult.UNAVAILABLE;
         }
     }

@@ -34,9 +34,9 @@ public final class EscrowLedger {
      */
     public static final long SETTLED_KEEP_MS = 30L * 24 * 3600 * 1000;
 
-    /** 一笔托管。 */
+    /** 一笔托管。{@code settledAt} 是结清时刻，没结清是 0。 */
     public record Entry(UUID owner, UUID beneficiary, String currencyId, long amount,
-                        long createdAt, boolean settled) {
+                        long createdAt, boolean settled, long settledAt) {
     }
 
     private final Map<UUID, Entry> entries = new HashMap<>();
@@ -73,7 +73,7 @@ public final class EscrowLedger {
     /** 建一笔。钱已经从 owner 身上扣掉了 —— 这里只记账。 */
     public EscrowId create(UUID owner, UUID beneficiary, String currencyId, long amount) {
         UUID id = UUID.randomUUID();
-        entries.put(id, new Entry(owner, beneficiary, currencyId, amount, clock.getAsLong(), false));
+        entries.put(id, new Entry(owner, beneficiary, currencyId, amount, clock.getAsLong(), false, 0));
         onChange.run();
         return new EscrowId(id);
     }
@@ -88,7 +88,7 @@ public final class EscrowLedger {
         Entry e = entries.get(id.value());
         if (e == null || e.settled()) return false;
         entries.put(id.value(), new Entry(e.owner(), e.beneficiary(), e.currencyId(),
-                e.amount(), e.createdAt(), true));
+                e.amount(), e.createdAt(), true, clock.getAsLong()));
         onChange.run();
         return true;
     }
@@ -116,17 +116,17 @@ public final class EscrowLedger {
     }
 
     /**
-     * 清掉建立时间早于 {@link #SETTLED_KEEP_MS} 的已结清条目。启动扫描时调。
+     * 清掉结清已超过 {@link #SETTLED_KEEP_MS} 的条目。启动扫描时调。
      *
-     * <p>按建立时间算而不是按结清时间：结清时间没有记，而超时是 7 天，
-     * 30 天前建的那一笔要么早就结了、要么在这之前的扫描里已经被退款结清。
+     * <p>按结清时刻算，不按建立时刻：服务器连着跑一个多月不重启，开服扫描刚退款结清的那一笔建立时间早就过了期限，
+     * 按建立时刻算会在同一趟里被清掉，之后再来就答不出 {@code ALREADY_SETTLED}。
      *
      * @return 清掉几条
      */
     public int pruneSettled() {
         long cutoff = clock.getAsLong() - SETTLED_KEEP_MS;
         int before = entries.size();
-        entries.values().removeIf(e -> e.settled() && e.createdAt() < cutoff);
+        entries.values().removeIf(e -> e.settled() && e.settledAt() < cutoff);
         int n = before - entries.size();
         if (n > 0) onChange.run();
         return n;

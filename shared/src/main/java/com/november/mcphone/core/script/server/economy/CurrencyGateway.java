@@ -25,7 +25,8 @@ import java.util.function.Supplier;
  *
  * 每个调用在「排队 → 执行中 → 完成」与「排队 → 已取消」之间只能走一条，靠 CAS 定。
  * worker 等超时后先把它取消掉才回 UNAVAILABLE；取消不掉说明主线程已经开始执行了，那就等它做完、交出真结果 ——
- * 否则调用方以为没转成，钱却转出去了。主线程上那一步只动内存，很快。
+ * 否则调用方以为没转成，钱却转出去了。这一段等待不受单次上限约束，所以主线程上那一步<b>必须快</b>：
+ * builtin 与计分板只动内存；adapter 档的外部钱包也在这一步里跑，见 {@link AdapterProvider.ExternalWallet}。
  *
  * <h2>拒绝用 UNAVAILABLE，不用 FAILED</h2>
  *

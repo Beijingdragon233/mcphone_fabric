@@ -139,14 +139,71 @@ public class EconomyDataTest {
         cs.put(COIN, new CompoundTag());                 // 一种货币什么都没写
         tag.put("currencies", cs);
         ListTag esc = new ListTag();
-        CompoundTag e = escrowTag(UUID.randomUUID(), COIN, 5, 1_000);
-        e.remove("settled");                             // 没写 settled
+        UUID settledId = UUID.randomUUID();
+        CompoundTag e = escrowTag(settledId, COIN, 5, 1_000);
+        e.putBoolean("settled", true);                   // 结清了，但没写 settledAt
         esc.add(e);
         tag.put("escrow", esc);
         EconomyData d = EconomyData.load(tag, () -> 2_000);
         eq(d.wholeLock(), null, "多出来的字段不算坏");
-        eq(d.lockedCurrencies(), Set.of(), "缺字段不算坏");
-        eq(d.escrow().held(COIN), 5L, "缺 settled 按没结清");
+        eq(d.lockedCurrencies(), Set.of(), "不动钱的字段缺了不算坏");
+        eq(d.escrow().get(new EscrowId(settledId)).settledAt(), 1_000L, "缺 settledAt 按建立时刻算");
+    }
+
+    /** 缺了或写歪了会动到钱的，一律锁那种货币，不取默认、不静默归一。 */
+    static void strictLoad() {
+        UUID a = UUID.randomUUID();
+        Map<String, java.util.function.Consumer<CompoundTag>> bad = new java.util.LinkedHashMap<>();
+        bad.put("托管缺 settled（按没结清读就能再放一次款）", t -> escrowOf(t).remove("settled"));
+        bad.put("托管 settled 不是布尔", t -> escrowOf(t).putInt("settled", 1));
+        bad.put("托管金额是 0", t -> escrowOf(t).putLong("amount", 0));
+        bad.put("托管金额是负数", t -> escrowOf(t).putLong("amount", -50));
+        bad.put("托管号是大写 UUID", t -> escrowOf(t).putString("id", UUID.randomUUID().toString().toUpperCase()));
+        bad.put("余额键是大写 UUID（会与小写的那个归到同一个人）",
+                t -> t.getCompound("currencies").getCompound(COIN).getCompound("balances")
+                        .putLong(a.toString().toUpperCase(), 700));
+        bad.put("余额键省了前导零", t -> t.getCompound("currencies").getCompound(COIN).getCompound("balances")
+                .putLong("1-1-1-1-1", 700));
+        bad.put("铸造累计是负数", t -> t.getCompound("currencies").getCompound(COIN).putLong("minted", -1));
+        for (var c : bad.entrySet()) {
+            CompoundTag tag = goodTag(a);
+            c.getValue().accept(tag);
+            EconomyData d = EconomyData.load(tag, () -> 5);
+            eq(d.lockedCurrencies(), Set.of(COIN), c.getKey() + " → 锁住 COIN");
+            eq(d.toTag().getCompound("currencies").get(COIN), tag.getCompound("currencies").get(COIN),
+                    c.getKey() + " → 余额段原样写回");
+        }
+        eq(EconomyData.load(goodTag(a), () -> 5).lockedCurrencies(), Set.of(), "对照组：好的那一份不锁");
+    }
+
+    static CompoundTag goodTag(UUID a) {
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("dataVersion", EconomyData.DATA_VERSION);
+        CompoundTag cs = new CompoundTag();
+        CompoundTag c = new CompoundTag();
+        CompoundTag bal = new CompoundTag();
+        bal.putLong(a.toString(), 500);
+        c.put("balances", bal);
+        c.putLong("minted", 600);
+        cs.put(COIN, c);
+        tag.put("currencies", cs);
+        ListTag esc = new ListTag();
+        esc.add(escrowTag(UUID.randomUUID(), COIN, 100, 1));
+        tag.put("escrow", esc);
+        return tag;
+    }
+
+    static CompoundTag escrowOf(CompoundTag tag) {
+        return tag.getList("escrow", 10).getCompound(0);
+    }
+
+    /** 原版读档失败时回头要一本新的：文件在就给整份锁住的，文件不在才给空账。 */
+    static void createForFileState() throws Exception {
+        Path dir = tmp("create");
+        Path file = dir.resolve("mcphone_economy.dat");
+        eq(EconomyData.createFor(file, () -> 1).wholeLock(), null, "文件不在：新世界，给空账");
+        Files.write(file, new byte[]{1, 2, 3});
+        check(EconomyData.createFor(file, () -> 1).wholeLock() != null, "文件在却要新建：读坏了，整份锁住");
     }
 
     /** 版本认不得 → 整份锁住，永远不脏（不会被拿去盖原文件），一切操作 UNAVAILABLE。 */
@@ -283,6 +340,8 @@ public class EconomyDataTest {
         eq(after.noteRestart(Instant.ofEpochMilli(t.get())), 2, "流水里标出存档点之后那 2 笔成功的变动");
         String all = String.join("\n", Files.readAllLines(dir.resolve("ledger").resolve(logName(t.get()))));
         check(all.contains("2 笔成功的变动没进存档"), "流水里写了一行说明：" + all);
+        eq(new TxnLog(dir, ZoneOffset.UTC, r).noteRestart(Instant.ofEpochMilli(t.get())), 0,
+                "再开一次服不重复报：说明之后补了存档点");
         eq(after.sumMintAndBurn(COIN)[0] - r.supply(COIN)[0], 50L,
                 "流水比存档多铸了 50 —— 所以对账不能读流水，要读存档里的累计");
     }
@@ -344,11 +403,27 @@ public class EconomyDataTest {
                 "退款进了流水，kind 写明是超时：" + all);
         check(EconomyAudit.run(COIN, d).balanced(), "退完对账平");
 
-        t.addAndGet(EscrowLedger.SETTLED_KEEP_MS);
+        t.addAndGet(EscrowLedger.SETTLED_KEEP_MS + 1);
         EconomyRuntime.sweepEscrow(d.escrow(), id -> null);
         eq(d.escrow().get(done.id()), null, "很久以前已结清的清掉了");
         check(d.escrow().get(old.id()) == null, "退款结清的那笔过了保留期也清掉");
         check(d.escrow().get(orphan.id()) != null, "没结清的不许清：钱还押在里面");
+    }
+
+    /** 服务器连跑一个多月不重启：开服扫描刚退款的那一笔，同一趟里不许被清掉，再来要答 ALREADY_SETTLED。 */
+    static void longUptimeSweep() {
+        AtomicLong t = new AtomicLong(1_700_000_000_000L);
+        EconomyData d = EconomyData.empty(t::get);
+        BuiltinProvider coin = builtin(COIN, d, null, t);
+        UUID a = UUID.randomUUID();
+        coin.mint(a, 100, RSN);
+        HoldResult h = coin.hold(a, UUID.randomUUID(), 40, RSN);
+        t.addAndGet(EscrowLedger.SETTLED_KEEP_MS + EscrowLedger.DEFAULT_TIMEOUT_MS);
+        EconomyRuntime.Sweep s = EconomyRuntime.sweepEscrow(d.escrow(), id -> coin);
+        eq(s.refunded(), 1, "退了");
+        eq(s.pruned(), 0, "刚退款结清的不在同一趟里被清掉");
+        eq(coin.release(h.id(), RSN), TxnResult.ALREADY_SETTLED, "再来认得出已经结过了");
+        eq(d.get(a, COIN), 100L, "钱回到原主，没有被放第二次");
     }
 
     /** adapter 档：存档锁住时 hold 不能先从外部钱包扣了钱再发现记不进托管。 */
@@ -532,6 +607,8 @@ public class EconomyDataTest {
             eq(third, CurrencyGateway.KEY_QUEUE_FULL, "第三个排不上：UNAVAILABLE，原因是排队满");
             release.countDown();
             for (Future<String> f : fs) eq(f.get(5, TimeUnit.SECONDS), null, "排上的两个照常拿到结果");
+            m.ex.submit(() -> { }).get(5, TimeUnit.SECONDS);
+            eq(g.pending(), 0, "拒掉的那个不占排队位：否则每拒一次就永久少一个，最后全被拒");
             w.shutdownNow();
         }
     }
@@ -743,6 +820,32 @@ public class EconomyDataTest {
                 "托管也是 UNAVAILABLE");
         eq(onWorker(() -> refusal(() -> p.balance(UUID.randomUUID()))), CurrencyGateway.KEY_CLOSED,
                 "读余额被拒要抛，不许返回 0");
+        eq(onWorker(p::isAvailable), false, "被拒时 isAvailable 是 false，不是静默的 true");
+
+        // 别的网关（onMainThread 恒为真、就地执行）包过的实例：不许原样收下，否则它在 worker 上直接改账
+        CurrencyGateway rogue = new CurrencyGateway(Runnable::run, () -> true);
+        CurrencyRegistry reg2 = new CurrencyRegistry(closed);
+        reg2.register(new GatedCurrencyProvider(builtin(GEM, d, null, t), rogue), false);
+        eq(onWorker(() -> reg2.get(GEM).mint(UUID.randomUUID(), 1, RSN)), TxnResult.UNAVAILABLE,
+                "换成了注册表自己的网关（没开，所以拒）—— 没有走那个恒为真的");
+
+        // 拒因各记各的：A 币被拒之后问 B 币，拿到的是 B 币自己的
+        CurrencyGateway inlineOk = new CurrencyGateway(Runnable::run, () -> true);
+        ICurrencyProvider coinClosed = new GatedCurrencyProvider(builtin(COIN, d, null, t), closed);
+        ICurrencyProvider gemOk = new GatedCurrencyProvider(builtin(GEM, d, null, t), inlineOk);
+        eq(onWorker(() -> {
+            coinClosed.transfer(UUID.randomUUID(), UUID.randomUUID(), 1, RSN);
+            return gemOk.unavailableReasonKey();
+        }), "", "A 币的拒因不串到 B 币上");
+    }
+
+    /** 权限挂在 economy 上：mcphone 根节点对谁都放行，别的子命令先后注册都不受影响。 */
+    static void commandPermissionNode() {
+        var dispatcher = new com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack>();
+        EconomyCommand.register(dispatcher);
+        var root = dispatcher.getRoot().getChild("mcphone");
+        check(root.getRequirement().test(null), "mcphone 根上没有权限要求");
+        check(root.getChild("economy") != null, "economy 在 mcphone 下面");
     }
 
     /** 1000 次合法调用经网关、两条 worker 并发：总额不变，对账平（builtin 档；计分板档要真服，在 S15g）。 */
@@ -810,12 +913,15 @@ public class EconomyDataTest {
         roundTrip();
         currencyIsolation();
         missingAndUnknownFields();
+        strictLoad();
+        createForFileState();
         wholeLock();
         currencyLock();
         crashRestart();
         successMarksDirty();
         auditSurvivesLogSweep();
         escrowSweep();
+        longUptimeSweep();
         adapterRespectsLock();
         gatewayInlineAndReentrant();
         gatewayTimeoutNeverRunsLater();
@@ -829,6 +935,7 @@ public class EconomyDataTest {
         gatewayCarriesCallingApp();
         gatedCoversInterface();
         registryHandsOutGated();
+        commandPermissionNode();
         conservationThroughGateway();
 
         System.out.println("断言 " + checks + " 条");

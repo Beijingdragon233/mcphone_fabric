@@ -27,7 +27,9 @@ import java.util.function.UnaryOperator;
  * 托管账本。世界级存档，挂主世界 —— 余额挂在玩家身上的话，离线玩家就收不到钱（§22.4）。
  *
  * <p><b>只许服务端主线程碰，没有锁</b>（{@link CurrencyGateway}）。改动与 {@code setDirty()} 在同一个主线程操作里；
- * 什么时候写盘归 MC 的世界保存，我们不自己写文件 —— 所以强杀之后看到的永远是上一次保存时那一份完整的快照。
+ * 什么时候写盘归 MC 的世界保存，我们不自己写文件 —— 所以强杀之后看到的是上一次保存时那一份完整的快照，
+ * <b>前提是那一次写盘本身没被打断</b>：NeoForge 写临时文件再原子改名；Forge 1.20.1 与 Fabric（原版）就地截断重写，
+ * 写到一半被强杀，文件就坏了 —— 那时下面的锁保证不拿空账盖掉它，但上一份快照要从服务器备份里恢复。
  *
  * <p><b>读坏了绝不拿一本空账顶上</b>：原版读档出错会新建一份空的，下次保存就把原文件盖掉，等于清空所有人的钱。
  * <ul>
@@ -35,7 +37,8 @@ import java.util.function.UnaryOperator;
  *       {@link #isDirty()} 恒为 false，原文件一个字节都不动。</li>
  *   <li>某一种货币读坏了 → 只锁那一种，它的原始数据原样写回。</li>
  * </ul>
- * 字段缺失取默认、多出来的字段忽略；类型不对才算读坏。
+ * 字段缺失取默认、多出来的字段忽略；类型不对才算读坏。<b>例外是缺了会动到钱的字段</b>（托管的 settled、amount）：
+ * settled 缺了按"没结清"读，放过款的那笔就能再放一次 —— 这类缺失同样算读坏。
  */
 public final class EconomyData extends PhoneSavedData implements BalanceStore, TxnLog.Journal {
 
@@ -83,12 +86,17 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     public static EconomyData get(MinecraftServer server) {
         LongSupplier clock = System::currentTimeMillis;
         Path file = server.getWorldPath(LevelResource.ROOT).resolve("data").resolve(FILE_NAME + ".dat");
-        // 原版读档抛异常时不报给我们，而是回头来这里要一本新的 —— 所以"文件在却要新建"就是读坏了
-        return getOrCreate(server, FILE_NAME,
-                () -> Files.exists(file)
-                        ? locked("存档文件 " + file + " 在，但没读出来（见上面原版的报错）", clock)
-                        : empty(clock),
-                tag -> load(tag, clock));
+        return getOrCreate(server, FILE_NAME, () -> createFor(file, clock), tag -> load(tag, clock));
+    }
+
+    /**
+     * 原版要一本新的时候给什么。原版读档抛异常时不报给我们，而是回头来这里要一本新的 ——
+     * 所以"文件在却要新建"就是读坏了，给一本整份锁住的，绝不给空账。
+     */
+    static EconomyData createFor(Path file, LongSupplier clock) {
+        return Files.exists(file)
+                ? locked("存档文件 " + file + " 在，但没读出来（见上面原版的报错）", clock)
+                : empty(clock);
     }
 
     // ---------------------------------------------------------------- 状态
@@ -225,6 +233,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             t.putLong("amount", e.amount());
             t.putLong("createdAt", e.createdAt());
             t.putBoolean("settled", e.settled());
+            if (e.settled()) t.putLong("settledAt", e.settledAt());
             list.add(t);
         });
         for (Tag raw : lockedEscrow) list.add(raw.copy());
@@ -318,12 +327,9 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             if (!c.contains("balances", Tag.TAG_COMPOUND)) return "balances 不是一张表";
             CompoundTag bal = c.getCompound("balances");
             for (String k : bal.getAllKeys()) {
-                UUID p;
-                try {
-                    p = UUID.fromString(k);
-                } catch (IllegalArgumentException e) {
-                    return "balances 里 " + k + " 不是 UUID";
-                }
+                UUID p = canonicalUuid(k);
+                // 非规范写法（大写、省了前导零）会被 fromString 归一：两个键落到同一个人，后一个静默盖掉前一个
+                if (p == null) return "balances 里 " + k + " 不是规范写法的 UUID";
                 if (!bal.contains(k, Tag.TAG_LONG)) return "balances 里 " + k + " 的余额不是 long";
                 long value = bal.getLong(k);
                 if (value != 0) m.put(p, value);
@@ -335,6 +341,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             if (!c.contains(keys[i])) continue;
             if (!c.contains(keys[i], Tag.TAG_LONG)) return keys[i] + " 不是 long";
             s[i] = c.getLong(keys[i]);
+            if (s[i] < 0) return keys[i] + " 是负数";
         }
         if (!m.isEmpty()) balances.put(id, m);
         if (s[0] != 0 || s[1] != 0) supply.put(id, s);
@@ -343,22 +350,33 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 读一笔托管。读不懂返回原因。 */
     private static String readEscrow(CompoundTag e, Map<UUID, EscrowLedger.Entry> out) {
-        UUID id, owner, beneficiary;
-        try {
-            id = UUID.fromString(e.getString("id"));
-            owner = UUID.fromString(e.getString("owner"));
-            beneficiary = UUID.fromString(e.getString("beneficiary"));
-        } catch (IllegalArgumentException ex) {
-            return "的 id / owner / beneficiary 不是 UUID";
-        }
+        UUID id = canonicalUuid(e.getString("id"));
+        UUID owner = canonicalUuid(e.getString("owner"));
+        UUID beneficiary = canonicalUuid(e.getString("beneficiary"));
+        if (id == null || owner == null || beneficiary == null) return "的 id / owner / beneficiary 不是规范写法的 UUID";
         if (!e.contains("amount", Tag.TAG_LONG) || !e.contains("createdAt", Tag.TAG_LONG)) {
             return "缺 amount 或 createdAt，或者不是 long";
         }
+        if (e.getLong("amount") <= 0) return "的金额不是正数";
+        // settled 缺了不取默认：按"没结清"读，放过款的那笔就能再放一次
+        if (!e.contains("settled", Tag.TAG_BYTE)) return "缺 settled，或者不是布尔";
         if (out.containsKey(id)) return "的号 " + id + " 重复了";
-        boolean settled = e.contains("settled", Tag.TAG_BYTE) && e.getBoolean("settled");
+        boolean settled = e.getBoolean("settled");
+        // settledAt 只决定已结清的条目留多久，缺了按建立时刻算，不动钱
+        long settledAt = !settled ? 0 : e.contains("settledAt", Tag.TAG_LONG) ? e.getLong("settledAt") : e.getLong("createdAt");
         out.put(id, new EscrowLedger.Entry(owner, beneficiary, e.getString("currency"),
-                e.getLong("amount"), e.getLong("createdAt"), settled));
+                e.getLong("amount"), e.getLong("createdAt"), settled, settledAt));
         return null;
+    }
+
+    /** 只认 {@link UUID#toString()} 的规范写法；别的写法（大写、省了前导零）返回 null。 */
+    private static UUID canonicalUuid(String s) {
+        try {
+            UUID u = UUID.fromString(s);
+            return u.toString().equals(s) ? u : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /** 把一种货币锁住：已经读进来的余额与累计撤掉，原样留着写回。 */

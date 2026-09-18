@@ -27,7 +27,12 @@ import java.util.UUID;
  */
 public final class AdapterProvider implements ICurrencyProvider {
 
-    /** 外部经济模组要实现的那一面。<b>只有三件事</b>，多了就桥不动大多数模组。 */
+    /**
+     * 外部经济模组要实现的那一面。<b>只有三件事</b>，多了就桥不动大多数模组。
+     *
+     * <p><b>每个方法都在服务端主线程上被调用</b>（{@link CurrencyGateway}），必须快：不许走网络、不许等锁。
+     * 慢了卡住的是整个服务器的 tick，以及在等它的脚本 worker。
+     */
     public interface ExternalWallet {
 
         /** 现在能不能用（模组在不在场、有没有初始化完）。 */
