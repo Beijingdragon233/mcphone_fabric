@@ -476,6 +476,43 @@ public class ScriptEngineTest {
         eq(withCtx("try { ctx.currency.balance('server:nope') } catch (e) { e.message }", b),
                 "UNAVAILABLE: mcphone.economy.no_such_currency", "没有这种货币读余额：接得住的 Error");
         eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5n)", b), "OK", "对照：合法的照常转");
+
+        // 同一类路径在每个函数上都要钉住
+        String u = "'00000000-0000-0000-0000-00000000000a'";
+        for (String call : new String[]{"hold(" + c + ", " + to + ", 5n, 'a|b')", "release(" + c + ", " + u + ", 'a|b')",
+                "refund(" + c + ", " + u + ", '" + "x".repeat(65) + "')"}) {
+            eq(withCtx("ctx.currency." + call, b), "INVALID", call + "：单号不合法给 INVALID");
+        }
+        for (String call : new String[]{"hold('server:nope', " + to + ", 5n)", "release('server:nope', " + u + ")",
+                "refund('server:nope', " + u + ")"}) {
+            eq(withCtx("ctx.currency." + call, b), "UNAVAILABLE", call + "：没有这种货币给 UNAVAILABLE");
+        }
+        for (String call : new String[]{"format('server:nope', 5n)", "parse('server:nope', '5')"}) {
+            eq(withCtx("try { ctx.currency." + call + " } catch (e) { e.message }", b),
+                    "UNAVAILABLE: mcphone.economy.no_such_currency", call + "：没有这种货币是接得住的 Error");
+        }
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 2n ** 63n)", b), "INVALID", "2^63 装不下：INVALID");
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 2n ** 63n - 1n)", b), "INSUFFICIENT",
+                "2^63-1 装得下，只是钱不够：交给 provider 判");
+        eq(withCtx("ctx.currency.hold(" + c + ", " + to + ", 2n ** 63n)", b), "INVALID", "托管 2^63：INVALID");
+
+        // parse 给了 null，最常见的写法是不判就交给 pay / format：不许因此中断
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", ctx.currency.parse(" + c + ", 'abc'))", b), "INVALID",
+                "pay(parse(坏输入))：INVALID，不中断");
+        eq(withCtx("ctx.currency.hold(" + c + ", " + to + ", undefined)", b), "INVALID", "金额 undefined：INVALID");
+        eq(withCtx("try { ctx.currency.format(" + c + ", ctx.currency.parse(" + c + ", 'abc')) } catch (e) { e.message }", b),
+                "INVALID: mcphone.economy.invalid_amount", "format(parse(坏输入))：接得住的 Error，不中断");
+        eq(withCtx("try { ctx.currency.format(" + c + ", 2n ** 70n) } catch (e) { e.message }", b),
+                "INVALID: mcphone.economy.invalid_amount", "format 超出 long：和 pay 一样算数不对，不中断");
+
+        // UUID.fromString 很宽松：这些都会被收成另一个 UUID，钱就付进没有主人的账户
+        for (String loose : new String[]{"1-1-1-1-1", "+1-+1-+1-+1-+1", "\uFF11-1-1-1-1", "fffffffff-0-0-0-0",
+                "00000000-0000-0000-0000-0000000000002",
+                "+0000001-0000-0000-0000-000000000002", "\uFF100000000-0000-0000-0000-000000000002"}) {
+            eq(withCtx("ctx.currency.pay(" + c + ", '" + loose + "', 5n)", b), "INVALID", "不规范的 UUID '" + loose + "'：INVALID");
+        }
+        eq(withCtx("ctx.currency.pay(" + c + ", '00000000-0000-0000-0000-00000000000A', 5n)", b), "OK",
+                "规范写法的大写也收：是同一个 UUID");
         check(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5)", b).startsWith("ScriptAbort"),
                 "金额传了 Number 不是 BigInt：脚本自己写错了，照旧中断");
     }

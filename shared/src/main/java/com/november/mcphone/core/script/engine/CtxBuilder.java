@@ -256,7 +256,9 @@ public final class CtxBuilder {
             // format 必须用宿主（§22.5）：自己拼小数点，负数与不足位就各错各的
             HostFn.put(cur, scope, "format", 2, (c, s, a) -> {
                 ICurrencyProvider prov = requireOrError(reg, HostFn.str(a, 0, "currency.format"));
-                long v = Amounts.toLong(a.length > 1 ? a[1] : null, "currency.format");
+                // 金额缺了（常见是 parse 给的 null）或超出 long：和 pay 一样算"数不对"，抛接得住的 Error，不中断
+                Long v = amountOrNull(a, 1, "currency.format");
+                if (v == null) throw org.mozilla.javascript.ScriptRuntime.constructError("Error", "INVALID: " + INVALID_AMOUNT);
                 return Balances.format(v, prov.currency().decimals()) + " " + prov.currency().symbol();
             });
 
@@ -347,7 +349,6 @@ public final class CtxBuilder {
         return ctx;
     }
 
-    /** 认不出的货币 id 当场中断，不返回一个"看着像成功"的东西。 */
     /** 服务器上没有这种货币（多半是服主改了配置）：抛脚本接得住的 Error，不中断。 */
     private static ICurrencyProvider requireOrError(CurrencyRegistry reg, String id) {
         ICurrencyProvider p = reg.get(id);
@@ -359,18 +360,30 @@ public final class CtxBuilder {
 
     static final String NO_SUCH_CURRENCY = "mcphone.economy.no_such_currency";
 
-    /** 玩家、托管号是字符串，多半从别处传来：写歪了是返回码，不是脚本的错。 */
+    static final String INVALID_AMOUNT = "mcphone.economy.invalid_amount";
+
+    /**
+     * 玩家、托管号是字符串，多半从别处传来：写歪了是返回码，不是脚本的错。
+     * <b>只认规范写法</b>（读回来与原串一致，大小写不论）：{@code UUID.fromString} 很宽松，{@code "1-1-1-1-1"}、全角数字、
+     * 超长的段都会被收成<b>另一个</b> UUID —— 钱就付进一个没有主人的账户里了。
+     */
     private static java.util.UUID uuidOrNull(String s) {
+        if (s == null) return null;
         try {
-            return java.util.UUID.fromString(s);
+            java.util.UUID u = java.util.UUID.fromString(s);
+            return u.toString().equalsIgnoreCase(s) ? u : null;
         } catch (IllegalArgumentException e) {
             return null;
         }
     }
 
-    /** 金额：不是 BigInt 是脚本写错了类型，照旧中断；是 BigInt 但超出 long 多半是玩家给的数，返回 null → INVALID。 */
+    /**
+     * 金额。缺了（null / undefined，常见是 parse 给的 null）或是 BigInt 但超出 long（多半是玩家给的数）→ null，调用方给 INVALID；
+     * 不是 BigInt 的别的类型是脚本写错了，照旧中断。
+     */
     private static Long amountOrNull(Object[] args, int i, String where) {
         Object v = args.length > i ? args[i] : null;
+        if (v == null || v instanceof org.mozilla.javascript.Undefined) return null;
         if (v instanceof java.math.BigInteger b && b.bitLength() > 63) return null;
         return Amounts.toLong(v, where);
     }

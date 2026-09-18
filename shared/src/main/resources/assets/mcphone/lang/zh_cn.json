@@ -415,5 +415,6 @@
   "mcphone.economy.emc_legacy.no_escrow": "旧版钱包接口不支持托管，这种货币做不了市场类交易。",
   "mcphone.economy.emc_legacy.no_balance": "旧版钱包接口不提供读余额。",
   "mcphone.economy.scoreboard.unknown_player": "这个玩家没在这台服务器上出现过，计分板按名字记账，读不到他的分。",
-  "mcphone.economy.no_such_currency": "这台服务器上没有这种货币（可能是服主改了配置）。"
+  "mcphone.economy.no_such_currency": "这台服务器上没有这种货币（可能是服主改了配置）。",
+  "mcphone.economy.invalid_amount": "金额不对：没给，或者大得装不下。"
 }

@@ -388,7 +388,7 @@ public class EconomyDataTest {
                 CurrencyGateway.KEY_INTERRUPTED, CurrencyGateway.KEY_WAIT_BUDGET, EconomyData.KEY_LOCKED,
                 LegacyWalletProvider.KEY_NO_ESCROW, LegacyWalletProvider.KEY_NO_BALANCE,
                 ScoreboardProvider.KEY_UNKNOWN_PLAYER, "mcphone.economy.adapter.unavailable",
-                "mcphone.economy.no_such_currency", "mcphone.economy.scoreboard.no_server",
+                "mcphone.economy.no_such_currency", "mcphone.economy.invalid_amount", "mcphone.economy.scoreboard.no_server",
                 "mcphone.economy.scoreboard.off_thread", "mcphone.economy.scoreboard.no_objective"};
         for (String lang : new String[]{"zh_cn", "en_us"}) {
             var in = EconomyDataTest.class.getClassLoader().getResourceAsStream("assets/mcphone/lang/" + lang + ".json");
