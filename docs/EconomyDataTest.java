@@ -1008,7 +1008,7 @@ public class EconomyDataTest {
         olderSnap.putLong("generation", 3);
         EconomySnapshot.write(snap, olderSnap);
         String older = EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock();
-        check(older.contains("SavedData 那份") && older.contains("是第 3 次保存，比它旧"),
+        check(older.contains("SavedData 那份") && older.contains("：第 3 次保存，比它旧"),
                 "快照更旧、选了 SavedData、它读出问题：点名它，也说出快照更旧 —— " + older);
         olderSnap.remove("generation");
         EconomySnapshot.write(snap, olderSnap);
@@ -1289,6 +1289,35 @@ public class EconomyDataTest {
         }
         String longMsg = ProviderFailure.of(new IllegalStateException("x".repeat(10_000))).getMessage();
         check(longMsg.length() < 600 && longMsg.endsWith("…"), "替身的 message 截短 —— " + longMsg.length());
+        eq(ProviderFailure.of(new IllegalStateException("x")).getMessage(), "java.lang.IllegalStateException: x", "替身的 message：类名: 原 message");
+        eq(ProviderFailure.of(new IllegalStateException()).getMessage(), "java.lang.IllegalStateException", "原来没有 message：只有类名");
+        check(!ProviderFailure.of(new IllegalStateException("y".repeat(500))).getMessage().endsWith("…"), "正好 500 字符：不截");
+        String ctl = ProviderFailure.of(new IllegalStateException("a\nb\rc\u001b[31md\u0007")).getMessage();
+        check(ctl.chars().noneMatch(Character::isISOControl), "控制字符（换行、回车、终端转义）换成空格：伪造不出一行日志 —— " + ctl);
+        ProviderFailure pf = ProviderFailure.of(new IllegalStateException("z"));
+        check(ProviderFailure.of(pf) == pf, "已经是替身：原样返回");
+        boolean locked = false;
+        try {
+            pf.initCause(new CheckedBomb());
+        } catch (IllegalStateException e) {
+            locked = true;
+        }
+        check(locked && pf.getCause() == null, "替身的 cause 定死为 null：provider 自己 initCause 挂不上炸弹");
+        pf.addSuppressed(new CheckedBomb());
+        eq(pf.getSuppressed().length, 0, "替身不收 suppressed");
+
+        // 主线程上直接执行的那条路：偷偷抛出的受检异常同样换成替身
+        CurrencyGateway inlineGw = new CurrencyGateway(Runnable::run, () -> true);
+        Throwable inl = null;
+        try {
+            inlineGw.call(() -> {
+                EconomyDataTest.<RuntimeException>sneaky(new CheckedBomb());
+                return null;
+            });
+        } catch (Throwable e) {
+            inl = e;
+        }
+        check(inl instanceof ProviderFailure && inl.getMessage().startsWith(CheckedBomb.class.getName()), "主线程直调：受检异常换成替身 —— " + inl);
 
         CurrencyRegistry refusing = new CurrencyRegistry(new CurrencyGateway(Runnable::run, () -> false));   // 不在主线程、网关没开
         refusing.register(halfway, true);

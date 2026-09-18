@@ -9,8 +9,9 @@ package com.november.mcphone.core.script.server.economy;
  */
 public final class ProviderFailure extends RuntimeException {
 
-    private ProviderFailure(String className) {
-        super(className);
+    // cause 定死为 null、不收 suppressed：of() 会原样放过替身，provider 自己造一个再 initCause 挂上炸弹的话就又绕回去了
+    private ProviderFailure(String message) {
+        super(message, null, false, true);
     }
 
     /** message 最多留多少字符。 */
@@ -19,13 +20,23 @@ public final class ProviderFailure extends RuntimeException {
     /** 造一个替身；已经是替身就原样返回。不抛：原来那个的 getMessage / getStackTrace 炸了就不带那一样。 */
     public static ProviderFailure of(Throwable original) {
         if (original instanceof ProviderFailure pf) return pf;
-        ProviderFailure s = new ProviderFailure(original.getClass().getName() + safeMessage(original));
+        ProviderFailure s = new ProviderFailure(printable(original.getClass().getName() + safeMessage(original)));
         try {
             s.setStackTrace(original.getStackTrace());
         } catch (Throwable ignored) {
             s.setStackTrace(new StackTraceElement[0]);
         }
         return s;
+    }
+
+    /** 控制字符（换行、回车、终端转义…）换成空格：这段文字进日志的首行，带换行就能伪造出一行日志。 */
+    private static String printable(String s) {
+        StringBuilder b = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            b.append(Character.isISOControl(c) ? ' ' : c);
+        }
+        return b.toString();
     }
 
     // 缺失的方法签名、NPE 的说明、provider 自己的原因键都在 message 里：值得留，但只在这里取一次

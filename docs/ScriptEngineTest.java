@@ -637,7 +637,7 @@ public class ScriptEngineTest {
             }
             check(renders, name + "：整条异常链打得出来");
         }
-        // provider 抛虚拟机级别的错误：原样抛它，不换类型（换成别的，RhinoEvaluator 就当成可恢复的了）
+        // provider 抛虚拟机级别的错误：同样是结果不明，cause 换成替身（它可能是第三方的子类、getMessage 会炸）
         StackOverflowError soe = new StackOverflowError();
         var vmReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
         vmReg.register((com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
@@ -646,8 +646,11 @@ public class ScriptEngineTest {
                     if (m.getName().equals("transfer")) throw soe;
                     return m.invoke(provider, args);
                 }), true);
-        check(thrownBy("ctx.currency.pay(" + c + ", " + to + ", 5n)", new CtxBuilder.Backends(new SharedState(), fakeItems(),
-                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, vmReg)) == soe, "虚拟机级别的错误原样抛");
+        Throwable vt = thrownBy("(function () { try { return ctx.currency.pay(" + c + ", " + to + ", 5n) } finally { return 'SWALLOWED' } })()",
+                new CtxBuilder.Backends(new SharedState(), fakeItems(), new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)),
+                        null, null, vmReg));
+        check(vt instanceof OutcomeUnknown && vt.getCause() instanceof com.november.mcphone.core.script.server.economy.ProviderFailure
+                && vt.getCause().getMessage().startsWith("java.lang.StackOverflowError"), "虚拟机级别的错误：结果不明、吞不掉、cause 是替身 —— " + vt);
 
         // balance 里 provider 抛的（不是"读不到"那种）：换成替身再抛，整条链打得出来
         var balReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
@@ -667,6 +670,24 @@ public class ScriptEngineTest {
         }
         check(bt instanceof com.november.mcphone.core.script.server.economy.ProviderFailure && balRenders,
                 "balance 里 provider 的异常：换成替身、整条链打得出来 —— " + bt);
+
+        // balance 里 provider 抛 Error（外部经济模组换了版本）：保持 Error，脚本 finally { return } 吞不掉
+        for (Throwable err : new Throwable[]{new NoSuchMethodError("换了版本"), new AssertionError("x"), new StackOverflowError()}) {
+            var eReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
+            eReg.register((com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                    ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                    (proxy, m, args) -> {
+                        if (m.getName().equals("balance")) throw err;
+                        return m.invoke(provider, args);
+                    }), true);
+            Throwable et = thrownBy("(function () { try { return ctx.currency.balance(" + c + ") } finally { return 'SWALLOWED' } })()",
+                    new CtxBuilder.Backends(new SharedState(), fakeItems(), new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)),
+                            null, null, eReg));
+            check(et instanceof ProviderError && et.getCause() instanceof com.november.mcphone.core.script.server.economy.ProviderFailure
+                    && et.getCause().getMessage().startsWith(err.getClass().getName()),
+                    "balance 里 " + err.getClass().getSimpleName() + "：保持 Error、finally 吞不掉、cause 是替身 —— " + et);
+            check(!(et instanceof ScriptAbort), "balance 里 provider 的 Error 不是 ScriptAbort：不记过失");
+        }
 
         // 原来那个连 getStackTrace 都会炸：替身不带堆栈，照样造得出来
         Throwable noStack = new RuntimeException() {

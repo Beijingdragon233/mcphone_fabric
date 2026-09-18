@@ -251,11 +251,14 @@ public final class CtxBuilder {
                     // 不返回 0 或 null：比大小时 null 也当 0，App 会告诉玩家他没钱。
                     // 不抛 ScriptAbort：那个接不住、还记过失，连着几次就把整个 App 熔断
                     throw org.mozilla.javascript.ScriptRuntime.constructError("Error", "UNAVAILABLE: " + e.reasonKey());
-                } catch (ScriptAbort | VirtualMachineError e) {
+                } catch (ScriptAbort e) {
                     throw e;
-                } catch (RuntimeException | Error e) {
+                } catch (RuntimeException e) {
                     // provider 抛的别的：换成替身再往外抛，原来那个的 getMessage 可能自己会炸（见 ProviderFailure）
                     throw ProviderFailure.of(e);
+                } catch (Error e) {
+                    // Error 要保持 Error：换成 RuntimeException 的替身，脚本 finally { return } 就吞得掉了
+                    throw new ProviderError(ProviderFailure.of(e));
                 }
             });
 
@@ -376,7 +379,8 @@ public final class CtxBuilder {
 
     /**
      * 会动钱的 provider 调用。provider 抛了、或者没给结果 = 结果不明（可能已经动了一半）：打一条带来龙去脉与 provider 堆栈的 ERROR
-     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失。provider 抛的是虚拟机级别的错误就原样抛它。
+     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失。虚拟机级别的错误也一样换：
+     * 它可能是第三方的子类、getMessage 会炸，原样抛出去日志渲染时照样出事。
      * 不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
      */
     private static <T> T moneyCall(String what, String appId, java.util.UUID player, String currencyId,
@@ -404,8 +408,6 @@ public final class CtxBuilder {
         } catch (Throwable ignored) {
             // 栈溢出、内存不够时打不出来也别换掉原来那个错，更别变成脚本 finally 吞得掉的 RuntimeException
         }
-        // 虚拟机级别的错误原样抛（换成别的类型，RhinoEvaluator 就当成可恢复的了）；它若是第三方的子类、getMessage 又会炸，这里护不住
-        if (failure instanceof VirtualMachineError vm) throw vm;
         throw new OutcomeUnknown(detail, standIn);
     }
 

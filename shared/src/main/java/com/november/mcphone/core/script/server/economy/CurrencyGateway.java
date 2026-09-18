@@ -100,13 +100,22 @@ public final class CurrencyGateway {
     }
 
     /**
-     * 在主线程上执行 {@code op}，把结果带回来。{@code op} 抛的原样抛出。
+     * 在主线程上执行 {@code op}，把结果带回来。{@code op} 抛的非受检异常原样抛出；受检的（Kotlin、@SneakyThrows）换成
+     * {@link ProviderFailure} —— 调用方的 catch 都不认受检异常，挂着原来那个的话日志渲染时它的 getMessage 可能会炸。
      *
      * @throws CurrencyUnavailableException 没执行（原因见 {@link CurrencyUnavailableException#reasonKey()}）——
      *                                      抛这个的时候 {@code op} 一定没有、也永远不会被执行
      */
     public <T> T call(Supplier<T> op) {
-        if (onMainThread.getAsBoolean()) return op.get();
+        if (onMainThread.getAsBoolean()) {
+            try {
+                return op.get();
+            } catch (RuntimeException | Error e) {
+                throw e;
+            } catch (Throwable checked) {
+                throw ProviderFailure.of(checked);
+            }
+        }
         if (!open) throw refuse(KEY_CLOSED);
         long allowance = Math.min(callWaitNanos, ScriptBudget.hostWaitLeftNanos());
         if (allowance <= 0) throw refuse(KEY_WAIT_BUDGET);

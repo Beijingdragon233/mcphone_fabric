@@ -180,13 +180,12 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         }
         long gs = generationOf(snap), gm = generationOf(saved);
         if (gm > gs) {
-            MCphone.LOGGER.warn("[MCphone] 货币的原子快照比 SavedData 旧（第 {} 次对第 {} 次保存，上次写快照失败过），用 SavedData 那份", gs, gm);
-            return load(saved, clock, SAVED_DATA + "（原子快照 " + snapshot + (snap.contains("generation", Tag.TAG_LONG)
-                    ? " 是第 " + gs + " 次保存" : " 没写第几次保存") + "，比它旧）");
+            MCphone.LOGGER.warn("[MCphone] 货币的原子快照比 SavedData 旧（{}对{}），用 SavedData 那份", genText(snap), genText(saved));
+            return load(saved, clock, SAVED_DATA + "（原子快照 " + snapshot + "：" + genText(snap) + "，比它旧）");
         }
         EconomyData d = load(snap, clock, "原子快照 " + snapshot);
         if (gm < gs) {
-            MCphone.LOGGER.warn("[MCphone] 货币的 SavedData 比原子快照旧（第 {} 次对第 {} 次保存），用快照 {}", gm, gs, snapshot);
+            MCphone.LOGGER.warn("[MCphone] 货币的 SavedData 比原子快照旧（{}对{}），用快照 {}", genText(saved), genText(snap), snapshot);
             d.setDirty();
         } else if (!snap.equals(saved)) {
             // 代数一样、内容不一样：多半是有人手改了其中一份。以快照为准，说清楚改 SavedData 不算数
@@ -206,6 +205,11 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             MCphone.LOGGER.warn("[MCphone] 货币的原子快照 {} 读不出来（{}），回退 SavedData 那份", snapshot, e.toString());
             return null;
         }
+    }
+
+    /** "第 N 次保存"；没写就说没写，不编一个第 0 次。 */
+    private static String genText(CompoundTag tag) {
+        return tag.contains("generation", Tag.TAG_LONG) ? "第 " + tag.getLong("generation") + " 次保存" : "没写第几次保存";
     }
 
     private static long generationOf(CompoundTag tag) {
