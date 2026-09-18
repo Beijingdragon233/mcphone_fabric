@@ -120,7 +120,7 @@ public final class TxnLog {
      * 不会写存档点，下次开服又把同一批行报一遍。两种情况不补：还没有流水目录（从没用过货币的世界，别为它建目录），
      * 以及流水读不出来（补了就再也报不出那批没进存档的行）。没有目录的世界，第一次写流水时由 {@link #write} 先补一个。
      *
-     * <p>只看最新的两个文件：跨两个文件还找不到存档点就是老流水、判断不了，不报。
+     * <p>往回最多找 {@link #MAX_SCAN_FILES} 个文件：还找不到存档点就是老流水、判断不了，不报。
      *
      * @return 没进存档的成功变动有几笔；流水读不出来是 -1
      */
@@ -136,48 +136,101 @@ public final class TxnLog {
         return unsaved;
     }
 
-    /** 最后一个存档点之后的成功变动有几笔；找不到存档点是 0，读不出来是 -1。 */
+    /** 往回最多找几个流水文件去找存档点。只有失败尝试的日子也会各留一个文件，只看两个不够。 */
+    static final int MAX_SCAN_FILES = 32;
+
+    /** 一行最多读多少字符。正常一行不到 1 KB；断电留下的没有换行的尾巴可以有几十兆，不许为它把整段读进内存。 */
+    private static final int MAX_LINE_CHARS = 8192;
+
+    private static final java.util.regex.Pattern NAME =
+            java.util.regex.Pattern.compile("(\\d{4}-\\d{2}-\\d{2})(?:\\.(\\d{1,6}))?\\.log");
+
+    /**
+     * 最后一个存档点之后的成功变动有几笔；往回找了 {@link #MAX_SCAN_FILES} 个文件都没有存档点是 0（老流水，判断不了），
+     * 读不出来是 -1。从新往旧一个文件一个文件地找，每个文件逐行流式读。
+     */
     private int unsavedSinceCheckpoint() {
+        List<Path> files;
+        try {
+            files = filesOldestFirst();
+        } catch (IOException e) {
+            com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
+            return -1;
+        }
+        int newer = 0;
+        for (int i = files.size() - 1, seen = 0; i >= 0 && seen < MAX_SCAN_FILES; i--, seen++) {
+            int[] r = scan(files.get(i));
+            if (r == null) return -1;
+            if (r[0] == 1) return r[1] + newer;
+            newer += r[1];
+        }
+        return 0;
+    }
+
+    /** {有没有存档点, 最后一个存档点之后（没有存档点就是整个文件）的成功变动数}；读不出来返回 null。 */
+    private static int[] scan(Path p) {
+        try (java.io.Reader r = reader(p)) {
+            boolean found = false;
+            int ok = 0;
+            String line;
+            while ((line = readLine(r)) != null) {
+                if (line.startsWith(CHECKPOINT)) {
+                    found = true;
+                    ok = 0;
+                    continue;
+                }
+                String[] f = line.split("\\|", -1);
+                if (f.length >= 10 && "OK".equals(f[9])) ok++;
+            }
+            return new int[]{found ? 1 : 0, ok};
+        } catch (IOException e) {
+            com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
+            return null;
+        }
+    }
+
+    /**
+     * 流水文件从旧到新。<b>按文件名里的日期与轮转序号排，不看修改时间</b>：复制、迁移世界时修改时间会被改掉，文件名不会。
+     * 认不出日期的名字排在最后。
+     */
+    private List<Path> filesOldestFirst() throws IOException {
         List<Path> files = new ArrayList<>();
         try (var s = Files.list(dir)) {
             for (Path p : s.toList()) {
                 if (p.getFileName().toString().endsWith(".log")) files.add(p);
             }
-            files.sort((x, y) -> {
-                try {
-                    return Files.getLastModifiedTime(x).compareTo(Files.getLastModifiedTime(y));
-                } catch (IOException e) {
-                    return 0;
-                }
-            });
-        } catch (IOException e) {
-            com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
-            return -1;
         }
-        // 最新的两个，从旧往新顺着读：每遇到一个存档点就清零。逐行流式读 —— 单个文件能有 64 MiB，整个读进内存要几百兆堆。
-        // InputStreamReader 遇到坏字节换成 U+FFFD 接着读（Files.newBufferedReader 会直接报错）：写到一半断电的文件不至于整个读不出
-        int unsaved = 0;
-        boolean found = false;
-        for (Path p : files.subList(Math.max(0, files.size() - 2), files.size())) {
-            try (java.io.BufferedReader r = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(Files.newInputStream(p), StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = r.readLine()) != null) {
-                    if (!line.isEmpty() && line.charAt(0) == '\uFEFF') line = line.substring(1);
-                    if (line.startsWith(CHECKPOINT)) {
-                        found = true;
-                        unsaved = 0;
-                        continue;
-                    }
-                    String[] f = line.split("\\|", -1);
-                    if (f.length >= 10 && "OK".equals(f[9])) unsaved++;
-                }
-            } catch (IOException e) {
-                com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
-                return -1;
-            }
+        files.sort(java.util.Comparator.comparing(TxnLog::orderKey));
+        return files;
+    }
+
+    static String orderKey(Path p) {
+        String n = p.getFileName().toString();
+        java.util.regex.Matcher m = NAME.matcher(n);
+        if (!m.matches()) return "~" + n;
+        int idx = m.group(2) == null ? 0 : Integer.parseInt(m.group(2));
+        return m.group(1) + "#" + String.format("%06d", idx);
+    }
+
+    // InputStreamReader 遇到坏字节换成 U+FFFD 接着读（Files.newBufferedReader 会直接报错）：写到一半断电的文件不至于整个读不出
+    private static java.io.Reader reader(Path p) throws IOException {
+        return new java.io.BufferedReader(new java.io.InputStreamReader(Files.newInputStream(p), StandardCharsets.UTF_8));
+    }
+
+    /** 读一行，超过 {@link #MAX_LINE_CHARS} 的部分丢掉；行首的 BOM 去掉。读完了返回 null。 */
+    private static String readLine(java.io.Reader r) throws IOException {
+        StringBuilder b = new StringBuilder();
+        boolean any = false;
+        int c;
+        while ((c = r.read()) != -1) {
+            any = true;
+            if (c == '\n') break;
+            if (c == '\r') continue;
+            if (b.length() < MAX_LINE_CHARS) b.append((char) c);
         }
-        return found ? unsaved : 0;
+        if (!any) return null;
+        if (b.length() > 0 && b.charAt(0) == '\uFEFF') b.deleteCharAt(0);
+        return b.toString();
     }
 
     private void write(Instant at, String line) {
@@ -258,9 +311,18 @@ public final class TxnLog {
     public long[] sumMintAndBurn(String currencyId) {
         long mint = 0, burn = 0;
         if (!Files.isDirectory(dir)) return new long[]{0, 0};
-        try (var s = Files.list(dir)) {
-            for (Path p : s.toList()) {
-                for (String line : Files.readAllLines(p, StandardCharsets.UTF_8)) {
+        List<Path> files;
+        try {
+            files = filesOldestFirst();
+        } catch (IOException e) {
+            com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
+            return new long[]{0, 0};
+        }
+        // 一个文件读不出只跳过它，不把整个合计打断
+        for (Path p : files) {
+            try (java.io.Reader r = reader(p)) {
+                String line;
+                while ((line = readLine(r)) != null) {
                     String[] f = line.split("\\|", -1);
                     if (f.length < 10 || !currencyId.equals(f[1])) continue;
                     if (!"OK".equals(f[9])) continue;              // 失败的不算进总量
@@ -273,9 +335,9 @@ public final class TxnLog {
                     if ("mint".equals(f[2])) mint += amt;
                     else if ("burn".equals(f[2])) burn += amt;
                 }
+            } catch (IOException e) {
+                com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
             }
-        } catch (IOException e) {
-            com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
         }
         return new long[]{mint, burn};
     }

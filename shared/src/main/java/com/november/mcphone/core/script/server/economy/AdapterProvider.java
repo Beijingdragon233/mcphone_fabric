@@ -165,7 +165,9 @@ public final class AdapterProvider implements ICurrencyProvider {
         if (e.settled()) return TxnResult.ALREADY_SETTLED;
         if (!wallet.available()) return TxnResult.UNAVAILABLE;
         UUID target = toBeneficiary ? e.beneficiary() : e.owner();
-        if (!escrow.settle(id)) return TxnResult.ALREADY_SETTLED;
-        return wallet.deposit(target, e.amount()) ? TxnResult.OK : TxnResult.FAILED;
+        // 先存款、后标结清：反过来的话存款失败时托管已经结清，钱就没了。只在主线程上跑（网关），中间没人插得进来
+        if (!wallet.deposit(target, e.amount())) return TxnResult.FAILED;
+        escrow.settle(id);
+        return TxnResult.OK;
     }
 }

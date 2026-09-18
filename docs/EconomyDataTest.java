@@ -260,6 +260,146 @@ public class EconomyDataTest {
         eq(new TxnLog(bom, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "带 BOM：第一行的存档点也认得出");
     }
 
+    static String okLine(String day) {
+        return day + "T00:00:00Z|" + COIN + "|mint|-|" + UUID.randomUUID() + "|5|-|test|r|OK";
+    }
+
+    static String failLine(String day) {
+        return day + "T00:00:00Z|" + COIN + "|transfer|-|" + UUID.randomUUID() + "|5|-|test|r|INSUFFICIENT";
+    }
+
+    /** 多个流水文件：按文件名里的日期排，不看修改时间；只有失败尝试的日子也往回找得到存档点。 */
+    static void multiFileOrder() throws Exception {
+        Path dir = tmp("multi");
+        Path ledger = dir.resolve("ledger");
+        Files.createDirectories(ledger);
+        Files.writeString(ledger.resolve("2026-09-01.log"), okLine("2026-09-01") + "\n");
+        Files.writeString(ledger.resolve("2026-09-02.log"),
+                okLine("2026-09-02") + "\n" + TxnLog.CHECKPOINT + "x\n" + okLine("2026-09-02") + "\n");
+        Files.writeString(ledger.resolve("2026-09-03.log"), okLine("2026-09-03") + "\n");
+        // 修改时间弄反（复制、迁移世界时会这样）：最旧的文件看起来最新
+        Files.setLastModifiedTime(ledger.resolve("2026-09-01.log"), java.nio.file.attribute.FileTime.fromMillis(3_000_000));
+        Files.setLastModifiedTime(ledger.resolve("2026-09-02.log"), java.nio.file.attribute.FileTime.fromMillis(2_000_000));
+        Files.setLastModifiedTime(ledger.resolve("2026-09-03.log"), java.nio.file.attribute.FileTime.fromMillis(1_000_000));
+        eq(new TxnLog(dir, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 2,
+                "存档点在倒数第二个文件：它后面 1 笔 + 最新文件 1 笔，按文件名排、不看修改时间");
+
+        // 同一天轮转出来的文件：2026-09-05.log < 2026-09-05.1.log < 2026-09-05.2.log
+        Path rot = tmp("rot");
+        Path rl = rot.resolve("ledger");
+        Files.createDirectories(rl);
+        Files.writeString(rl.resolve("2026-09-05.log"), TxnLog.CHECKPOINT + "x\n");
+        Files.writeString(rl.resolve("2026-09-05.1.log"), okLine("2026-09-05") + "\n");
+        Files.writeString(rl.resolve("2026-09-05.2.log"), okLine("2026-09-05") + "\n" + okLine("2026-09-05") + "\n");
+        eq(new TxnLog(rot, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 3, "轮转的文件按序号排在当天的主文件之后");
+
+        // 存档点之后连着几天只有失败尝试（不标脏、不写存档点，但每天一个文件），然后 2 笔成功再被强杀
+        Path quiet = tmp("quiet");
+        Path ql = quiet.resolve("ledger");
+        Files.createDirectories(ql);
+        Files.writeString(ql.resolve("2026-09-10.log"), TxnLog.CHECKPOINT + "x\n");
+        for (int d = 11; d <= 15; d++) Files.writeString(ql.resolve("2026-09-" + d + ".log"), failLine("2026-09-" + d) + "\n");
+        Files.writeString(ql.resolve("2026-09-16.log"), okLine("2026-09-16") + "\n" + okLine("2026-09-16") + "\n");
+        eq(new TxnLog(quiet, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 2, "隔着几天只有失败尝试的文件，照样往回找到存档点");
+
+        // 超长、没有换行的一行（断电留下的尾巴）：不影响计数
+        Path longLine = tmp("long");
+        Path ll = longLine.resolve("ledger");
+        Files.createDirectories(ll);
+        Files.writeString(ll.resolve("2026-09-20.log"), TxnLog.CHECKPOINT + "x\n" + okLine("2026-09-20") + "\n" + "Z".repeat(1_000_000));
+        eq(new TxnLog(longLine, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "超长的一行按截断读，不影响计数");
+    }
+
+    /** 对账的旧读法（流水现算）：一个文件里有坏字节，只跳过那一行，不把整个合计打断。 */
+    static void sumSurvivesBadBytes() throws Exception {
+        Path dir = tmp("sumbad");
+        Path ledger = dir.resolve("ledger");
+        Files.createDirectories(ledger);
+        Files.writeString(ledger.resolve("2026-09-01.log"),
+                okLine("2026-09-01") + "\n" + okLine("2026-09-01") + "\n" + okLine("2026-09-01") + "\n");
+        byte[] good = (okLine("2026-09-02") + "\n" + okLine("2026-09-02") + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] bad = {(byte) 0xE5, (byte) 0xAD, '\n'};
+        byte[] all = new byte[bad.length + good.length];
+        System.arraycopy(bad, 0, all, 0, bad.length);
+        System.arraycopy(good, 0, all, bad.length, good.length);
+        Files.write(ledger.resolve("2026-09-02.log"), all);
+        Files.createDirectories(ledger.resolve("2026-09-03.log"));   // 一个读不出来的"文件"
+        Files.writeString(ledger.resolve("2026-09-04.log"), okLine("2026-09-04") + "\n");
+        eq(new TxnLog(dir, ZoneOffset.UTC).sumMintAndBurn(COIN)[0], 30L, "6 笔铸造一笔不少：坏字节只跳那一行，读不出的文件只跳那一个");
+    }
+
+    /** 计分板档：存档锁住时整档不可用，转账也是 UNAVAILABLE（不然锁住期间的转账解锁后会被报成没进存档）。 */
+    static void scoreboardHonorsLock() {
+        CompoundTag tag = new CompoundTag();
+        tag.putInt("dataVersion", EconomyData.DATA_VERSION + 1);
+        EconomyData locked = EconomyData.load(tag, () -> 1);
+        AtomicBoolean touched = new AtomicBoolean();
+        ScoreboardProvider p = new ScoreboardProvider(currency(COIN), () -> {
+            touched.set(true);
+            return null;
+        }, locked.escrow(), null, () -> 1L, false, 0);
+        eq(p.transfer(UUID.randomUUID(), UUID.randomUUID(), 5, RSN), TxnResult.UNAVAILABLE, "锁住时转账 UNAVAILABLE");
+        check(!touched.get(), "锁住时根本不去碰计分板 —— 判锁在找服务器之前");
+        eq(p.transfer(UUID.randomUUID(), UUID.randomUUID(), 0, RSN), TxnResult.INVALID, "参数错仍然先报 INVALID");
+        check(!p.isAvailable(), "锁住时 isAvailable 是 false");
+        eq(p.unavailableReasonKey(), EconomyData.KEY_LOCKED, "原因是存档锁住");
+    }
+
+    /** adapter 档放款：存款失败时托管不结清，钱还押着，钱包好了再放一次就成。 */
+    static void adapterDepositBeforeSettle() {
+        EconomyData d = EconomyData.empty(() -> 1);
+        Map<UUID, Long> wallet = new HashMap<>();
+        AtomicBoolean depositOk = new AtomicBoolean(true);
+        UUID a = UUID.randomUUID(), b = UUID.randomUUID();
+        wallet.put(a, 100L);
+        AdapterProvider p = new AdapterProvider(currency(COIN), new AdapterProvider.ExternalWallet() {
+            public boolean available() {
+                return true;
+            }
+
+            public long balance(UUID x) {
+                return wallet.getOrDefault(x, 0L);
+            }
+
+            public boolean deposit(UUID x, long n) {
+                if (!depositOk.get()) return false;
+                wallet.merge(x, n, Long::sum);
+                return true;
+            }
+
+            public boolean withdraw(UUID x, long n) {
+                wallet.merge(x, -n, Long::sum);
+                return true;
+            }
+        }, d.escrow(), 1_000);
+        HoldResult h = p.hold(a, b, 40, RSN);
+        depositOk.set(false);
+        eq(p.release(h.id(), RSN), TxnResult.FAILED, "存款失败：FAILED");
+        eq(d.escrow().get(h.id()).settled(), false, "存款失败时托管不结清，钱还押着");
+        depositOk.set(true);
+        eq(p.release(h.id(), RSN), TxnResult.OK, "钱包好了再放一次就成");
+        eq(wallet.get(b), 40L, "受益人收到");
+        eq(p.release(h.id(), RSN), TxnResult.ALREADY_SETTLED, "不会再放第二次");
+    }
+
+    /** 代码里用到的原因键，两份语言文件都得有：缺了玩家看到的是一串键名。 */
+    static void reasonKeysTranslated() throws Exception {
+        String[] keys = {CurrencyGateway.KEY_BUSY, CurrencyGateway.KEY_QUEUE_FULL, CurrencyGateway.KEY_CLOSED,
+                CurrencyGateway.KEY_INTERRUPTED, CurrencyGateway.KEY_WAIT_BUDGET, EconomyData.KEY_LOCKED,
+                LegacyWalletProvider.KEY_NO_ESCROW, LegacyWalletProvider.KEY_NO_BALANCE,
+                ScoreboardProvider.KEY_UNKNOWN_PLAYER, "mcphone.economy.adapter.unavailable",
+                "mcphone.economy.no_such_currency", "mcphone.economy.scoreboard.no_server",
+                "mcphone.economy.scoreboard.off_thread", "mcphone.economy.scoreboard.no_objective"};
+        for (String lang : new String[]{"zh_cn", "en_us"}) {
+            var in = EconomyDataTest.class.getClassLoader().getResourceAsStream("assets/mcphone/lang/" + lang + ".json");
+            check(in != null, lang + ".json 在 classpath 上");
+            if (in == null) continue;
+            var obj = com.google.gson.JsonParser.parseString(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            for (String k : keys) check(obj.has(k), lang + " 里有 " + k);
+        }
+    }
+
     /** 孤立的代理字符换成 U+FFFD；合法的代理对（emoji）原样留着。 */
     static void encodableEdges() {
         char hi = (char) 0xD83D, lo = (char) 0xDE00, rep = (char) 0xFFFD;
@@ -313,7 +453,8 @@ public class EconomyDataTest {
      */
     static void badCreatedAtReset() {
         long now = 1_700_000_000_000L;
-        for (long bad : new long[]{0, -5, Long.MIN_VALUE, now + 1, now + 10L * 365 * 86_400_000L, Long.MAX_VALUE}) {
+        for (long bad : new long[]{0, -5, Long.MIN_VALUE, now + EscrowLedger.DEFAULT_TIMEOUT_MS + 1,
+                now + 10L * 365 * 86_400_000L, Long.MAX_VALUE}) {
             CompoundTag tag = goodTag(UUID.randomUUID());
             escrowOf(tag).putLong("createdAt", bad);
             EconomyData d = EconomyData.load(tag, () -> now);
@@ -322,11 +463,37 @@ public class EconomyDataTest {
             eq(e.createdAt(), now, "建立时刻 " + bad + "：按读档那一刻重新计时");
             check(d.isDirty(), "建立时刻 " + bad + "：改正要落盘，不然每次开服都重新计时、永远等不到期");
         }
-        CompoundTag ok = goodTag(UUID.randomUUID());
-        escrowOf(ok).putLong("createdAt", now - 1);
-        EconomyData fine = EconomyData.load(ok, () -> now);
-        eq(fine.escrow().snapshot().values().iterator().next().createdAt(), now - 1, "正常的不动");
-        check(!fine.isDirty(), "正常的不标脏");
+        for (long fine0 : new long[]{now - 1, now + 1, now + EscrowLedger.DEFAULT_TIMEOUT_MS}) {
+            CompoundTag ok = goodTag(UUID.randomUUID());
+            escrowOf(ok).putLong("createdAt", fine0);
+            EconomyData fine = EconomyData.load(ok, () -> now);
+            eq(fine.escrow().snapshot().values().iterator().next().createdAt(), fine0,
+                    "建立时刻 " + fine0 + "：不晚于读档时刻一个超时周期以上，原样收（时钟差一点不算错）");
+            check(!fine.isDirty(), "原样收的不标脏");
+        }
+
+        // 读档这台机器的时钟慢了（回到 1970）：存档里记着上次保存时刻，正常的托管一律不动 —— 往前挪就是提前退款
+        long savedAt = now;
+        CompoundTag slow = goodTag(UUID.randomUUID());
+        slow.putLong("savedAt", savedAt);
+        escrowOf(slow).putLong("createdAt", savedAt - 3_600_000L);
+        EconomyData slowD = EconomyData.load(slow, () -> 30_000L);
+        eq(slowD.escrow().snapshot().values().iterator().next().createdAt(), savedAt - 3_600_000L,
+                "读档时钟慢：正常的托管不改写");
+        check(!slowD.isDirty(), "读档时钟慢：不标脏");
+        CompoundTag slowFar = goodTag(UUID.randomUUID());
+        slowFar.putLong("savedAt", savedAt);
+        escrowOf(slowFar).putLong("createdAt", Long.MAX_VALUE);
+        eq(EconomyData.load(slowFar, () -> 30_000L).escrow().snapshot().values().iterator().next().createdAt(), savedAt,
+                "读档时钟慢、建立时刻又远在将来：按上次保存时刻重新计时，不按那个慢的读档时刻");
+
+        // 那种货币本来就锁住了：改了也不落盘，不标脏（不然每次开服白白重写一遍存档）
+        CompoundTag lockedOne = goodTag(UUID.randomUUID());
+        lockedOne.getCompound("currencies").getCompound(COIN).putString("minted", "坏");
+        escrowOf(lockedOne).putLong("createdAt", Long.MAX_VALUE);
+        EconomyData ld = EconomyData.load(lockedOne, () -> now);
+        eq(ld.lockedCurrencies(), Set.of(COIN), "对照：那种货币锁着");
+        check(!ld.isDirty(), "锁住的货币里的坏时刻不标脏");
 
         CompoundTag settled = goodTag(UUID.randomUUID());
         escrowOf(settled).putLong("createdAt", Long.MAX_VALUE);
@@ -1242,6 +1409,8 @@ public class EconomyDataTest {
         periodicSweep();
         badCreatedAtReset();
         restartCheckpoint();
+        multiFileOrder();
+        sumSurvivesBadBytes();
         encodableEdges();
         loneSurrogateStillLogged();
         wholeLock();
@@ -1253,6 +1422,9 @@ public class EconomyDataTest {
         longUptimeSweep();
         adapterRespectsLock();
         unavailableBalanceThrows();
+        scoreboardHonorsLock();
+        adapterDepositBeforeSettle();
+        reasonKeysTranslated();
         gatewayInlineAndReentrant();
         gatewayTimeoutNeverRunsLater();
         gatewayTimeoutRace();

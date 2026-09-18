@@ -209,6 +209,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
      */
     @Override
     public boolean isAvailable() {
+        // 这种货币的存档锁住了（见 EconomyData），整档都不可用 —— 计分板上的分虽然读得到，铸造、托管的账却记不进去
+        if (escrow.unavailableReasonKey(id()) != null) return false;
         MinecraftServer s = server == null ? null : server.get();
         if (s == null || !onServerThread(s)) return false;
         return Scores.ensureObjective(s, objective, currency.symbol().isEmpty()
@@ -217,6 +219,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
 
     @Override
     public String unavailableReasonKey() {
+        String locked = escrow.unavailableReasonKey(id());
+        if (locked != null) return locked;
         MinecraftServer s = server == null ? null : server.get();
         if (s == null) return "mcphone.economy.scoreboard.no_server";
         if (!onServerThread(s)) return "mcphone.economy.scoreboard.off_thread";
@@ -277,6 +281,10 @@ public final class ScoreboardProvider implements ICurrencyProvider {
         if (Balances.checkAmount(amount) != TxnResult.OK
                 || Balances.checkParties(from, to) != TxnResult.OK) {
             return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, TxnResult.INVALID);
+        }
+        // 存档锁住时转账也不许：锁住的存档不写存档点，这期间成功的转账解锁后会被报成"没进存档"
+        if (escrow.unavailableReasonKey(id()) != null) {
+            return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, TxnResult.UNAVAILABLE);
         }
         MinecraftServer s = ready();
         if (s == null) return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, TxnResult.UNAVAILABLE);
