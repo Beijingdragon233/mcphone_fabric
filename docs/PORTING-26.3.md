@@ -25,8 +25,8 @@ BUILD FAILED in 21s
   「26.x 起 fill/blit 强制 RenderPipeline 首参」，对 `fill` 不成立。
 - **`Screen` 的 `width`/`height`/`font`/`minecraft` 都还在**
   （`Screen.java:66`、`:68`、`:69`、`:71`，宽高还从 `protected` 变成了 `public`）。
-  所以这一轮日志里那 220 多条「找不到 `font`/`width`/`height`」**不是 26.x 的断裂**，
-  是级联，见 §2。
+  所以这一轮日志里那 169 条「找不到 `font`(51) / `width`(31) / `height`(30) / `super`(26) /
+  `screen`(21) / `minecraft`(10)」**不是 26.x 的断裂**，是级联，见 §二。
 
 ## 一、七个桶
 
@@ -56,7 +56,7 @@ BUILD FAILED in 21s
 而 `PhoneScreenBase` 是每平台一份的 —— 26.3 没有，于是：
 
 1. `PhoneScreen` 的父类成了 error type，它从 `Screen` 继承来的 `font` / `width` / `height`
-   / `minecraft` 全部报「找不到符号」（186 条，E 桶）；
+   / `minecraft` 全部报「找不到符号」（这一族 169 条；E 桶合计 186 条）；
 2. 它自己写的 `@Override removed()` / `isPauseScreen()` / `onClose()` / `init()` /
    `onFilesDrop()` 全部报「方法不会覆盖或实现超类型的方法」—— 而这些方法在 26.3 的
    `Screen.java` 里一字未改（`:387`、`:438`、`:208`、`:381`、`:477`）。
@@ -66,7 +66,8 @@ BUILD FAILED in 21s
 
 顺带纠正一个原先记着的判断：**`Screen` 的 `width`/`height`/`font`/`minecraft` 在 26.3 都还在**，
 宽高还从 `protected` 变成 `public`（`Screen.java:66`、`:68`、`:69`、`:71`）。
-220 多条「找不到 `font`/`width`」不是 26.x 的断裂。
+那 169 条「找不到 `font`/`width`/`height`/`super`/`screen`/`minecraft`」不是 26.x 的断裂；
+E 桶一共 186 条，多出的 17 条是 `setDirty`（`SavedData.java:6` 还在）与那 11 条签名未变的覆写。
 
 ---
 
@@ -156,6 +157,12 @@ default void mouseMoved(double x, double y)
 
 另有 11 条「不会覆盖」的 `removed` / `isPauseScreen` / `onClose` / `init` / `onFilesDrop` /
 `mouseMoved` 归进了 E 桶：它们在 26.3 的 `Screen` 里签名一字未改，是父类不可解析造成的。
+
+**`onScroll` 那 3 条不是 26.x 的断裂，查实了。** `onScroll` 是 `platform/client/PhoneScreenBase.java:44`
+自己定义的方法，各平台在那份文件的 `:34` 用 `mouseScrolled(...)` 转调它 —— 那个类的 javadoc
+第一句就写着「**它存在的唯一理由是 `mouseScrolled` 的签名在版本之间变了**」（1.21 把三参改成四参）。
+26.3 的父类没补，所以 `shared/` 里这 3 处 `@Override onScroll` 报「不会覆盖」。
+上面那 41 条真断里扣掉这 3 条，**下界是 38 条**。
 
 **这批覆写集中在三个文件。** 按文件数（含那 11 条级联，共 52 条）：`PhoneScreen` 13、
 `BrowserScreen` 13、`PhoneHudEditor` 9 —— 这三家占掉 35 条；剩下散在 10 个文件里：
@@ -272,11 +279,13 @@ slug 猜错拿到 404，**未取证**。
    **方法签名**，签名不同的同一段代码不可能同时在 1.21.1 和 26.3 上编过 —— 它连入层的
    资格都没有。加一个 `until` 谓词只是把「不能共用」变成「可以分开抄」，那是 `platforms/`
    已经在做的事。
-2. **真断的覆写只有 41 条、13 个文件**，而且高度集中：`render`/`extractRenderState` 一处，
-   七个输入事件一处，`resize`、`renderBg`、`imageWidth/Height` 各一处。这种形状正是
-   `platform/client/PhoneScreenBase` 存在的理由 —— 本仓已经有这个先例，而且 seams 文档
-   写明了「覆写签名差异要用平台侧抽象基类」。为它新增一条谓词轴、一份 Gradle 语义、
-   CI 里那份同语义的 jq，代价远大于把这三个基类下沉到各平台。
+2. **真断的覆写只有 38~41 条、13 个文件**，而且高度集中：`render`/`extractRenderState` 一处，
+   六个输入事件一处，`resize`、`renderBg`、`imageWidth/Height` 各一处。这种形状**本仓已经解决过一次**：
+   `platform/client/PhoneScreenBase.java` 的 javadoc 第一句是「它存在的唯一理由是 `mouseScrolled`
+   的签名在版本之间变了」（1.20.1 三参 → 1.21 四参），它在那份文件的 `:34` 把原版的
+   `mouseScrolled` 转调到自己定义的 `onScroll`（`:44`），`shared/` 里三家就只覆写 `onScroll`。
+   26.x 这批签名差异要的就是同一个招，再往下扩一个 `PhoneContainerScreenBase` 而已。
+   为它新增一条谓词轴、一份 Gradle 语义、CI 里那份同语义的 jq，代价远大于把基类下沉到各平台。
 3. **A 桶那 588 条改名不需要任何新机制**：它们要的是「一份源码在两个名字下都能编」，
    而这在 Java 里做不到 —— 所以只能各平台各留一份 facade。本仓的 `platform/client/Draw`、
    `StackCodecs`、`ModPresence` 这些 facade 类就是干这个的，26.3 补上同名文件即可。
