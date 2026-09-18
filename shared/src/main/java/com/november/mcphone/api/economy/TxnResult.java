@@ -26,7 +26,7 @@ public enum TxnResult {
     /** 这种货币现在用不了，原因见 {@link ICurrencyProvider#unavailableReasonKey()}。 */
     UNAVAILABLE,
 
-    /** 参数不对：金额 ≤ 0、玩家为 null（§22.9）。 */
+    /** 参数不对：金额 ≤ 0、玩家为 null（§22.9），转账两端是同一个人（{@link Balances#checkParties}）。 */
     INVALID,
 
     /** 没有这个能力。{@code currency.mint} / {@code burn} / {@code read.other} 是 granted 档（§22.6）。 */

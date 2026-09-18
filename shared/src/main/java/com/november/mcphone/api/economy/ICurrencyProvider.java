@@ -65,6 +65,9 @@ public interface ICurrencyProvider {
      * 原子转账，两端都是玩家。要么全成要么全不成 —— <b>中间态不许落盘</b>。
      *
      * <p>{@code from} 恒为调用者（§22.6：这样它才是 {@code plain} 档）。收款方离线照样收得到。
+     *
+     * <p>{@code from.equals(to)} 返回 {@link TxnResult#INVALID}，而且要在读余额之前判：
+     * 两端各读一份快照再分别写回，后写覆盖前写就是凭空造币（{@link Balances#checkParties}）。
      */
     TxnResult transfer(UUID from, UUID to, long amount, TxnReason reason);
 
@@ -83,9 +86,13 @@ public interface ICurrencyProvider {
      */
     HoldResult hold(UUID from, UUID beneficiary, long amount, TxnReason reason);
 
-    /** 放款，只能给创建托管时指定的那个受益人。不认识的号返回 {@link TxnResult#UNKNOWN_ESCROW}。 */
+    /**
+     * 放款，只能给创建托管时指定的那个受益人。不认识的号、以及别的货币的号，都返回
+     * {@link TxnResult#UNKNOWN_ESCROW}：不比对货币的话，A 币的号递给 B 币就是销毁 A、铸出 B
+     * （{@link Balances#checkEscrowCurrency}）。
+     */
     TxnResult release(EscrowId id, TxnReason reason);
 
-    /** 退款，只能退给创建托管的那个人。已经结过的返回 {@link TxnResult#ALREADY_SETTLED}。 */
+    /** 退款，只能退给创建托管的那个人。已经结过的返回 {@link TxnResult#ALREADY_SETTLED}；号的判定同 {@link #release}。 */
     TxnResult refund(EscrowId id, TxnReason reason);
 }

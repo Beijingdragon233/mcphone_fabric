@@ -26,9 +26,26 @@ public final class CurrencyRegistry {
 
     private String defaultId;
 
-    /** 注册一种。{@code isDefault} 只许有一个为真，后来的覆盖前面的并记一条警告。 */
-    public void register(ICurrencyProvider provider, boolean isDefault) {
+    /**
+     * 注册一种。{@code isDefault} 只许有一个为真，后来的覆盖前面的并记一条警告。
+     *
+     * <p>同一种货币的第二个实例<b>直接拒</b>（勘误 E25），不是静默覆盖：先注册的那个还在别处被引用着，
+     * 两个实例各拿各的 {@code synchronized} 写同一份权威数据，锁就什么都不保证了 ——
+     * 实测两实例并发 1000 次转账丢了 11 单位。
+     *
+     * <p>唯一实例只是守恒的一半，另一半是实例自己把调用互斥：脚本在多条 worker 上求值，宿主不串行化。
+     *
+     * @return 注册成功了没有
+     */
+    public boolean register(ICurrencyProvider provider, boolean isDefault) {
         String id = provider.currency().id().toString();
+        ICurrencyProvider existing = providers.get(id);
+        if (existing != null && existing != provider) {
+            com.november.mcphone.MCphone.LOGGER.error(
+                    "[MCphone] 货币 {} 已经有一个提供者了，拒绝第二个 —— "
+                            + "两个实例各拿各的锁写同一份账，守恒就不成立了", id);
+            return false;
+        }
         providers.put(id, provider);
         if (isDefault) {
             if (defaultId != null && !defaultId.equals(id)) {
@@ -37,6 +54,7 @@ public final class CurrencyRegistry {
             }
             defaultId = id;
         }
+        return true;
     }
 
     public ICurrencyProvider get(String currencyId) {
