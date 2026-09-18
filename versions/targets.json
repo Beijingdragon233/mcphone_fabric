@@ -21,7 +21,7 @@
     "一个都编不过。也就是说这个字段决定 shared/ 在一个新目标上是全活还是全灭。",
     "",
     "这件事原先只记在 README 的一句散文里，不在模型里、没有闸。现在 guard-version 会查：",
-    "每个目标都要写，而且六个必须一模一样。",
+    "每个目标都要写，而且所有目标必须一模一样。",
     "",
     "Parchment 不在此列：它只补参数名，不改类型名与方法名，加不加都不影响能不能编过。",
     "",
@@ -160,6 +160,71 @@
     "project": "platforms/1.21.1-fabric",
     "buildable": true,
     "note": "社区 PR #2 的移植实现，已按本仓结构收进 platforms/1.21.1-fabric/。loader_version 0.19.5 由构建本身验着（Fabric Loader 就装在这个版本上编过）。gradle 9.7.1 是实测出来的：fabric-loom 1.17.20 要求 Gradle >= 9.5，往上第一个能用的发行版是 9.7.1 —— 这个目标不能跟着仓库根的 wrapper（那个是给 1.20.1-forge 的 8.8 与 neoforge 的共用档），平台自带 wrapper。",
+      "layers": [
+        "1.20.3+",
+        "1.20.5+",
+        "1.21+",
+        "fabric"
+      ]
+    },
+  "26.3-forge": {
+    "minecraft": "26.3",
+    "loader": "Forge",
+    "loader_version": null,
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "8.8",
+    "project": "platforms/26.3-forge",
+    "buildable": false,
+    "unverified": [
+      "gradle"
+    ],
+    "note": "不打算做。本仓约定是 1.21 及以后走 NeoForge，Forge 只留在 1.20.1 那一档；这一行为的是把「26.x 上没有 Forge」写成看得见的一条，而不是让谁哪天想起来再补。取证：maven.neoforged.net 的 neoforge 目录下 26.3 有 26.3.0.0-beta、26.3.0.1、26.3.0.2、26.3.0.3-beta 四个构建，而 26.x 的线上稳定版是 26.1.2.109 与 26.2.0.88；Forge 侧没有 26.3 的构建。loader_version 的这个 null 是决定、不是待查项，所以没列进 unverified。gradle 8.8 是照抄 1.20.1-forge 那行的占位值。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "forge"
+    ]
+  },
+  "26.3-neoforge": {
+    "minecraft": "26.3",
+    "loader": "NeoForge",
+    "loader_version": "26.3.0.3-beta",
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "9.2.1",
+    "project": "platforms/26.3-neoforge",
+    "buildable": false,
+    "unverified": [
+      "loader_version",
+      "gradle"
+    ],
+    "note": "26.x 的主路径，也是这一组里唯一准备真去建的。loader_version 是 maven.neoforged.net 上 26.3 最新的那个构建（26.3.0.3-beta），没在任何真构建上验过，所以连同 gradle 一起标着 —— gradle 9.2.1 抄自 1.21.1-neoforge。java 25 不是猜的：piston-meta 里 26.3 的 java_version 就是 25。构建插件这一版仓库钉的是 ModDevGradle 2.0.143，26.3 上要哪一版没实测（他们发到 2.0.147）。还有一个未知数比映射更要紧：26.3 的 client jar 已经不混淆了 —— 那个 jar 里 11266 个 net/minecraft/** 条目、0 个 class_N，而 1.21.1 那边是混淆的短随机名，piston-meta 里 26.3 的 downloads 也只剩 client 与 server、没有 client_mappings。所以风险不是「拉不到映射」，而是「构建插件吃不吃一个已经命名好的输入 jar」。工程目录 platforms/26.3-neoforge/ 还没建，而 CI 的矩阵按目录存在与否挑目标，所以这三行现在都是纯声明。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "neoforge"
+    ]
+  },
+  "26.3-fabric": {
+    "minecraft": "26.3",
+    "loader": "Fabric",
+    "loader_version": "0.19.5",
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "9.7.1",
+    "project": "platforms/26.3-fabric",
+    "buildable": false,
+    "unverified": [
+      "loader_version",
+      "gradle"
+    ],
+    "note": "排在 26.3-neoforge 之后做，按本仓约定 NeoForge 是 26.x 的主路径。Fabric 侧的工件已经在：piston-meta 有 26.3 的 intermediary，Fabric API 有 0.160.6+26.3。loader_version 0.19.5 沿用 1.21.1-fabric 那行 —— Fabric Loader 与 Minecraft 版本无关，但它没在 26.3 上编过，所以标着。gradle 9.7.1 同理：那个数是给 fabric-loom 1.17.20 测出来的，26.3 要用哪一版 Loom、那一版对 Gradle 的要求是多少，都得查过再填。server_config_sync 这里写 true 沿用的是仓库里已记着的那个已知问题（Fabric 没有把 SERVER 档配置推给客户端的机制，那三处按钮显隐是错的且不报错），不是 26.3 上新查的事实。",
     "layers": [
       "1.20.3+",
       "1.20.5+",
