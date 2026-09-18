@@ -191,9 +191,11 @@ public final class EconomyRuntime {
                 suspect.add(e.getKey());
                 suspected++;
                 EscrowLedger.Entry v = e.getValue();
-                MCphone.LOGGER.error("[MCphone] ⚠ 超时托管 {}（{} {}，原主 {}）退款时 provider 抛了异常，钱退没退出去不知道。"
-                        + "这次运行里不再自动退；核对那种货币的钱包后重启，开服时会再试一次", e.getKey().value(),
-                        v.amount(), v.currencyId(), v.owner(), ex);
+                // 堆栈只打这一趟的第一笔：provider 整个坏掉时每笔都是同一个堆栈
+                MCphone.LOGGER.error("[MCphone] ⚠ 超时托管 {}（{} 最小单位的 {}，原主 {}）退款时 provider 抛了异常（{}），钱退没退出去不知道。"
+                        + "这次运行里不再自动退。核对原主在那种货币里的余额：没到账就重启，开服时会再试一次；已经到账的话重启会再退一次，"
+                        + "目前只能手改存档（SavedData 与快照一起）把这笔标成已结清", e.getKey().value(), v.amount(), v.currencyId(), v.owner(),
+                        ex.toString(), suspected == 1 ? ex : null);
             }
         }
         return new Sweep(refunded, failed, orphaned, escrow.pruneSettled(), suspected);

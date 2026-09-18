@@ -398,6 +398,7 @@ public class EconomyDataTest {
         CompoundTag tag = new CompoundTag();
         tag.putInt("dataVersion", EconomyData.DATA_VERSION + 1);
         EconomyData locked = EconomyData.load(tag, () -> 1);
+        check(locked.wholeLock().endsWith(EconomyData.UNLOCK_HINT), "读档时锁住的也说得出怎么解锁 —— " + locked.wholeLock());
         AtomicBoolean touched = new AtomicBoolean();
         ScoreboardProvider p = new ScoreboardProvider(currency(COIN), () -> {
             touched.set(true);
@@ -862,7 +863,7 @@ public class EconomyDataTest {
         // 没有 .stale 时锁住原因不提它
         Files.delete(snap);
         String plain = EconomyData.createFor(mcFile, snap, t::get).wholeLock();
-        check(plain != null && !plain.contains(".stale"), "没有 .stale：锁住原因不提它 —— " + plain);
+        check(plain != null && !plain.contains(stale.toString()) && !plain.contains("上一份完整快照"), "没有 .stale：锁住原因不说有它 —— " + plain);
 
         // .stale 已经在（上次删它失败过）、这次写快照又失败：新的那份照样挪过去，不留在原处
         d2.toTag();
@@ -881,7 +882,8 @@ public class EconomyDataTest {
                 "只剩 .stale：整份锁住并点名它 —— " + onlyStale.wholeLock());
         String why = onlyStale.wholeLock();
         check(why.contains("第 " + latest.getLong("generation") + " 次保存"), "锁住原因里说得出 .stale 是第几次保存");
-        check(why.contains("存于 " + Instant.ofEpochMilli(latest.getLong("savedAt"))), "也说得出它是什么时候存的");
+        check(why.contains("文件写于 " + Files.getLastModifiedTime(stale).toInstant()),
+                "也说得出它是什么时候写的 —— 用文件的写入时刻，不用只增不减的 savedAt");
         check(why.contains("作废"), "说清改名回去会丢什么");
         check(why.contains("挪走再开服就按新世界开"), "说清确认不要这些钱时怎么解锁");
 
@@ -898,8 +900,36 @@ public class EconomyDataTest {
         bare.remove("savedAt");
         EconomySnapshot.write(stale, bare);
         String bareWhy = EconomyData.createFor(mcFile, snap, t::get).wholeLock();
-        check(bareWhy.contains("没写第几次保存") && bareWhy.contains("没写保存时刻"), "缺了就说没写 —— " + bareWhy);
+        check(bareWhy.contains("不知道第几次保存") && !bareWhy.contains("第 0 次"), "缺了就说不知道，不编一个第 0 次 —— " + bareWhy);
+        CompoundTag typed = latest.copy();
+        typed.putString("generation", "七");
+        EconomySnapshot.write(stale, typed);
+        String typedWhy = EconomyData.createFor(mcFile, snap, t::get).wholeLock();
+        check(typedWhy.contains("不知道第几次保存") && !typedWhy.contains("第 0 次"), "类型不对也说不知道 —— " + typedWhy);
         check(!onlyStale.isDirty(), "锁住的不会被保存，.stale 不会被删");
+    }
+
+    /**
+     * 看不到（没权限）不算不在：当成不在，SavedData 也不在时 createFor 就给了空账。
+     * root 带着 DAC 豁免跑时看得到，测不出，跳过 —— 用 {@code capsh --drop=cap_dac_override,cap_dac_read_search} 跑才测得到。
+     */
+    static void unreadableIsNotAbsent() throws Exception {
+        Path dir = tmp("perm");
+        Path eco = dir.resolve("economy");
+        Path snap = eco.resolve("economy.dat");
+        EconomySnapshot.write(snap, goodTag(UUID.randomUUID()));
+        Path mcFile = dir.resolve("mcphone_economy.dat");                 // SavedData 不在
+        Files.setPosixFilePermissions(eco, java.util.EnumSet.noneOf(java.nio.file.attribute.PosixFilePermission.class));
+        try {
+            if (Files.exists(snap) || Files.notExists(snap)) {
+                System.out.println("（跳过 unreadableIsNotAbsent：这个进程没有权限限制，造不出「看不到」）");
+                return;
+            }
+            String why = EconomyData.createFor(mcFile, snap, () -> 1).wholeLock();
+            check(why != null && why.contains("看不到"), "快照看不到：锁住并说看不到，不当成新世界给空账 —— " + why);
+        } finally {
+            Files.setPosixFilePermissions(eco, java.nio.file.attribute.PosixFilePermissions.fromString("rwx------"));
+        }
     }
 
     /** 解压后超过上限：读不出（IOException），不为它把堆吃光。上限本身那么大的读得出。 */
@@ -1033,6 +1063,58 @@ public class EconomyDataTest {
         }
         clockLinkage.set(false);
         check(!threw, "账本这一层抛的 Error 也没有穿出 sweepNow（开服那一趟抛出去服务器就起不来）");
+    }
+
+    /**
+     * 经注册表交出去的那一层（包了网关）：provider 自己在里面抛的 CurrencyUnavailableException 不许被改写成"被拒"——
+     * 它可能已经动了一半，改成 UNAVAILABLE 扫描就会每 5 分钟重试一次。网关自己拒的（provider 没跑）照样是 UNAVAILABLE。
+     */
+    static void gatedKeepsProviderThrows() {
+        AtomicLong t = new AtomicLong(1_700_000_000_000L);
+        EconomyData d = EconomyData.empty(t::get);
+        BuiltinProvider raw = builtin(COIN, d, null, t);
+        UUID a = UUID.randomUUID();
+        raw.mint(a, 100, RSN);
+        raw.hold(a, UUID.randomUUID(), 40, RSN);
+        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);
+        AtomicInteger credited = new AtomicInteger();
+        ICurrencyProvider halfway = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    if (m.getName().equals("refund") || m.getName().equals("transfer") || m.getName().equals("hold")) {
+                        credited.incrementAndGet();          // 外部钱包记上了钱……
+                        throw new CurrencyUnavailableException("mcphone.economy.adapter.unavailable");   // ……然后说自己中途不可用
+                    }
+                    return m.invoke(raw, args);
+                });
+        CurrencyGateway open = new CurrencyGateway(Runnable::run, () -> true);
+        open.open();
+        CurrencyRegistry reg = new CurrencyRegistry(open);
+        check(reg.register(halfway, true), "登记");
+        EconomyRuntime r = new EconomyRuntime(d, null, null, reg::get, 0);
+        for (int i = 1; i <= 4; i++) r.sweepIfDue(i * EconomyRuntime.SWEEP_INTERVAL_MS);
+        eq(credited.get(), 1, "经注册表交给扫描：扫了 4 趟只退了 1 次，没被当成\"拒了\"去重试");
+        eq(d.escrow().held(COIN), 40L, "那笔仍押着，等服主核对");
+        boolean threw = false;
+        try {
+            reg.get(COIN).transfer(a, UUID.randomUUID(), 1, RSN);
+        } catch (CurrencyUnavailableException e) {
+            threw = true;
+        }
+        check(threw, "transfer 里 provider 自己抛的原样抛出，不改写成 UNAVAILABLE");
+        threw = false;
+        try {
+            reg.get(COIN).hold(a, UUID.randomUUID(), 1, RSN);
+        } catch (CurrencyUnavailableException e) {
+            threw = true;
+        }
+        check(threw, "hold 同样");
+        CurrencyRegistry refusing = new CurrencyRegistry(new CurrencyGateway(Runnable::run, () -> false));   // 不在主线程、网关没开
+        refusing.register(halfway, true);
+        int before = credited.get();
+        eq(refusing.get(COIN).transfer(a, UUID.randomUUID(), 1, RSN), TxnResult.UNAVAILABLE, "对照：网关自己拒的照样是 UNAVAILABLE");
+        eq(refusing.get(COIN).hold(a, UUID.randomUUID(), 1, RSN).result(), TxnResult.UNAVAILABLE, "对照：托管同样");
+        eq(credited.get(), before, "网关拒的，provider 根本没被调用");
     }
 
     /**
@@ -1870,9 +1952,11 @@ public class EconomyDataTest {
         periodicSweep();
         snapshotFailureKeepsStale();
         snapshotSizeCap();
+        unreadableIsNotAbsent();
         snapshotHugeLengthNoOom();
         periodicSweepSurvivesThrow();
         sweepDoesNotRetryUnknown();
+        gatedKeepsProviderThrows();
         badCreatedAtReset();
         restartCheckpoint();
         multiFileOrder();

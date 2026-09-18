@@ -16,6 +16,9 @@ import java.util.function.Supplier;
  *
  * <p>网关拒掉的调用 provider 根本没见到，所以流水里没有这一行；原因在 {@link #unavailableReasonKey()}
  * （这条线程上一次被拒的原因）与网关的限流日志里。
+ *
+ * <p><b>会动钱的方法只把网关的拒绝变成 UNAVAILABLE</b>；provider 自己在里面抛的 {@link CurrencyUnavailableException}
+ * 原样抛出去 —— 它可能已经动了一半（外部钱包先记上钱再抛），变成 UNAVAILABLE 调用方就会当"没动"去重试。
  */
 public final class GatedCurrencyProvider implements ICurrencyProvider {
 
@@ -111,6 +114,7 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
             lastRefusal.remove();
             return h;
         } catch (CurrencyUnavailableException e) {
+            if (!e.refusedBeforeRunning()) throw e;
             lastRefusal.set(e.reasonKey());
             return HoldResult.fail(TxnResult.UNAVAILABLE);
         }
@@ -132,6 +136,7 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
             lastRefusal.remove();
             return r;
         } catch (CurrencyUnavailableException e) {
+            if (!e.refusedBeforeRunning()) throw e;
             lastRefusal.set(e.reasonKey());
             return TxnResult.UNAVAILABLE;
         }

@@ -9,13 +9,29 @@ package com.november.mcphone.core.script.server.economy;
 public final class CurrencyUnavailableException extends RuntimeException {
 
     private final String reasonKey;
+    private final boolean refusedBeforeRunning;
 
     public CurrencyUnavailableException(String reasonKey) {
+        this(reasonKey, false);
+    }
+
+    private CurrencyUnavailableException(String reasonKey, boolean refusedBeforeRunning) {
         super(reasonKey);
         this.reasonKey = reasonKey;
+        this.refusedBeforeRunning = refusedBeforeRunning;
+    }
+
+    /** 网关拒掉的：provider 根本没被调用，什么都没动（{@link CurrencyGateway}）。 */
+    static CurrencyUnavailableException refusedBeforeRunning(String reasonKey) {
+        return new CurrencyUnavailableException(reasonKey, true);
     }
 
     public String reasonKey() {
         return reasonKey;
+    }
+
+    /** true = 网关拒的、provider 没跑；false = provider 自己抛的。 */
+    boolean refusedBeforeRunning() {
+        return refusedBeforeRunning;
     }
 }

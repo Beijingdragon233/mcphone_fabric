@@ -94,10 +94,25 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         return new EconomyData(clock, null);
     }
 
+    /** 整份锁住时怎么解：每一条锁住原因后面都跟着它。 */
+    static final String UNLOCK_HINT = "。修好或换回备份后重启；确认这些钱都不要了，把 <世界>/data/" + FILE_NAME
+            + ".dat 与 <世界>/mcphone/economy/ 下的 economy.dat、economy.dat.stale 挪走再开服就按新世界开："
+            + "这份存档里记的余额与托管全部清零（计分板、外部钱包里的余额不记在这里，不受影响；从那里押进托管的钱随托管一起没了）";
+
     /** 整份锁住的一本。原因要醒目地进日志：服主不看日志就只会看到「货币用不了」。 */
     static EconomyData locked(String reason, LongSupplier clock) {
-        MCphone.LOGGER.error("[MCphone] ⚠⚠ 货币存档锁住了，凡是要记进这份存档的货币操作都会返回 UNAVAILABLE，存档文件不会被改写 ⚠⚠ 原因：{}", reason);
-        return new EconomyData(clock, reason);
+        String why = reason + UNLOCK_HINT;
+        MCphone.LOGGER.error("[MCphone] ⚠⚠ 货币存档锁住了，凡是要记进这份存档的货币操作都会返回 UNAVAILABLE，存档文件不会被改写 ⚠⚠ 原因：{}", why);
+        return new EconomyData(clock, why);
+    }
+
+    /** 在、不在、看不到（没权限之类）：看不到的一律按"在"办 —— 当成不在就可能拿空账盖掉它，或者该挪开的旧快照没挪开还不报。 */
+    private static boolean present(Path p) {
+        return !Files.notExists(p);
+    }
+
+    private static String state(Path p, String ifThere) {
+        return Files.exists(p) ? ifThere : Files.notExists(p) ? " 不在" : " 看不到（权限？）";
     }
 
     /** 必须挂在主世界的 DataStorage：它按维度分，挂错了玩家去下界钱就「没了」且不报错。 */
@@ -118,8 +133,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     static EconomyData createFor(Path file, Path snapshot, LongSupplier clock) {
         CompoundTag snap = readSnapshot(snapshot);
         if (snap != null) {
-            MCphone.LOGGER.warn("[MCphone] 货币存档 {} {}，改用原子快照 {}", file,
-                    Files.exists(file) ? "读不出来" : "不在", snapshot);
+            MCphone.LOGGER.warn("[MCphone] 货币存档 {}{}，改用原子快照 {}", file, state(file, " 读不出来"), snapshot);
             EconomyData d = load(snap, clock);
             // 下次保存把 SavedData 那份重写好：不然这段时间快照是唯一的好副本，删错一个目录就没了
             d.setDirty();
@@ -127,11 +141,10 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         }
         // 三份里有一份在就不是新世界：快照在但读不出也一样，给空账的话第一次保存就把它盖掉了
         Path stale = EconomySnapshot.stalePath(snapshot);
-        if (Files.exists(file) || Files.exists(snapshot) || Files.exists(stale)) {
-            return locked("存档文件 " + file + (Files.exists(file) ? " 在但没读出来" : " 不在")
-                    + "，原子快照 " + snapshot + (Files.exists(snapshot) ? " 在但没读出来" : " 不在")
-                    + (Files.exists(stale) ? "；" + describeStale(stale, snapshot) : "")
-                    + "。修好或换回备份后重启；确认这些钱都不要了，把上面这几个文件挪走再开服就按新世界开（所有余额与托管清零）", clock);
+        if (present(file) || present(snapshot) || present(stale)) {
+            return locked("存档文件 " + file + state(file, " 在但没读出来")
+                    + "，原子快照 " + snapshot + state(snapshot, " 在但没读出来")
+                    + (present(stale) ? "；" + describeStale(stale, snapshot) : ""), clock);
         }
         return empty(clock);
     }
@@ -139,13 +152,15 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     /** 锁住时怎么说 .stale：读得出就说它是第几次保存、什么时候存的（快照一直写不进去的话它可能是几周前的）、改名回去会丢什么。 */
     private static String describeStale(Path stale, Path snapshot) {
         CompoundTag t;
+        String at;
         try {
             t = EconomySnapshot.read(stale);
+            // 用文件的写入时刻，不用 savedAt：savedAt 只增不减，时钟快过之后它说的不是这一次保存
+            at = "文件写于 " + Files.getLastModifiedTime(stale).toInstant();
         } catch (java.io.IOException e) {
             return "写快照失败时挪开的 " + stale + " 也读不出来（" + e + "）";
         }
-        String gen = t.contains("generation", Tag.TAG_LONG) ? "第 " + t.getLong("generation") + " 次保存" : "没写第几次保存";
-        String at = t.contains("savedAt", Tag.TAG_LONG) ? "存于 " + java.time.Instant.ofEpochMilli(t.getLong("savedAt")) : "没写保存时刻";
+        String gen = t.contains("generation", Tag.TAG_LONG) ? "第 " + t.getLong("generation") + " 次保存" : "不知道第几次保存";
         return "上一份完整快照在 " + stale + "（" + gen + "，" + at + "，写快照失败时挪开的）。确认后改名成 " + snapshot.getFileName()
                 + " 再开服就回到那一次保存：那之后的变动全部作废，流水里那之后的行不会被自动标出来";
     }
@@ -154,7 +169,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     static EconomyData loadPreferring(CompoundTag saved, Path snapshot, LongSupplier clock) {
         CompoundTag snap = readSnapshot(snapshot);
         if (snap == null) {
-            if (!Files.exists(snapshot)) MCphone.LOGGER.info("[MCphone] 还没有货币的原子快照，用 SavedData 那份");
+            if (Files.notExists(snapshot)) MCphone.LOGGER.info("[MCphone] 还没有货币的原子快照，用 SavedData 那份");
             return load(saved, clock);
         }
         long gs = generationOf(snap), gm = generationOf(saved);
@@ -177,7 +192,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 没有返回 null；有但读不出来记一条并返回 null。 */
     private static CompoundTag readSnapshot(Path snapshot) {
-        if (!Files.exists(snapshot)) return null;
+        if (Files.notExists(snapshot)) return null;
         try {
             return EconomySnapshot.read(snapshot);
         } catch (java.io.IOException e) {
@@ -353,10 +368,10 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             EconomySnapshot.write(snapshotFile, tag);
         } catch (java.io.IOException e) {
             MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；{}", e.toString(),
-                    Files.exists(snapshotFile) ? "上一份快照挪到 " + stale
-                            : Files.exists(stale) ? "上一份完整快照仍是 " + stale : "现在盘上没有任何完整的快照");
+                    present(snapshotFile) ? "上一份快照挪到 " + stale
+                            : present(stale) ? "上一份快照留在 " + stale + "（没核对它读不读得出）" : "盘上没有别的快照");
             try {
-                if (Files.exists(snapshotFile)) Files.move(snapshotFile, stale, StandardCopyOption.REPLACE_EXISTING);
+                if (present(snapshotFile)) Files.move(snapshotFile, stale, StandardCopyOption.REPLACE_EXISTING);
             } catch (java.io.IOException moved) {
                 MCphone.LOGGER.error("[MCphone] 上一份快照 {} 挪不开（{}）：SavedData 再坏的话开服会回滚到它", snapshotFile, moved.toString());
             }
@@ -522,7 +537,8 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         boolean settled = e.getBoolean("settled");
         // 超时判断是 now - createdAt ≥ 超时：建立时刻远在将来或不是正数（负得离谱会溢出），这笔就永远不会被退款。
         // 没结清的改成基准时刻、从那时起再等满一个超时周期；不锁 —— 为一笔时间戳停掉整种货币代价太大。
-        // 改成基准不会比真实建立时刻后一个超时周期更早退款：基准不早于历次保存的最晚时刻，托管总是建好之后才被存进盘。走到这一支的是手改、写坏的时刻，
+        // 基准不早于历次保存的最晚时刻，托管总是建好之后才被存进盘：只要时钟没在两次保存之间来回跳，改成基准不会比真实建立时刻后
+        // 一个超时周期更早退款。走到这一支的是手改、写坏的时刻，
         // 或者建托管时时钟快过、保存前又被拨回；时钟快着就存过档的，savedAt 跟着快，不走这一支（见 savedAt）。
         // 晚于基准一个超时周期以内的原样收。已结清的不会再到期，不管它。比较写成减法：基准接近 long 上限时 base + 超时会溢出成负数
         if (!settled && (createdAt <= 0 || createdAt - EscrowLedger.DEFAULT_TIMEOUT_MS > base)) {
