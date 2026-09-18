@@ -506,8 +506,7 @@ public class CurrencyTest {
         eq(reg.defaultCurrency(), null, "注册了但没标默认，还是 null");
         eq(reg.list().size(), 1, "list() 有一个");
 
-        // 【一种货币只许一个实例】（E25）：守恒靠"串行化"与"唯一实例"两条一起成立。
-        // 静默覆盖的话先注册的那个还在别处被引用着，两个实例各拿各的锁写同一份账
+        // 【一种货币只许一个实例】（E25）：静默覆盖的话先注册的那个还在别处被引用着，两个实例各拿各的锁写同一份账
         var first = reg.get("myserver:coin");
         check(!reg.register(new LegacyWalletProvider(coin()), true),
                 "同一种货币的第二个提供者要拒掉");
@@ -881,10 +880,14 @@ public class CurrencyTest {
         var scoreboard = new ScoreboardProvider(coin(), () -> null,
                 new EscrowLedger(t::get), null, t::get, false, 0);
 
-        eq(builtin.transfer(a, a, 100, RSN), TxnResult.INVALID, "builtin 自己转自己");
-        eq(adapter.transfer(a, a, 100, RSN), TxnResult.INVALID, "adapter 自己转自己");
-        eq(legacy.transfer(a, a, 100, RSN), TxnResult.INVALID, "emc_legacy 自己转自己");
-        eq(scoreboard.transfer(a, a, 100, RSN), TxnResult.INVALID, "scoreboard 自己转自己");
+        // 生产路径上 to 是 UUID.fromString 出来的另一个对象；两端传同一个引用，判据写成 == 也照样绿
+        UUID self = UUID.fromString(a.toString());
+        check(self != a && self.equals(a), "自己转自己的两端得是值相同的两个对象");
+
+        eq(builtin.transfer(a, self, 100, RSN), TxnResult.INVALID, "builtin 自己转自己");
+        eq(adapter.transfer(a, self, 100, RSN), TxnResult.INVALID, "adapter 自己转自己");
+        eq(legacy.transfer(a, self, 100, RSN), TxnResult.INVALID, "emc_legacy 自己转自己");
+        eq(scoreboard.transfer(a, self, 100, RSN), TxnResult.INVALID, "scoreboard 自己转自己");
 
         // 【早退：两端余额不变】—— 走进读-判-写再拦就晚了
         eq(bal.get(a, "myserver:coin"), 1000L, "builtin 被拒之后余额一分没动");
