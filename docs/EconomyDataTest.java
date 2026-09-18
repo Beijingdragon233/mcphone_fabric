@@ -258,6 +258,10 @@ public class EconomyDataTest {
         Files.createDirectories(bom.resolve("ledger"));
         Files.writeString(bom.resolve("ledger").resolve(logName(0)), (char) 0xFEFF + TxnLog.CHECKPOINT + "x\n" + okLine + "\n");
         eq(new TxnLog(bom, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "带 BOM：第一行的存档点也认得出");
+        Path bomMid = tmp("bommid");
+        Files.createDirectories(bomMid.resolve("ledger"));
+        Files.writeString(bomMid.resolve("ledger").resolve(logName(0)), okLine + "\n" + (char) 0xFEFF + TxnLog.CHECKPOINT + "x\n" + okLine + "\n");
+        eq(new TxnLog(bomMid, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 1, "两个文件拼起来、中间一行带 BOM：存档点也认得出");
     }
 
     static String okLine(String day) {
@@ -325,6 +329,14 @@ public class EconomyDataTest {
         Files.writeString(cl.resolve("2026-09-17 - Copy.log"), okLine("2026-09-17") + "\n" + okLine("2026-09-17") + "\n");
         eq(new TxnLog(copy, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 0, "副本不算：存档点之后没有变动");
         eq(new TxnLog(copy, ZoneOffset.UTC).sumMintAndBurn(COIN)[0], 5L, "对账的合计也不算副本");
+        Path copy2 = tmp("copy2");
+        Path cl2 = copy2.resolve("ledger");
+        Files.createDirectories(cl2);
+        Files.writeString(cl2.resolve("2026-09-17.log"), okLine("2026-09-17") + "\n" + TxnLog.CHECKPOINT + "x\n");
+        Files.writeString(cl2.resolve("Copy of 2026-09-17.log"), okLine("2026-09-17") + "\n");
+        Files.writeString(cl2.resolve("2026-09-17.12345678901.log"), okLine("2026-09-17") + "\n");
+        eq(new TxnLog(copy2, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 0,
+                "前缀式副本、序号长得离谱的：一样不算，开服不因为它们出错");
 
         // 往回最多找 MAX_SCAN_FILES 个文件：存档点在那之外就是老流水、判断不了，不报
         Path deep = tmp("deep");
@@ -402,17 +414,18 @@ public class EconomyDataTest {
         eq(p.unavailableReasonKey(), EconomyData.KEY_LOCKED, "原因是存档锁住");
     }
 
-    /** adapter 档放款：存款失败或抛异常时撤回结清、钱还押着；deposit 里重入不会放两次。 */
+    /** adapter 档放款：存款失败或抛异常时托管不结清、钱还押着；deposit 里重入答 UNAVAILABLE，不放两次、不谎称已结清。 */
     static void adapterSettleOnce() {
         EconomyData d = EconomyData.empty(() -> 1);
         Map<UUID, Long> wallet = new HashMap<>();
         AtomicBoolean depositOk = new AtomicBoolean(true);
+        AtomicBoolean walletUp = new AtomicBoolean(true);
         AtomicReference<Runnable> onDeposit = new AtomicReference<>(() -> { });
         UUID a = UUID.randomUUID(), b = UUID.randomUUID();
         wallet.put(a, 100L);
         AdapterProvider p = new AdapterProvider(currency(COIN), new AdapterProvider.ExternalWallet() {
             public boolean available() {
-                return true;
+                return walletUp.get();
             }
 
             public long balance(UUID x) {
@@ -440,18 +453,35 @@ public class EconomyDataTest {
         eq(wallet.get(b), 40L, "受益人收到");
         eq(p.release(h.id(), RSN), TxnResult.ALREADY_SETTLED, "不会再放第二次");
 
-        // 外部钱包在 deposit 里同步再来放这一笔：它看到的已经是结清了
+        walletUp.set(false);
+        eq(p.release(h.id(), RSN), TxnResult.ALREADY_SETTLED, "结过的再来、钱包又正好不在：仍答 ALREADY_SETTLED（结没结过先于用不了）");
+        walletUp.set(true);
+
+        // 外部钱包在 deposit 里同步再来结算这一笔：答 UNAVAILABLE —— 不放第二次，也不谎称已结清（外层还可能失败）
         HoldResult h2 = p.hold(a, b, 40, RSN);
         AtomicReference<TxnResult> inner = new AtomicReference<>();
         onDeposit.set(() -> {
             onDeposit.set(() -> { });
-            inner.set(p.release(h2.id(), RSN));
+            inner.set(p.refund(h2.id(), RSN));
         });
         eq(p.release(h2.id(), RSN), TxnResult.OK, "外层放款成");
-        eq(inner.get(), TxnResult.ALREADY_SETTLED, "deposit 里重入：ALREADY_SETTLED");
+        eq(inner.get(), TxnResult.UNAVAILABLE, "deposit 里重入：UNAVAILABLE");
         eq(wallet.get(b), 80L, "受益人一共收到两笔各 40，没有多出一笔");
+        eq(wallet.get(a), 20L, "重入的退款没有退回去");
 
-        // deposit 抛异常：撤回结清，钱仍押着
+        HoldResult h4 = p.hold(a, b, 7, RSN);
+        onDeposit.set(() -> {
+            onDeposit.set(() -> { });
+            inner.set(p.release(h4.id(), RSN));
+        });
+        depositOk.set(false);
+        eq(p.release(h4.id(), RSN), TxnResult.FAILED, "外层存款失败");
+        eq(inner.get(), TxnResult.UNAVAILABLE, "重入方拿到 UNAVAILABLE，不是 ALREADY_SETTLED —— 这笔确实没结");
+        eq(d.escrow().get(h4.id()).settled(), false, "托管没结清，钱仍押着");
+        depositOk.set(true);
+        eq(p.release(h4.id(), RSN), TxnResult.OK, "之后再放就成：重入标记已经清掉");
+
+        // deposit 抛异常：托管不结清，钱仍押着
         HoldResult h3 = p.hold(a, b, 5, RSN);
         onDeposit.set(() -> {
             throw new IllegalStateException("钱包炸了");
@@ -463,7 +493,7 @@ public class EconomyDataTest {
             threw = true;
         }
         check(threw, "对照：异常照样抛给调用方");
-        eq(d.escrow().get(h3.id()).settled(), false, "deposit 抛异常：撤回结清，钱仍押着");
+        eq(d.escrow().get(h3.id()).settled(), false, "deposit 抛异常：托管不结清，钱仍押着");
         onDeposit.set(() -> { });
         eq(p.refund(h3.id(), RSN), TxnResult.OK, "钱包好了照样能退");
     }
@@ -582,6 +612,18 @@ public class EconomyDataTest {
         eq(EconomyData.load(savedSlow, () -> 30_000L).escrow().snapshot().values().iterator().next().createdAt(),
                 savedAt - 3_600_000L, "第二次开服时钟仍慢：正常的托管还是不改写（改成慢时钟的现在就是提前退款）");
         eq(EconomyData.load(savedSlow, () -> savedAt + 5).toTag().getLong("savedAt"), savedAt + 5, "时钟正常时 savedAt 跟着走");
+
+        // 时钟快过一年、那段时间建了托管并存过档，之后时钟恢复：选的是不提前动钱 —— 不改写、不标脏，savedAt 停在快的那一刻，
+        // 等到那一刻再过一个超时周期（开服时大声报）。与上面慢时钟那条是同一个取舍的两面
+        long fast = now + 365L * 86_400_000L;
+        CompoundTag fastTag = goodTag(UUID.randomUUID());
+        fastTag.putLong("savedAt", fast);
+        escrowOf(fastTag).putLong("createdAt", fast - 1_000L);
+        EconomyData fd = EconomyData.load(fastTag, () -> now);
+        eq(fd.escrow().snapshot().values().iterator().next().createdAt(), fast - 1_000L, "时钟快过：那段时间建的托管不改写");
+        check(!fd.isDirty(), "时钟快过：不标脏");
+        eq(fd.escrow().expired().size(), 0, "时钟快过：恢复后 7 天也不到期");
+        eq(fd.toTag().getLong("savedAt"), fast, "时钟快过：savedAt 停在快的那一刻");
 
         // savedAt 接近 long 上限：基准加一个超时周期不许溢出成负数、把正常的托管改成永远不到期
         CompoundTag huge = goodTag(UUID.randomUUID());
@@ -791,6 +833,29 @@ public class EconomyDataTest {
         Files.delete(dir.resolve("economy.dat.tmp"));
         d2.toTag();
         check(Files.exists(snap) && !Files.exists(stale), "写成功之后 .stale 清掉：锁住时不会点名一份过时的");
+
+        // 没有 .stale 时锁住原因不提它
+        Files.delete(snap);
+        String plain = EconomyData.createFor(mcFile, snap, t::get).wholeLock();
+        check(plain != null && !plain.contains(".stale"), "没有 .stale：锁住原因不提它 —— " + plain);
+
+        // .stale 已经在（上次删它失败过）、这次写快照又失败：新的那份照样挪过去，不留在原处
+        d2.toTag();
+        CompoundTag latest = EconomySnapshot.read(snap);
+        EconomySnapshot.write(stale, saveA);
+        check(Files.exists(snap) && Files.exists(stale), "对照：快照与 .stale 都在");
+        Files.createDirectories(dir.resolve("economy.dat.tmp"));
+        d2.toTag();
+        check(!Files.exists(snap), ".stale 已在、又失败：快照不留在原处");
+        eq(EconomySnapshot.read(stale), latest, ".stale 换成了刚才那份");
+
+        // 只剩 .stale（SavedData 与快照都不在，比如只拷了一半的世界）：不是新世界，锁住，不给空账、不删它
+        Files.deleteIfExists(mcFile);
+        EconomyData onlyStale = EconomyData.createFor(mcFile, snap, t::get);
+        check(onlyStale.wholeLock() != null && onlyStale.wholeLock().contains(stale.toString()),
+                "只剩 .stale：整份锁住并点名它 —— " + onlyStale.wholeLock());
+        check(onlyStale.wholeLock().contains("第 " + latest.getLong("generation") + " 次保存"), "锁住原因里说得出 .stale 是第几次保存");
+        check(!onlyStale.isDirty(), "锁住的不会被保存，.stale 不会被删");
     }
 
     /** 解压后超过上限：读不出（IOException），不为它把堆吃光。上限本身那么大的读得出。 */
@@ -851,8 +916,10 @@ public class EconomyDataTest {
     static void periodicSweepSurvivesThrow() {
         AtomicLong t = new AtomicLong(1_700_000_000_000L);
         AtomicBoolean clockBroken = new AtomicBoolean();
+        AtomicBoolean clockLinkage = new AtomicBoolean();
         EconomyData d = EconomyData.empty(() -> {
             if (clockBroken.get()) throw new IllegalStateException("时钟坏了");
+            if (clockLinkage.get()) throw new NoClassDefFoundError("账本这一层抛的 Error");
             return t.get();
         });
         BuiltinProvider coin = builtin(COIN, d, null, t);
@@ -879,6 +946,28 @@ public class EconomyDataTest {
         eq(d.get(a, GEM), 99L, "gem 退回来了");
         eq(d.escrow().held(COIN), 30L, "coin 还押着，下次再试");
 
+        // 外部经济模组换了版本抛的是 LinkageError，不是 RuntimeException；别的 RuntimeException 同样逐笔接住
+        for (Throwable kind : new Throwable[]{new NoSuchMethodError("换了版本"), new NullPointerException(),
+                new CurrencyUnavailableException("x")}) {
+            ICurrencyProvider thrower = (ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                    EconomyDataTest.class.getClassLoader(), new Class<?>[]{ICurrencyProvider.class},
+                    (proxy, m, args) -> {
+                        throw kind;
+                    });
+            EconomyRuntime.Sweep k = EconomyRuntime.sweepEscrow(d.escrow(), id -> thrower);
+            eq(k.failed(), 3, kind.getClass().getSimpleName() + "：逐笔接住，coin 的 3 笔算没退成");
+            check(k.error() == kind, kind.getClass().getSimpleName() + "：带回来打日志");
+        }
+        boolean vmPassed = false;
+        try {
+            EconomyRuntime.sweepEscrow(d.escrow(), id -> {
+                throw new StackOverflowError();
+            });
+        } catch (StackOverflowError e) {
+            vmPassed = true;
+        }
+        check(vmPassed, "虚拟机级别的错误不接，照样往外抛");
+
         EconomyRuntime r = new EconomyRuntime(d, null, null, id -> gem, 0);
         clockBroken.set(true);
         boolean threw = false;
@@ -889,6 +978,16 @@ public class EconomyDataTest {
             threw = true;
         }
         check(!threw, "账本自己抛的也没有穿出 sweepIfDue / sweepNow");
+        clockBroken.set(false);
+        clockLinkage.set(true);
+        threw = false;
+        try {
+            r.sweepNow();
+        } catch (Throwable e) {
+            threw = true;
+        }
+        clockLinkage.set(false);
+        check(!threw, "账本这一层抛的 Error 也没有穿出 sweepNow（开服那一趟抛出去服务器就起不来）");
     }
 
     /** 超时托管每 5 分钟扫一次：没到点不扫；到点就退；再扫不会重复退（幂等）。 */

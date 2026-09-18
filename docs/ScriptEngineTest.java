@@ -521,10 +521,12 @@ public class ScriptEngineTest {
                 "hold(null, " + to + ", 5n)", "release(null, " + u + ")", "refund(undefined, " + u + ")"}) {
             eq(withCtx("ctx.currency." + call, b), "UNAVAILABLE", call + "：没给货币 id 给 UNAVAILABLE");
         }
-        for (String call : new String[]{"pay(" + c + ", null, 5n)", "pay(" + c + ", undefined, 5n)", "hold(" + c + ", null, 5n)"}) {
+        for (String call : new String[]{"pay(" + c + ", null, 5n)", "pay(" + c + ", undefined, 5n)", "hold(" + c + ", null, 5n)",
+                "hold(" + c + ", undefined, 5n)"}) {
             eq(withCtx("ctx.currency." + call, b), "INVALID", call + "：没给收款人给 INVALID");
         }
-        for (String call : new String[]{"release(" + c + ", null)", "refund(" + c + ", undefined)", "refund(" + c + ")"}) {
+        for (String call : new String[]{"release(" + c + ", null)", "release(" + c + ", undefined)", "release(" + c + ")",
+                "refund(" + c + ", null)", "refund(" + c + ", undefined)", "refund(" + c + ")"}) {
             eq(withCtx("ctx.currency." + call, b), "UNKNOWN_ESCROW", call + "：没给托管号给 UNKNOWN_ESCROW");
         }
         for (String call : new String[]{"balance(null)", "format(undefined, 5n)", "parse(null, '5')"}) {

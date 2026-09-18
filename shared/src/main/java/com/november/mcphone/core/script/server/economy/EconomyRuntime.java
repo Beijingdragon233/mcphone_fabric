@@ -96,7 +96,9 @@ public final class EconomyRuntime {
     void sweepNow() {
         try {
             report(sweepEscrow(data.escrow(), providers));
-        } catch (RuntimeException e) {
+        } catch (VirtualMachineError fatal) {
+            throw fatal;
+        } catch (Throwable e) {
             MCphone.LOGGER.error("[MCphone] 扫超时托管时出错，下次再扫", e);
         }
     }
@@ -151,7 +153,7 @@ public final class EconomyRuntime {
      * @param pruned   清掉了几条很久以前已结清的
      * @param error    第一笔抛出来的异常；没有是 null
      */
-    public record Sweep(int refunded, int failed, int orphaned, int pruned, RuntimeException error) {
+    public record Sweep(int refunded, int failed, int orphaned, int pruned, Throwable error) {
     }
 
     /**
@@ -162,7 +164,7 @@ public final class EconomyRuntime {
      */
     public static Sweep sweepEscrow(EscrowLedger escrow, Function<String, ICurrencyProvider> providers) {
         int refunded = 0, failed = 0, orphaned = 0;
-        RuntimeException error = null;
+        Throwable error = null;
         for (Map.Entry<EscrowId, EscrowLedger.Entry> e : escrow.expired()) {
             // 逐笔接住：一种货币的 provider 抛了，别的货币照样退、已结清的照样清
             try {
@@ -174,7 +176,10 @@ public final class EconomyRuntime {
                 TxnResult r = p.refund(e.getKey(), new TxnReason(TIMEOUT_REFUND_KIND, e.getKey().value().toString()));
                 if (r == TxnResult.OK) refunded++;
                 else failed++;
-            } catch (RuntimeException ex) {
+            } catch (VirtualMachineError fatal) {
+                throw fatal;
+            } catch (Throwable ex) {
+                // 不只接 RuntimeException：外部经济模组换了版本，抛的是 NoSuchMethodError 之类的 LinkageError
                 failed++;
                 if (error == null) error = ex;
             }

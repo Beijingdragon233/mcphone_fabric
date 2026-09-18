@@ -73,7 +73,10 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     private Path snapshotFile;
 
     private final LongSupplier clock;
-    /** 历次保存里最晚的时刻（存档里的 savedAt）。只增不减：时钟慢的机器上保存一次就把它拉回去的话，下次开服照样提前退款 */
+    /**
+     * 历次保存里最晚的时刻（存档里的 savedAt）。只增不减：时钟慢的机器上保存一次就把它拉回去的话，下次开服照样提前退款。
+     * 代价是时钟快过之后它停在快的那一刻，那段时间建的托管要等到那一刻再过一个超时周期才自动退（开服时报出来）
+     */
     private long savedAt;
 
     private EconomyData(LongSupplier clock, String wholeLock) {
@@ -118,15 +121,26 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             d.setDirty();
             return d;
         }
-        // 两份里有一份在就不是新世界：快照在但读不出也一样，给空账的话第一次保存就把它盖掉了
-        if (Files.exists(file) || Files.exists(snapshot)) {
-            Path stale = EconomySnapshot.stalePath(snapshot);
+        // 三份里有一份在就不是新世界：快照在但读不出也一样，给空账的话第一次保存就把它盖掉了
+        Path stale = EconomySnapshot.stalePath(snapshot);
+        if (Files.exists(file) || Files.exists(snapshot) || Files.exists(stale)) {
             return locked("存档文件 " + file + (Files.exists(file) ? " 在但没读出来" : " 不在")
                     + "，原子快照 " + snapshot + (Files.exists(snapshot) ? " 在但没读出来" : " 不在")
-                    + (Files.exists(stale) ? "；上一份完整快照在 " + stale + "（写快照失败时挪开的，比 SavedData 旧），"
-                    + "确认后改名成 " + snapshot.getFileName() + " 再开服，就回到那一次保存" : ""), clock);
+                    + (Files.exists(stale) ? "；上一份完整快照在 " + stale + "（" + describeStale(stale)
+                    + "，写快照失败时挪开的）。确认后改名成 " + snapshot.getFileName() + " 再开服就回到那一次保存："
+                    + "那之后的变动全部作废，流水里那之后的行不会被自动标出来" : ""), clock);
         }
         return empty(clock);
+    }
+
+    /** .stale 是第几次保存、什么时候存的：快照一直写不进去的话，它可能是几周前的。 */
+    private static String describeStale(Path stale) {
+        try {
+            CompoundTag t = EconomySnapshot.read(stale);
+            return "第 " + generationOf(t) + " 次保存，存于 " + java.time.Instant.ofEpochMilli(t.getLong("savedAt"));
+        } catch (java.io.IOException e) {
+            return "它也读不出来：" + e;
+        }
     }
 
     /** SavedData 那份读出来了：快照也完整、而且不比它旧，就用快照；否则用 SavedData 那份并记日志。 */
@@ -331,7 +345,8 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         try {
             EconomySnapshot.write(snapshotFile, tag);
         } catch (java.io.IOException e) {
-            MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；上一份快照挪到 {}", e.toString(), stale);
+            MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；{}", e.toString(),
+                    Files.exists(snapshotFile) ? "上一份快照挪到 " + stale : "上一份完整快照仍是 " + stale);
             try {
                 if (Files.exists(snapshotFile)) Files.move(snapshotFile, stale, StandardCopyOption.REPLACE_EXISTING);
             } catch (java.io.IOException moved) {
@@ -401,7 +416,15 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             List<CompoundTag> pending = new ArrayList<>();
             // 重新计时的基准：读档时刻与历次保存最晚时刻里晚的那个 —— 读档时钟慢了（主板电池没电、世界搬到时钟偏后的机器上）
             // 也不会把托管的建立时刻往前挪，往前挪就是提前退款
-            long base = Math.max(clock.getAsLong(), d.savedAt);
+            long now = clock.getAsLong();
+            long base = Math.max(now, d.savedAt);
+            if (d.savedAt > 0 && d.savedAt - EscrowLedger.DEFAULT_TIMEOUT_MS > now) {
+                // 时钟慢了与之前时钟快过分不出来。按不提前动钱的那边办，但要说出来：不说的话服主只会看到托管一直不退
+                MCphone.LOGGER.error("[MCphone] ⚠ 读档时刻 {} 比存档里最晚的保存时刻 {} 早了一个托管超时周期以上：要么这台机器的时钟慢了，"
+                        + "要么之前某段时间时钟快过。托管不提前退款；之前时钟快的话，那段时间建的托管要等到那一刻再过 {} 天才自动退。请核对系统时钟",
+                        java.time.Instant.ofEpochMilli(now), java.time.Instant.ofEpochMilli(d.savedAt),
+                        EscrowLedger.DEFAULT_TIMEOUT_MS / 86_400_000L);
+            }
             Map<UUID, Long> fixed = new LinkedHashMap<>();
             for (int i = 0; i < list.size(); i++) {
                 CompoundTag e = list.getCompound(i);
@@ -482,9 +505,10 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         if (!e.contains("settled", Tag.TAG_BYTE)) return "缺 settled，或者不是布尔";
         if (out.containsKey(id)) return "的号 " + id + " 重复了";
         boolean settled = e.getBoolean("settled");
-        // 超时判断是 now - createdAt ≥ 超时：建立时刻远在将来（建托管时服务器时钟快了）或不是正数（负得离谱会溢出），
-        // 这笔就永远不会被退款。没结清的改成基准时刻、从那时起再等满一个超时周期；不锁 —— 为一笔时间戳停掉整种货币代价太大。
-        // 晚于基准一个超时周期以内的原样收：时钟差一点不算错。基准不早于历次保存，所以只会往后挪、不会提前退款。
+        // 超时判断是 now - createdAt ≥ 超时：建立时刻远在将来或不是正数（负得离谱会溢出），这笔就永远不会被退款。
+        // 没结清的改成基准时刻、从那时起再等满一个超时周期；不锁 —— 为一笔时间戳停掉整种货币代价太大。
+        // 基准不早于历次保存的最晚时刻，而存进盘的托管建立时刻都不晚于存它的那次保存，所以走到这一支的是手改、写坏的时刻；
+        // 时钟快过的那段时间建的托管不走这一支，等到那一刻再过一个超时周期（见 savedAt）。晚于基准一个超时周期以内的原样收。
         // 已结清的不会再到期，不管它。比较写成减法：基准接近 long 上限时 base + 超时会溢出成负数
         if (!settled && (createdAt <= 0 || createdAt - EscrowLedger.DEFAULT_TIMEOUT_MS > base)) {
             fixed.put(id, createdAt);

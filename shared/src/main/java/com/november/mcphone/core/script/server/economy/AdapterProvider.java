@@ -50,6 +50,8 @@ public final class AdapterProvider implements ICurrencyProvider {
     private final Currency currency;
     private final ExternalWallet wallet;
     private final EscrowLedger escrow;
+    /** 正在往外部钱包存款的托管号。只在主线程上碰（网关） */
+    private final java.util.Set<EscrowId> settling = new java.util.HashSet<>();
     private final long maxBalance;
 
     public AdapterProvider(Currency currency, ExternalWallet wallet, EscrowLedger escrow, long maxBalance) {
@@ -165,15 +167,16 @@ public final class AdapterProvider implements ICurrencyProvider {
         if (e.settled()) return TxnResult.ALREADY_SETTLED;
         if (!wallet.available()) return TxnResult.UNAVAILABLE;
         UUID target = toBeneficiary ? e.beneficiary() : e.owner();
-        // 先标结清、再存款，没存进去（失败或抛异常）就撤回，钱仍押着。
-        // 先存款后结清的话，外部钱包在 deposit 里同步再来结算这一笔时它还没结清 —— 同一笔放两次
-        if (!escrow.settle(id)) return TxnResult.ALREADY_SETTLED;
-        boolean paid = false;
+        // 外部钱包在 deposit 里同步再来结算这一笔：它既没结清也还没付成，答"现在用不了"，不许再付一次，
+        // 也不许答 ALREADY_SETTLED —— 外层存款可能还会失败
+        if (!settling.add(id)) return TxnResult.UNAVAILABLE;
         try {
-            paid = wallet.deposit(target, e.amount());
+            // 先存款、后标结清：存款失败或抛异常时托管不动，钱仍押着
+            if (!wallet.deposit(target, e.amount())) return TxnResult.FAILED;
+            escrow.settle(id);
+            return TxnResult.OK;
         } finally {
-            if (!paid) escrow.unsettle(id);
+            settling.remove(id);
         }
-        return paid ? TxnResult.OK : TxnResult.FAILED;
     }
 }

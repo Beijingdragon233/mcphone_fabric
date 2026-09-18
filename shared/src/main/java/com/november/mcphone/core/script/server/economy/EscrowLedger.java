@@ -93,14 +93,6 @@ public final class EscrowLedger {
         return true;
     }
 
-    /** 撤回刚才那次 {@link #settle}：先标结清、再往外付钱的那一档（{@link AdapterProvider}）付不出去时用。 */
-    void unsettle(EscrowId id) {
-        Entry e = entries.get(id.value());
-        if (e == null || !e.settled()) return;
-        entries.put(id.value(), new Entry(e.owner(), e.beneficiary(), e.currencyId(), e.amount(), e.createdAt(), false, 0));
-        onChange.run();
-    }
-
     /** 还没结算的托管里，这种货币一共押着多少钱。<b>对账要把它算进总量</b>（§22.10）。 */
     public long held(String currencyId) {
         long n = 0;
