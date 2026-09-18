@@ -223,6 +223,26 @@ public class ScriptEngineTest {
     }
 
     /** 在 ctx 在场的情况下跑一段。 */
+    /** 和 withCtx 一样跑一段，但把抛出来的东西原样交回来；没抛就是 null。 */
+    static Throwable thrownBy(String src, CtxBuilder.Backends backends) {
+        Context cx = BUDGET.enterContext();
+        try {
+            BUDGET.begin();
+            HostFn.resetDepth();
+            ScriptableObject scope = ScriptSandbox.harden(cx);
+            CtxBuilder.Result r = new CtxBuilder.Result();
+            ScriptableObject ctx = CtxBuilder.build(cx, scope, "t:app", player(), backends, r);
+            ScriptableObject.putProperty(scope, "ctx", ctx);
+            cx.evaluateString(scope, src, "t", 1, null);
+            return null;
+        } catch (Throwable t) {
+            return t;
+        } finally {
+            BUDGET.end();
+            Context.exit();
+        }
+    }
+
     static String withCtx(String src, CtxBuilder.Backends backends) {
         Context cx = BUDGET.enterContext();
         try {
@@ -573,6 +593,31 @@ public class ScriptEngineTest {
             check(got.startsWith("OutcomeUnknown"), call + "：provider 返回 null 也是结果不明 —— " + got);
         }
         check(!ScriptAbort.class.isAssignableFrom(OutcomeUnknown.class), "结果不明不是 ScriptAbort：不记过失");
+
+        // 抛出来的是 OutcomeUnknown、cause 是 provider 原来那个（provider 的堆栈只在这里）；
+        // provider 抛非虚拟机级别的 Error、或者异常自己的 getMessage 都会炸，照样是结果不明、吞不掉
+        class Bomb extends RuntimeException {
+            @Override
+            public String getMessage() {
+                throw new IllegalStateException("getMessage 自己炸了");
+            }
+        }
+        for (Throwable kind : new Throwable[]{new IllegalStateException("x"), new NoSuchMethodError("换了版本"),
+                new AssertionError("第三方断言"), new Bomb()}) {
+            var kReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
+            kReg.register((com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                    ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                    (proxy, m, args) -> {
+                        if (m.getName().equals("transfer")) throw kind;
+                        return m.invoke(provider, args);
+                    }), true);
+            var kb = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                    new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, kReg);
+            Throwable t = thrownBy("(function () { try { return ctx.currency.pay(" + c + ", " + to + ", 5n) } finally { return 'SWALLOWED' } })()", kb);
+            String name = kind.getClass().getSimpleName();
+            check(t instanceof OutcomeUnknown, name + "：结果不明、finally 吞不掉 —— " + t);
+            check(t != null && t.getCause() == kind, name + "：cause 是 provider 原来那个异常");
+        }
         var refusingReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(
                 new com.november.mcphone.core.script.server.economy.CurrencyGateway(Runnable::run, () -> false));
         refusingReg.register(halfway, true);

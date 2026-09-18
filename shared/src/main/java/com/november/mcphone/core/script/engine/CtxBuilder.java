@@ -369,8 +369,8 @@ public final class CtxBuilder {
     static final String NO_SUCH_CURRENCY = "mcphone.economy.no_such_currency";
 
     /**
-     * 会动钱的 provider 调用。provider 抛了、或者没给结果 = 结果不明（可能已经动了一半）：打一行带来龙去脉的 ERROR 给服主核对，
-     * 再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失；堆栈在 RhinoEvaluator 那条 ERROR 里。
+     * 会动钱的 provider 调用。provider 抛了、或者没给结果 = 结果不明（可能已经动了一半）：打一条带来龙去脉与 provider 堆栈的 ERROR
+     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失。
      * 不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
      */
     private static <T> T moneyCall(String what, String appId, java.util.UUID player, String currencyId,
@@ -385,13 +385,16 @@ public final class CtxBuilder {
         } catch (Throwable e) {
             failure = e;
         }
-        String detail = "货币调用结果不明：app=" + appId + " 玩家=" + player + " " + what + " " + currencyId
-                + " 对方或托管号=" + other + " 金额=" + (amount == null ? "-" : amount + "（最小单位）")
-                + " —— provider 抛了异常或没给结果（" + failure + "），钱可能已经动了一半，请核对";
+        // 拼说明、打日志都可能再抛（异常自己的 getMessage 会炸、栈溢出、内存不够）：一律接住，别换掉原来那个错，
+        // 也别让它变成一个脚本 finally 吞得掉的 RuntimeException
+        String detail = "货币调用结果不明";
         try {
-            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ {}", detail);
+            detail = "货币调用结果不明：app=" + appId + " 玩家=" + player + " " + what + " " + currencyId
+                    + " 对方或托管号=" + other + " 金额=" + (amount == null ? "-" : amount + "（最小单位）")
+                    + " —— provider 抛了异常或没给结果（" + failure.getClass().getName() + "），钱可能已经动了一半，请核对";
+            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ {}", detail, failure);
         } catch (Throwable ignored) {
-            // 栈溢出、内存不够时打不出来也别换掉原来那个错
+            // 见上
         }
         if (failure instanceof VirtualMachineError vm) throw vm;
         throw new OutcomeUnknown(detail, failure);

@@ -988,7 +988,13 @@ public class EconomyDataTest {
         noVer.remove("dataVersion");
         EconomySnapshot.write(snap, noVer);
         String cw = EconomyData.createFor(mcFile, snap, () -> 1).wholeLock();
-        check(cw != null && cw.startsWith("原子快照 " + snap + "："), "createFor 里快照锁住：同样点名快照 —— " + cw);
+        check(cw != null && cw.startsWith("原子快照 " + snap) && cw.contains("SavedData 那份 " + mcFile + " 读不出来"),
+                "createFor 里快照锁住：点名快照，也说出 SavedData 那份的状态 —— " + cw);
+        check(cw.contains("另一份不在就按新世界开"), "提示里说出挪走一份、另一份不在的后果 —— " + cw);
+        Files.delete(mcFile);
+        String gone = EconomyData.createFor(mcFile, snap, () -> 1).wholeLock();
+        check(gone != null && gone.contains("SavedData 那份 " + mcFile + " 不在"),
+                "SavedData 不在、快照锁住：说出 SavedData 不在 —— 否则服主只挪走快照就静默按新世界开了 —— " + gone);
         Files.delete(snap);
 
         CompoundTag badSaved = new CompoundTag();
@@ -1302,6 +1308,7 @@ public class EconomyDataTest {
         EconomyRuntime nr = new EconomyRuntime(nd, null, null, id -> givesNull, 0);
         for (int i = 1; i <= 4; i++) nr.sweepIfDue(i * EconomyRuntime.SWEEP_INTERVAL_MS);
         eq(nulls.get(), 1, "返回 null 的只试一次，记成结果不明");
+        eq(EconomyRuntime.sweepEscrow(nd.escrow(), id -> givesNull).suspect(), 1, "返回 null 计进 suspect，不算\"被拒\"");
 
         AtomicBoolean vmClock = new AtomicBoolean();
         EconomyData vd = EconomyData.empty(() -> {
