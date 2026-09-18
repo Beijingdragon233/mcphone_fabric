@@ -113,15 +113,18 @@ public final class TxnLog {
      * 开服时调：上一个存档点之后还有成功的变动，说明它们没进存档（强杀或崩溃），写一行标出来。
      * 不标出来，服主会拿着一行「A 付给 B 100」去对一笔并没有生效的账。
      *
-     * <p>最后<b>总要补一个存档点</b>：开服这一刻盘上的存档就是现状。不补的话，重启后一直没有成功变动时存档不脏、
-     * 不会写存档点，下次开服又把同一批行报一遍。
+     * <p>最后<b>要补一个存档点</b>：开服这一刻盘上的存档就是现状。不补的话，重启后一直没有成功变动时存档不脏、
+     * 不会写存档点，下次开服又把同一批行报一遍。两种情况不补：还没有流水目录（从没用过货币的世界，别为它建目录），
+     * 以及流水读不出来（补了就再也报不出那批没进存档的行）。
      *
      * <p>只看最新的两个文件：跨两个文件还找不到存档点就是老流水、判断不了，不报。
      *
-     * @return 没进存档的成功变动有几笔
+     * @return 没进存档的成功变动有几笔；流水读不出来是 -1
      */
     public int noteRestart(Instant now) {
+        if (!Files.isDirectory(dir)) return 0;
         int unsaved = unsavedSinceCheckpoint();
+        if (unsaved < 0) return -1;
         if (unsaved > 0) {
             write(now, "# " + now + " 重启：上一个存档点之后有 " + unsaved
                     + " 笔成功的变动没进存档（强杀或崩溃），以存档为准");
@@ -130,8 +133,8 @@ public final class TxnLog {
         return unsaved;
     }
 
+    /** 最后一个存档点之后的成功变动有几笔；找不到存档点是 0，读不出来是 -1。 */
     private int unsavedSinceCheckpoint() {
-        if (!Files.isDirectory(dir)) return 0;
         List<Path> files = new ArrayList<>();
         try (var s = Files.list(dir)) {
             for (Path p : s.toList()) {
@@ -146,7 +149,7 @@ public final class TxnLog {
             });
         } catch (IOException e) {
             com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
-            return 0;
+            return -1;
         }
         int unsaved = 0;
         for (Path p : files.subList(0, Math.min(2, files.size()))) {
@@ -154,7 +157,8 @@ public final class TxnLog {
             try {
                 lines = Files.readAllLines(p, StandardCharsets.UTF_8);
             } catch (IOException e) {
-                return 0;
+                com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
+                return -1;
             }
             for (int i = lines.size() - 1; i >= 0; i--) {
                 String line = lines.get(i);
@@ -171,12 +175,33 @@ public final class TxnLog {
             Files.createDirectories(dir);
             Path f = fileFor(at);
             if (Files.exists(f) && Files.size(f) >= MAX_FILE_BYTES) f = rotated(f);
-            Files.writeString(f, line + "\n", StandardCharsets.UTF_8,
+            Files.writeString(f, encodable(line) + "\n", StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             // 写不了流水是要命的（对账就断了），但不能因此把这笔交易也搞砸 —— 交易已经做完了
             com.november.mcphone.MCphone.LOGGER.error("[MCphone] 流水写不进去，对账会断: {}", e.toString());
         }
+    }
+
+    /**
+     * 孤立的代理字符换成 U+FFFD。{@code reason.ref} 是脚本给的，里面一个孤立的 0xD800 就能让 UTF-8 编码抛异常，
+     * 而写失败只记日志 —— 一笔成功的转账就这样不进流水了。
+     */
+    static String encodable(String s) {
+        StringBuilder b = null;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            boolean lone = Character.isHighSurrogate(c)
+                    ? i + 1 >= s.length() || !Character.isLowSurrogate(s.charAt(i + 1))
+                    : Character.isLowSurrogate(c) && (i == 0 || !Character.isHighSurrogate(s.charAt(i - 1)));
+            if (lone) {
+                if (b == null) b = new StringBuilder(s.substring(0, i));
+                b.append('\uFFFD');
+            } else {
+                if (b != null) b.append(c);
+            }
+        }
+        return b == null ? s : b.toString();
     }
 
     Path fileFor(Instant at) {

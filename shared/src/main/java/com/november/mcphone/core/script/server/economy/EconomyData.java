@@ -33,7 +33,7 @@ import java.util.function.UnaryOperator;
  *
  * <p><b>读坏了绝不拿一本空账顶上</b>：原版读档出错会新建一份空的，下次保存就把原文件盖掉，等于清空所有人的钱。
  * <ul>
- *   <li>整份读不出来（文件在但没读进来、版本认不得）→ 整个锁住：一切操作 {@code UNAVAILABLE}，
+ *   <li>整份读不出来（文件在但没读进来、版本认不得）→ 整个锁住：凡是要记进这份存档的操作一律 {@code UNAVAILABLE}，
  *       {@link #isDirty()} 恒为 false，原文件一个字节都不动。</li>
  *   <li>某一种货币读坏了 → 只锁那一种，它的原始数据原样写回。</li>
  * </ul>
@@ -280,7 +280,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             for (String id : cs.getAllKeys()) {
                 Tag raw = cs.get(id);
                 rawCurrencies.put(id, raw);
-                String why = d.readCurrency(id, raw);
+                String why = canonicalCurrency(id) ? d.readCurrency(id, raw) : "货币 id 不是规范写法";
                 if (why != null) d.lockCurrency(id, raw, why);
             }
         }
@@ -299,7 +299,8 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
                     return locked("第 " + (i + 1) + " 笔托管读不出是哪种货币，不知道该锁哪一种", clock);
                 }
                 String currency = e.getString("currency");
-                String why = readEscrow(e, ok);
+                // 大写之类的 id 不锁的话，这笔就成了哪种货币都不认领的孤儿
+                String why = canonicalCurrency(currency) ? readEscrow(e, ok) : "的货币 id 不是规范写法";
                 if (why != null) d.lockCurrency(currency, rawCurrencies.get(currency), "第 " + (i + 1) + " 笔托管" + why);
                 pending.add(e);
             }
@@ -358,15 +359,24 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             return "缺 amount 或 createdAt，或者不是 long";
         }
         if (e.getLong("amount") <= 0) return "的金额不是正数";
+        // 超时判断是 now - createdAt：负得离谱会溢出，这笔就永远不会被退款
+        if (e.getLong("createdAt") <= 0) return "的建立时刻不是正数";
         // settled 缺了不取默认：按"没结清"读，放过款的那笔就能再放一次
         if (!e.contains("settled", Tag.TAG_BYTE)) return "缺 settled，或者不是布尔";
         if (out.containsKey(id)) return "的号 " + id + " 重复了";
         boolean settled = e.getBoolean("settled");
-        // settledAt 只决定已结清的条目留多久，缺了按建立时刻算，不动钱
-        long settledAt = !settled ? 0 : e.contains("settledAt", Tag.TAG_LONG) ? e.getLong("settledAt") : e.getLong("createdAt");
+        // settledAt 只决定已结清的条目留多久，缺了按建立时刻算，不动钱；但写了就得是 long
+        if (e.contains("settledAt") && !e.contains("settledAt", Tag.TAG_LONG)) return "的 settledAt 不是 long";
+        long settledAt = !settled ? 0 : e.contains("settledAt") ? e.getLong("settledAt") : e.getLong("createdAt");
         out.put(id, new EscrowLedger.Entry(owner, beneficiary, e.getString("currency"),
                 e.getLong("amount"), e.getLong("createdAt"), settled, settledAt));
         return null;
+    }
+
+    /** 货币 id 要是规范写法的 ResourceLocation（带命名空间、全小写），与 {@code CurrencySpec} 读进来的一致。 */
+    private static boolean canonicalCurrency(String id) {
+        net.minecraft.resources.ResourceLocation rl = net.minecraft.resources.ResourceLocation.tryParse(id);
+        return rl != null && rl.toString().equals(id);
     }
 
     /** 只认 {@link UUID#toString()} 的规范写法；别的写法（大写、省了前导零）返回 null。 */

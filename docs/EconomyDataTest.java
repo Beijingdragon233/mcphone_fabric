@@ -10,6 +10,7 @@ import com.november.mcphone.core.script.engine.ScriptBudget;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
@@ -104,10 +105,12 @@ public class EconomyDataTest {
         check(EconomyAudit.run(COIN, r).balanced(), "读回来对账平：" + EconomyAudit.run(COIN, r).describe());
 
         BuiltinProvider again = builtin(COIN, r, null, t);
+        t.addAndGet(500);                                  // 结清时刻与建立时刻错开，才分得出落盘的是哪一个
         eq(again.release(h.id(), RSN), TxnResult.OK, "读回来的托管还能放款");
         eq(r.get(b, COIN), 200L, "放款到了受益人手里");
         eq(again.release(h.id(), RSN), TxnResult.ALREADY_SETTLED, "重复放款认得出");
         eq(EconomyData.load(r.toTag(), t::get).escrow().get(h.id()).settled(), true, "已结清的状态也落盘");
+        eq(EconomyData.load(r.toTag(), t::get).escrow().get(h.id()).settledAt(), t.get(), "结清时刻也落盘");
 
         coin.transfer(offline, a, 300, RSN);
         eq(d.all(COIN).containsKey(offline), false, "余额花到 0 的条目不留");
@@ -165,6 +168,10 @@ public class EconomyDataTest {
         bad.put("余额键省了前导零", t -> t.getCompound("currencies").getCompound(COIN).getCompound("balances")
                 .putLong("1-1-1-1-1", 700));
         bad.put("铸造累计是负数", t -> t.getCompound("currencies").getCompound(COIN).putLong("minted", -1));
+        bad.put("销毁累计是负数", t -> t.getCompound("currencies").getCompound(COIN).putLong("burned", -1));
+        bad.put("托管建立时刻是 0（超时判断会溢出，永远不退）", t -> escrowOf(t).putLong("createdAt", 0));
+        bad.put("托管建立时刻是 Long.MIN_VALUE", t -> escrowOf(t).putLong("createdAt", Long.MIN_VALUE));
+        bad.put("托管 settledAt 不是 long", t -> escrowOf(t).putInt("settledAt", 5));
         for (var c : bad.entrySet()) {
             CompoundTag tag = goodTag(a);
             c.getValue().accept(tag);
@@ -174,6 +181,49 @@ public class EconomyDataTest {
                     c.getKey() + " → 余额段原样写回");
         }
         eq(EconomyData.load(goodTag(a), () -> 5).lockedCurrencies(), Set.of(), "对照组：好的那一份不锁");
+
+        CompoundTag upperKey = goodTag(a);
+        CompoundTag cs = upperKey.getCompound("currencies");
+        Tag coinSection = cs.get(COIN);
+        cs.remove(COIN);
+        cs.put("MyServer:Coin", coinSection);
+        EconomyData d1 = EconomyData.load(upperKey, () -> 5);
+        check(d1.lockedCurrencies().contains("MyServer:Coin"), "货币 id 是大写：锁住，不当成另一种货币来记");
+        eq(d1.toTag().getCompound("currencies").get("MyServer:Coin"), coinSection, "原样写回");
+
+        CompoundTag upperEscrow = goodTag(a);
+        escrowOf(upperEscrow).putString("currency", "MyServer:Coin");
+        EconomyData d2 = EconomyData.load(upperEscrow, () -> 5);
+        eq(d2.lockedCurrencies(), Set.of("MyServer:Coin"), "托管的货币 id 是大写：锁那个 id，不让它成没人认领的孤儿");
+        eq(d2.toTag().getList("escrow", 10).getCompound(0), escrowOf(upperEscrow), "那笔托管原样写回");
+    }
+
+    /** 开服补存档点：找不到存档点的老流水也补一个；没有流水目录的世界不为它建目录。 */
+    static void restartCheckpoint() throws Exception {
+        Path fresh = tmp("fresh");
+        eq(new TxnLog(fresh, ZoneOffset.UTC).noteRestart(Instant.EPOCH), 0, "没有流水");
+        check(!Files.exists(fresh.resolve("ledger")), "从没用过货币的世界不建流水目录");
+
+        Path old = tmp("old");
+        TxnLog log = new TxnLog(old, ZoneOffset.UTC);
+        log.append(Instant.EPOCH, COIN, TxnLog.Kind.MINT, null, UUID.randomUUID(), 5, "-", RSN, TxnResult.OK);
+        eq(log.noteRestart(Instant.EPOCH), 0, "没有存档点的老流水：判断不了，不报");
+        List<String> lines = Files.readAllLines(old.resolve("ledger").resolve(logName(0)));
+        check(lines.get(lines.size() - 1).startsWith("# 存档点"), "但补了一个存档点，之后的强杀就判断得了：" + lines);
+    }
+
+    /** 脚本给的 reason 里有孤立的代理字符：这一行照样进流水，不能因为 UTF-8 编码失败就丢了。 */
+    static void loneSurrogateStillLogged() throws Exception {
+        Path dir = tmp("surrogate");
+        EconomyData d = EconomyData.empty(() -> 1);
+        TxnLog log = new TxnLog(dir, ZoneOffset.UTC, d);
+        String lone = String.valueOf((char) 0xD800);
+        log.append(Instant.EPOCH, COIN, TxnLog.Kind.TRANSFER, UUID.randomUUID(), UUID.randomUUID(), 60, "-",
+                new TxnReason("pay", "x" + lone), TxnResult.OK);
+        List<String> lines = Files.readAllLines(dir.resolve("ledger").resolve(logName(0)));
+        check(lines.size() == 1 && lines.get(0).contains("|transfer|") && lines.get(0).endsWith("|OK"),
+                "那一笔进了流水：" + lines);
+        check(lines.get(0).contains("x" + (char) 0xFFFD), "孤立的代理字符换成了 U+FFFD");
     }
 
     static CompoundTag goodTag(UUID a) {
@@ -323,7 +373,8 @@ public class EconomyDataTest {
 
         CompoundTag saved = d.toTag();                     // 世界保存
         long totalAtSave = total(d, COIN);
-        eq(new TxnLog(dir, ZoneOffset.UTC).noteRestart(Instant.ofEpochMilli(t.get())), 0, "刚存完，没有超前的");
+        List<String> atSave = Files.readAllLines(dir.resolve("ledger").resolve(logName(t.get())));
+        check(atSave.get(atSave.size() - 1).startsWith("# 存档点"), "世界保存时流水里写了存档点：" + atSave);
 
         t.addAndGet(1000);
         p.transfer(a, b, 300, RSN);                        // 这两笔发生在保存之后
@@ -845,7 +896,17 @@ public class EconomyDataTest {
         EconomyCommand.register(dispatcher);
         var root = dispatcher.getRoot().getChild("mcphone");
         check(root.getRequirement().test(null), "mcphone 根上没有权限要求");
-        check(root.getChild("economy") != null, "economy 在 mcphone 下面");
+        var economy = root.getChild("economy");
+        check(economy != null, "economy 在 mcphone 下面");
+        check(!economy.getRequirement().test(source(0)), "普通玩家（权限 0）不能对账");
+        check(!economy.getRequirement().test(source(2)), "权限 2 也不行");
+        check(economy.getRequirement().test(source(3)), "OP 3 级能对账");
+    }
+
+    static net.minecraft.commands.CommandSourceStack source(int level) {
+        return new net.minecraft.commands.CommandSourceStack(net.minecraft.commands.CommandSource.NULL,
+                net.minecraft.world.phys.Vec3.ZERO, net.minecraft.world.phys.Vec2.ZERO, null, level, "t",
+                Component.literal("t"), null, null);
     }
 
     /** 1000 次合法调用经网关、两条 worker 并发：总额不变，对账平（builtin 档；计分板档要真服，在 S15g）。 */
@@ -915,6 +976,8 @@ public class EconomyDataTest {
         missingAndUnknownFields();
         strictLoad();
         createForFileState();
+        restartCheckpoint();
+        loneSurrogateStillLogged();
         wholeLock();
         currencyLock();
         crashRestart();

@@ -398,26 +398,49 @@ public class ScriptEngineTest {
     }
 
     /**
-     * 余额读不到（那种货币的存档锁住了、网关拒了）时 {@code ctx.currency.balance} 给 null，<b>不中断求值</b>：
-     * 中断会记过失、把整个 App 熔断，而同一次求值里前面已经转出去的钱，客户端却收到失败。
+     * 余额读不到（那种货币的存档锁住了、网关拒了）时 {@code ctx.currency.balance} 抛脚本接得住的 Error：
+     * 不给 0 或 null（比大小时 null 也当 0，App 会告诉玩家他没钱），也不抛 ScriptAbort（接不住、记过失、会熔断整个 App）。
      */
     static void currencyBalanceUnavailable() {
-        var tag = new net.minecraft.nbt.CompoundTag();
-        tag.putInt("dataVersion", com.november.mcphone.core.script.server.economy.EconomyData.DATA_VERSION + 1);
-        var locked = com.november.mcphone.core.script.server.economy.EconomyData.load(tag, () -> 1);
+        String busy = com.november.mcphone.core.script.server.economy.CurrencyGateway.KEY_BUSY;
+        java.util.concurrent.atomic.AtomicInteger paid = new java.util.concurrent.atomic.AtomicInteger();
+        // pay 成功、balance 被拒：真正要防的是"钱已经转了，求值却中断"
+        var coin = new com.november.mcphone.api.economy.Currency(
+                net.minecraft.resources.ResourceLocation.tryParse("myserver:coin"),
+                net.minecraft.network.chat.Component.literal("coin"), "G", 0, null);
+        var provider = (com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                ScriptEngineTest.class.getClassLoader(),
+                new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                (proxy, m, args) -> switch (m.getName()) {
+                    case "currency" -> coin;
+                    case "transfer" -> {
+                        paid.incrementAndGet();
+                        yield com.november.mcphone.api.economy.TxnResult.OK;
+                    }
+                    case "balance" -> throw new com.november.mcphone.core.script.server.economy.CurrencyUnavailableException(busy);
+                    case "isAvailable", "allowNegative" -> false;
+                    case "maxBalance" -> Long.MAX_VALUE;
+                    case "unavailableReasonKey" -> busy;
+                    case "toString" -> "fake-coin";
+                    case "hashCode" -> 0;
+                    case "equals" -> proxy == args[0];
+                    default -> throw new UnsupportedOperationException(m.getName());
+                });
         var reg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry();
-        reg.register(new com.november.mcphone.core.script.server.economy.BuiltinProvider(
-                new com.november.mcphone.api.economy.Currency(
-                        net.minecraft.resources.ResourceLocation.tryParse("myserver:coin"),
-                        net.minecraft.network.chat.Component.literal("coin"), "G", 0, null),
-                locked, locked.escrow(), null, () -> 1, false, 1_000_000L), true);
-        var withCurrency = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+        reg.register(provider, true);
+        var backends = new CtxBuilder.Backends(new SharedState(), fakeItems(),
                 new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, reg);
-        eq(withCtx("String(ctx.currency.balance('myserver:coin'))", withCurrency), "null",
-                "读不到给 null，不给 0");
-        eq(withCtx("var r = ctx.currency.pay('myserver:coin', '00000000-0000-0000-0000-000000000002', 5n);"
-                        + "var b = ctx.currency.balance('myserver:coin'); r + '/' + String(b) + '/还在跑'", withCurrency),
-                "UNAVAILABLE/null/还在跑", "读不到之后脚本接着跑，能自己 ctx.fail");
+        String to = "'00000000-0000-0000-0000-000000000002'";
+
+        eq(withCtx("var r = ctx.currency.pay('myserver:coin', " + to + ", 5n);"
+                        + "try { ctx.currency.format('myserver:coin', ctx.currency.balance('myserver:coin')); 'no' }"
+                        + "catch (e) { r + '|' + e.message }", backends),
+                "OK|UNAVAILABLE: " + busy, "pay 成功之后 balance 被拒：脚本接得住，能自己 ctx.fail");
+        eq(withCtx("try { ctx.currency.balance('myserver:coin') < 5n } catch (e) { 'caught' }", backends),
+                "caught", "拿去比大小之前就抛了，不会被当成 0");
+        String uncaught = withCtx("ctx.currency.balance('myserver:coin')", backends);
+        check(uncaught.startsWith("EcmaError"), "没接住时是脚本错误（不记过失），不是 ScriptAbort：" + uncaught);
+        eq(paid.get(), 1, "pay 只执行了一次");
     }
 
     public static void main(String[] args) {

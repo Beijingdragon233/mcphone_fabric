@@ -76,7 +76,8 @@ public final class CurrencyRegistry {
     }
 
     private static ICurrencyProvider unwrap(ICurrencyProvider p) {
-        return p instanceof GatedCurrencyProvider g ? g.inner() : p;
+        while (p instanceof GatedCurrencyProvider g) p = g.inner();
+        return p;
     }
 
     public ICurrencyProvider get(String currencyId) {
