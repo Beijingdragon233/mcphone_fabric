@@ -251,6 +251,11 @@ public final class CtxBuilder {
                     // 不返回 0 或 null：比大小时 null 也当 0，App 会告诉玩家他没钱。
                     // 不抛 ScriptAbort：那个接不住、还记过失，连着几次就把整个 App 熔断
                     throw org.mozilla.javascript.ScriptRuntime.constructError("Error", "UNAVAILABLE: " + e.reasonKey());
+                } catch (ScriptAbort | VirtualMachineError e) {
+                    throw e;
+                } catch (RuntimeException | Error e) {
+                    // provider 抛的别的：换成替身再往外抛，原来那个的 getMessage 可能自己会炸（见 ProviderFailure）
+                    throw ProviderFailure.of(e);
                 }
             });
 
@@ -393,12 +398,13 @@ public final class CtxBuilder {
             standIn = failure == null ? null : ProviderFailure.of(failure);
             detail = "货币调用结果不明：app=" + appId + " 玩家=" + player + " " + what + " " + currencyId
                     + " 对方或托管号=" + other + " 金额=" + (amount == null ? "-" : amount + "（最小单位）")
-                    + " —— " + (failure == null ? "provider 没给结果（返回了 null）" : "provider 抛了 " + failure.getClass().getName())
+                    + " —— " + (failure == null ? "provider 没给结果（返回了 null）" : "provider 抛了 " + standIn.getMessage())
                     + "，钱可能已经动了一半，请核对";
             com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ {}", detail, standIn);
         } catch (Throwable ignored) {
             // 栈溢出、内存不够时打不出来也别换掉原来那个错，更别变成脚本 finally 吞得掉的 RuntimeException
         }
+        // 虚拟机级别的错误原样抛（换成别的类型，RhinoEvaluator 就当成可恢复的了）；它若是第三方的子类、getMessage 又会炸，这里护不住
         if (failure instanceof VirtualMachineError vm) throw vm;
         throw new OutcomeUnknown(detail, standIn);
     }

@@ -618,7 +618,13 @@ public class ScriptEngineTest {
             check(t instanceof OutcomeUnknown, name + "：结果不明、finally 吞不掉 —— " + t);
             // cause 是替身：只带原来的类名与堆栈；原来那个（getMessage 可能会炸）不交给日志
             check(t != null && t.getCause() instanceof com.november.mcphone.core.script.server.economy.ProviderFailure
-                    && kind.getClass().getName().equals(t.getCause().getMessage()), name + "：cause 是带着原类名的替身");
+                    && t.getCause().getMessage().startsWith(kind.getClass().getName()), name + "：cause 是带着原类名的替身");
+            check(t != null && t.getCause().getCause() == null, name + "：替身不挂原来那个");
+            if (kind instanceof IllegalStateException) {
+                check(t.getMessage().contains("java.lang.IllegalStateException: x"), "说明里留着 provider 原来的 message —— " + t.getMessage());
+            }
+            check(t != null && t.getCause().getMessage().contains(kind instanceof Bomb ? "getMessage 抛了" : ": "),
+                    name + "：替身留着原来的 message；取的时候炸了就说炸了 —— " + (t == null ? null : t.getCause().getMessage()));
             check(t != null && java.util.Arrays.equals(t.getCause().getStackTrace(), kind.getStackTrace()), name + "：替身带着原来的堆栈");
             check(t != null && t.getMessage().contains("app=t:app") && t.getMessage().contains("金额=5（最小单位）")
                     && t.getMessage().contains(kind.getClass().getName()), name + "：说明里有 app、金额与原类名 —— " + t);
@@ -631,6 +637,37 @@ public class ScriptEngineTest {
             }
             check(renders, name + "：整条异常链打得出来");
         }
+        // provider 抛虚拟机级别的错误：原样抛它，不换类型（换成别的，RhinoEvaluator 就当成可恢复的了）
+        StackOverflowError soe = new StackOverflowError();
+        var vmReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
+        vmReg.register((com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    if (m.getName().equals("transfer")) throw soe;
+                    return m.invoke(provider, args);
+                }), true);
+        check(thrownBy("ctx.currency.pay(" + c + ", " + to + ", 5n)", new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, vmReg)) == soe, "虚拟机级别的错误原样抛");
+
+        // balance 里 provider 抛的（不是"读不到"那种）：换成替身再抛，整条链打得出来
+        var balReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
+        balReg.register((com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    if (m.getName().equals("balance")) throw new Bomb();
+                    return m.invoke(provider, args);
+                }), true);
+        Throwable bt = thrownBy("ctx.currency.balance(" + c + ")", new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, balReg));
+        boolean balRenders = true;
+        try {
+            bt.printStackTrace(new java.io.PrintWriter(new java.io.StringWriter()));
+        } catch (Throwable e) {
+            balRenders = false;
+        }
+        check(bt instanceof com.november.mcphone.core.script.server.economy.ProviderFailure && balRenders,
+                "balance 里 provider 的异常：换成替身、整条链打得出来 —— " + bt);
+
         // 原来那个连 getStackTrace 都会炸：替身不带堆栈，照样造得出来
         Throwable noStack = new RuntimeException() {
             @Override

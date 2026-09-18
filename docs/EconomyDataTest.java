@@ -1010,11 +1010,21 @@ public class EconomyDataTest {
         String older = EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock();
         check(older.contains("SavedData 那份") && older.contains("是第 3 次保存，比它旧"),
                 "快照更旧、选了 SavedData、它读出问题：点名它，也说出快照更旧 —— " + older);
+        olderSnap.remove("generation");
+        EconomySnapshot.write(snap, olderSnap);
+        String noGen = EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock();
+        check(noGen.contains("没写第几次保存") && !noGen.contains("第 0 次"), "快照没写代数：不编一个第 0 次 —— " + noGen);
+        Files.write(snap, new byte[]{1, 2, 3});
+        String unreadable = EconomyData.loadPreferring(badSaved, snap, () -> 1).wholeLock();
+        check(unreadable.contains("原子快照 " + snap + " 读不出来"), "快照在但读不出：说读不出来 —— " + unreadable);
+        Files.delete(snap);
 
         // 路径中间一节是普通文件：root 也看不到（ENOTDIR），不许当成不在给空账
         Path plain = dir.resolve("plain");
         Files.writeString(plain, "x");
         String notDir = EconomyData.createFor(dir.resolve("none.dat"), plain.resolve("economy.dat"), () -> 1).wholeLock();
+        String blind = EconomyData.loadPreferring(badSaved, plain.resolve("economy.dat"), () -> 1).wholeLock();
+        check(blind.contains("看不到"), "SavedData 锁住、快照看不到：说看不到，不说不在 —— " + blind);
         check(notDir != null && notDir.contains("看不到"), "快照路径走不通：锁住并说看不到，不当成新世界 —— " + notDir);
         check(!notDir.contains("上一份完整快照") && !notDir.contains("也读不出来"), ".stale 同样看不到：不暗示有一份 .stale —— " + notDir);
     }
@@ -1254,6 +1264,31 @@ public class EconomyDataTest {
                 check(propagated, op + "：在主线程上跑了才抛的，worker 这边认得出\"跑了\"，原样抛出");
             }
         }
+
+        // 主线程上 provider 偷偷抛出受检异常（Kotlin 写的、或 @SneakyThrows）、它的 getMessage 又会炸：网关换成替身抛，不挂原来那个
+        try (Main m = new Main()) {
+            CurrencyGateway g = m.gateway(8, 1_000);
+            Throwable got = null;
+            try {
+                g.call(() -> {
+                    EconomyDataTest.<RuntimeException>sneaky(new CheckedBomb());
+                    return null;
+                });
+            } catch (Throwable e) {
+                got = e;
+            }
+            check(got instanceof ProviderFailure && got.getMessage().startsWith(CheckedBomb.class.getName()) && got.getCause() == null,
+                    "受检异常经网关：换成带原类名的替身、不挂原来那个 —— " + got);
+            boolean renders = true;
+            try {
+                got.printStackTrace(new java.io.PrintWriter(new java.io.StringWriter()));
+            } catch (Throwable e) {
+                renders = false;
+            }
+            check(renders, "受检异常经网关：整条链打得出来");
+        }
+        String longMsg = ProviderFailure.of(new IllegalStateException("x".repeat(10_000))).getMessage();
+        check(longMsg.length() < 600 && longMsg.endsWith("…"), "替身的 message 截短 —— " + longMsg.length());
 
         CurrencyRegistry refusing = new CurrencyRegistry(new CurrencyGateway(Runnable::run, () -> false));   // 不在主线程、网关没开
         refusing.register(halfway, true);
@@ -2117,6 +2152,19 @@ public class EconomyDataTest {
         e.putLong("createdAt", createdAt);
         e.putBoolean("settled", false);
         return e;
+    }
+
+    /** getMessage 自己会炸的受检异常。 */
+    static final class CheckedBomb extends Exception {
+        @Override
+        public String getMessage() {
+            throw new IllegalStateException("getMessage 自己炸了");
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    static <E extends Throwable> void sneaky(Throwable t) throws E {
+        throw (E) t;
     }
 
     static Path tmp(String name) throws Exception {

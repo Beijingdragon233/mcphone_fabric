@@ -183,10 +183,17 @@ public final class EconomyRuntime {
                     continue;
                 }
                 TxnResult r = p.refund(e.getKey(), new TxnReason(TIMEOUT_REFUND_KIND, e.getKey().value().toString()));
-                // 没给结果和抛了一样是结果不明：当成"拒了"就会每 5 分钟再退一次
-                if (r == null) throw new IllegalStateException("provider 的 refund 返回了 null");
                 if (r == TxnResult.OK) refunded++;
-                else failed++;
+                else if (r != null) failed++;
+                else {
+                    // 没给结果和抛了一样是结果不明：当成"拒了"就会每 5 分钟再退一次
+                    suspect.add(e.getKey());
+                    suspected++;
+                    EscrowLedger.Entry v = e.getValue();
+                    MCphone.LOGGER.error("[MCphone] ⚠ 超时托管 {}（{} 最小单位的 {}，原主 {}）退款时 provider 没给结果（返回了 null），钱退没退出去不知道。"
+                            + "这次运行里不再自动退。核对原主在那种货币里的余额：没到账就重启，开服时会再试一次；已经到账的话重启会再退一次，"
+                            + "目前只能手改存档（SavedData 与快照一起）把这笔标成已结清", e.getKey().value(), v.amount(), v.currencyId(), v.owner());
+                }
             } catch (VirtualMachineError fatal) {
                 throw fatal;
             } catch (Throwable ex) {
@@ -194,11 +201,12 @@ public final class EconomyRuntime {
                 suspect.add(e.getKey());
                 suspected++;
                 EscrowLedger.Entry v = e.getValue();
+                ProviderFailure f = ProviderFailure.of(ex);
                 // 堆栈每种货币每趟只打一次：provider 整个坏掉时每笔都是同一个堆栈
                 MCphone.LOGGER.error("[MCphone] ⚠ 超时托管 {}（{} 最小单位的 {}，原主 {}）退款时 provider 抛了异常（{}），钱退没退出去不知道。"
                         + "这次运行里不再自动退。核对原主在那种货币里的余额：没到账就重启，开服时会再试一次；已经到账的话重启会再退一次，"
                         + "目前只能手改存档（SavedData 与快照一起）把这笔标成已结清", e.getKey().value(), v.amount(), v.currencyId(), v.owner(),
-                        ex.getClass().getName(), stacked.add(v.currencyId()) ? ProviderFailure.of(ex) : null);
+                        f.getMessage(), stacked.add(v.currencyId()) ? f : null);
             }
         }
         return new Sweep(refunded, failed, orphaned, escrow.pruneSettled(), suspected);

@@ -181,7 +181,8 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         long gs = generationOf(snap), gm = generationOf(saved);
         if (gm > gs) {
             MCphone.LOGGER.warn("[MCphone] 货币的原子快照比 SavedData 旧（第 {} 次对第 {} 次保存，上次写快照失败过），用 SavedData 那份", gs, gm);
-            return load(saved, clock, SAVED_DATA + "（原子快照 " + snapshot + " 是第 " + gs + " 次保存，比它旧）");
+            return load(saved, clock, SAVED_DATA + "（原子快照 " + snapshot + (snap.contains("generation", Tag.TAG_LONG)
+                    ? " 是第 " + gs + " 次保存" : " 没写第几次保存") + "，比它旧）");
         }
         EconomyData d = load(snap, clock, "原子快照 " + snapshot);
         if (gm < gs) {
