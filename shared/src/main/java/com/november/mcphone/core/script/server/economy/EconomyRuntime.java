@@ -172,6 +172,7 @@ public final class EconomyRuntime {
      */
     static Sweep sweepEscrow(EscrowLedger escrow, Function<String, ICurrencyProvider> providers, Set<EscrowId> suspect) {
         int refunded = 0, failed = 0, orphaned = 0, suspected = 0;
+        Set<String> stacked = new HashSet<>();
         for (Map.Entry<EscrowId, EscrowLedger.Entry> e : escrow.expired()) {
             if (suspect.contains(e.getKey())) continue;
             // 逐笔接住：一种货币的 provider 抛了，别的货币照样退、已结清的照样清
@@ -191,11 +192,11 @@ public final class EconomyRuntime {
                 suspect.add(e.getKey());
                 suspected++;
                 EscrowLedger.Entry v = e.getValue();
-                // 堆栈只打这一趟的第一笔：provider 整个坏掉时每笔都是同一个堆栈
+                // 堆栈每种货币每趟只打一次：provider 整个坏掉时每笔都是同一个堆栈
                 MCphone.LOGGER.error("[MCphone] ⚠ 超时托管 {}（{} 最小单位的 {}，原主 {}）退款时 provider 抛了异常（{}），钱退没退出去不知道。"
                         + "这次运行里不再自动退。核对原主在那种货币里的余额：没到账就重启，开服时会再试一次；已经到账的话重启会再退一次，"
                         + "目前只能手改存档（SavedData 与快照一起）把这笔标成已结清", e.getKey().value(), v.amount(), v.currencyId(), v.owner(),
-                        ex.toString(), suspected == 1 ? ex : null);
+                        ex.toString(), stacked.add(v.currencyId()) ? ex : null);
             }
         }
         return new Sweep(refunded, failed, orphaned, escrow.pruneSettled(), suspected);

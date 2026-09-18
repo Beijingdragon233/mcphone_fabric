@@ -220,7 +220,7 @@ public final class CtxBuilder {
 
         // ---- ctx.currency（§22.5）。金额进出都是 BigInt（勘误 E18），宿主在边界切 BigInt ↔ long
         // 【被拒的调用、玩家输错的数据是返回值，不中断】（S15h）：中断记过失，连着几次禁玩家、熔断整个 App ——
-        // 那是在罚玩家。只有脚本自己写错（类型不对）才中断
+        // 那是在罚玩家。只有脚本自己写错（类型不对）才中断（记过失）；provider 在动钱时抛了是结果不明，见 moneyCall
         if (backends.currencies() != null) {
             CurrencyRegistry reg = backends.currencies();
             ScriptableObject cur = HostFn.obj(cx, scope);
@@ -276,44 +276,52 @@ public final class CtxBuilder {
 
             // pay 的 from 恒为调用者（§22.6：这样它才是 plain 档）
             HostFn.put(cur, scope, "pay", 4, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.pay"));
+                String cid = strOrNull(a, 0, "currency.pay");
+                ICurrencyProvider prov = reg.get(cid);
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
                 java.util.UUID to = uuidOrNull(strOrNull(a, 1, "currency.pay"));
                 Long amt = amountOrNull(a, 2, "currency.pay");
                 TxnReason why = reasonOrNull(a, 3, "pay");
                 if (to == null || amt == null || why == null) return TxnResult.INVALID.name();
-                return prov.transfer(player.uuid(), to, amt, why).name();
+                return moneyCall("pay", appId, player.uuid(), cid, to, amt,
+                        () -> prov.transfer(player.uuid(), to, amt, why)).name();
             });
 
             HostFn.put(cur, scope, "hold", 4, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.hold"));
+                String cid = strOrNull(a, 0, "currency.hold");
+                ICurrencyProvider prov = reg.get(cid);
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
                 java.util.UUID to = uuidOrNull(strOrNull(a, 1, "currency.hold"));
                 Long amt = amountOrNull(a, 2, "currency.hold");
                 TxnReason why = reasonOrNull(a, 3, "hold");
                 if (to == null || amt == null || why == null) return TxnResult.INVALID.name();
-                HoldResult h = prov.hold(player.uuid(), to, amt, why);
+                HoldResult h = moneyCall("hold", appId, player.uuid(), cid, to, amt,
+                        () -> prov.hold(player.uuid(), to, amt, why));
                 return h.result() == TxnResult.OK ? h.id().value().toString() : h.result().name();
             });
 
             HostFn.put(cur, scope, "release", 3, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.release"));
+                String cid = strOrNull(a, 0, "currency.release");
+                ICurrencyProvider prov = reg.get(cid);
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
                 java.util.UUID id = uuidOrNull(strOrNull(a, 1, "currency.release"));
                 if (id == null) return TxnResult.UNKNOWN_ESCROW.name();
                 TxnReason why = reasonOrNull(a, 2, "release");
                 if (why == null) return TxnResult.INVALID.name();
-                return prov.release(new EscrowId(id), why).name();
+                return moneyCall("release", appId, player.uuid(), cid, id, null,
+                        () -> prov.release(new EscrowId(id), why)).name();
             });
 
             HostFn.put(cur, scope, "refund", 3, (c, s, a) -> {
-                ICurrencyProvider prov = reg.get(strOrNull(a, 0, "currency.refund"));
+                String cid = strOrNull(a, 0, "currency.refund");
+                ICurrencyProvider prov = reg.get(cid);
                 if (prov == null) return TxnResult.UNAVAILABLE.name();
                 java.util.UUID id = uuidOrNull(strOrNull(a, 1, "currency.refund"));
                 if (id == null) return TxnResult.UNKNOWN_ESCROW.name();
                 TxnReason why = reasonOrNull(a, 2, "refund");
                 if (why == null) return TxnResult.INVALID.name();
-                return prov.refund(new EscrowId(id), why).name();
+                return moneyCall("refund", appId, player.uuid(), cid, id, null,
+                        () -> prov.refund(new EscrowId(id), why)).name();
             });
 
             // mint / burn 是 granted 档（§22.6）。本步没有能力表，一律 NOT_AUTHORIZED ——
@@ -359,6 +367,24 @@ public final class CtxBuilder {
     }
 
     static final String NO_SUCH_CURRENCY = "mcphone.economy.no_such_currency";
+
+    /**
+     * 会动钱的 provider 调用。provider 抛了 = 结果不明（可能已经动了一半）：先打一条带来龙去脉的 ERROR 给服主核对，
+     * 再原样抛出去 —— 脚本接不住、拿到 INTERNAL、不记过失。不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
+     */
+    private static <T> T moneyCall(String what, String appId, java.util.UUID player, String currencyId,
+                                   java.util.UUID other, Long amount, java.util.function.Supplier<T> op) {
+        try {
+            return op.get();
+        } catch (ScriptAbort | VirtualMachineError e) {
+            throw e;
+        } catch (RuntimeException | Error e) {
+            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ 货币调用结果不明：app={} 玩家={} {} {} 对方或托管号={} 金额={}（最小单位）"
+                    + "—— provider 抛了异常，钱可能已经动了一半，请核对", appId, player, what, currencyId, other,
+                    amount == null ? "-" : amount, e);
+            throw e;
+        }
+    }
 
     /**
      * 字符串参数缺了（null / undefined）→ null，由调用方给返回码：常见是 {@code default()} 在没有默认货币时给的 null、

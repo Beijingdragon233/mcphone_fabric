@@ -17,8 +17,9 @@ import java.util.function.Supplier;
  * <p>网关拒掉的调用 provider 根本没见到，所以流水里没有这一行；原因在 {@link #unavailableReasonKey()}
  * （这条线程上一次被拒的原因）与网关的限流日志里。
  *
- * <p><b>会动钱的方法只把网关的拒绝变成 UNAVAILABLE</b>；provider 自己在里面抛的 {@link CurrencyUnavailableException}
- * 原样抛出去 —— 它可能已经动了一半（外部钱包先记上钱再抛），变成 UNAVAILABLE 调用方就会当"没动"去重试。
+ * <p><b>会动钱的方法只在 provider 还没开始跑时才给 UNAVAILABLE</b>；provider 跑起来之后抛出的 {@link CurrencyUnavailableException}
+ * （它自己抛的，或者它里面又调了别的网关被拒）原样抛出去 —— 它可能已经动了一半（外部钱包先记上钱再抛），
+ * 变成 UNAVAILABLE 调用方就会当"没动"去重试。按"跑没跑"判断，不按异常从哪来：异常对象会穿过嵌套调用。
  */
 public final class GatedCurrencyProvider implements ICurrencyProvider {
 
@@ -109,13 +110,17 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
 
     @Override
     public HoldResult hold(UUID from, UUID beneficiary, long amount, TxnReason reason) {
+        java.util.concurrent.atomic.AtomicBoolean ran = new java.util.concurrent.atomic.AtomicBoolean();
         try {
-            HoldResult h = gateway.call(() -> inner.hold(from, beneficiary, amount, reason));
+            HoldResult h = gateway.call(() -> {
+                ran.set(true);
+                return inner.hold(from, beneficiary, amount, reason);
+            });
             lastRefusal.remove();
             return h;
         } catch (CurrencyUnavailableException e) {
-            if (!e.refusedBeforeRunning()) throw e;
             lastRefusal.set(e.reasonKey());
+            if (ran.get()) throw e;
             return HoldResult.fail(TxnResult.UNAVAILABLE);
         }
     }
@@ -131,13 +136,17 @@ public final class GatedCurrencyProvider implements ICurrencyProvider {
     }
 
     private TxnResult txn(Supplier<TxnResult> op) {
+        java.util.concurrent.atomic.AtomicBoolean ran = new java.util.concurrent.atomic.AtomicBoolean();
         try {
-            TxnResult r = gateway.call(op);
+            TxnResult r = gateway.call(() -> {
+                ran.set(true);
+                return op.get();
+            });
             lastRefusal.remove();
             return r;
         } catch (CurrencyUnavailableException e) {
-            if (!e.refusedBeforeRunning()) throw e;
             lastRefusal.set(e.reasonKey());
+            if (ran.get()) throw e;
             return TxnResult.UNAVAILABLE;
         }
     }

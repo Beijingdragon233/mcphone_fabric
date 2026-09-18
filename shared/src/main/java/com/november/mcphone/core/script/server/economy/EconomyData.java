@@ -94,9 +94,12 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         return new EconomyData(clock, null);
     }
 
+    private static final String SAVED_DATA = "SavedData 那份（<世界>/data/" + FILE_NAME + ".dat）";
+
     /** 整份锁住时怎么解：每一条锁住原因后面都跟着它。 */
-    static final String UNLOCK_HINT = "。修好或换回备份后重启；确认这些钱都不要了，把 <世界>/data/" + FILE_NAME
-            + ".dat 与 <世界>/mcphone/economy/ 下的 economy.dat、economy.dat.stale 挪走再开服就按新世界开："
+    static final String UNLOCK_HINT = "。只有一份坏的话，先只把上面点名的那一份挪走再开服，另一份完好就能照常开；"
+            + "都坏了就修好或换回备份后重启。确认这些钱都不要了，把 <世界>/data/" + FILE_NAME
+            + ".dat 与 <世界>/mcphone/economy/ 下的 economy.dat、economy.dat.stale 都挪走再开服，就按新世界开："
             + "这份存档里记的余额与托管全部清零（计分板、外部钱包里的余额不记在这里，不受影响；从那里押进托管的钱随托管一起没了）";
 
     /** 整份锁住的一本。原因要醒目地进日志：服主不看日志就只会看到「货币用不了」。 */
@@ -112,7 +115,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     }
 
     private static String state(Path p, String ifThere) {
-        return Files.exists(p) ? ifThere : Files.notExists(p) ? " 不在" : " 看不到（权限？）";
+        return Files.exists(p) ? ifThere : Files.notExists(p) ? " 不在" : " 看不到（权限或路径不对？）";
     }
 
     /** 必须挂在主世界的 DataStorage：它按维度分，挂错了玩家去下界钱就「没了」且不报错。 */
@@ -134,7 +137,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         CompoundTag snap = readSnapshot(snapshot);
         if (snap != null) {
             MCphone.LOGGER.warn("[MCphone] 货币存档 {}{}，改用原子快照 {}", file, state(file, " 读不出来"), snapshot);
-            EconomyData d = load(snap, clock);
+            EconomyData d = load(snap, clock, "原子快照 " + snapshot);
             // 下次保存把 SavedData 那份重写好：不然这段时间快照是唯一的好副本，删错一个目录就没了
             d.setDirty();
             return d;
@@ -151,6 +154,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 锁住时怎么说 .stale：读得出就说它是第几次保存、什么时候存的（快照一直写不进去的话它可能是几周前的）、改名回去会丢什么。 */
     private static String describeStale(Path stale, Path snapshot) {
+        if (!Files.exists(stale)) return "看不到 " + stale + " 在不在（权限或路径不对？），不知道有没有上一份快照";
         CompoundTag t;
         String at;
         try {
@@ -170,14 +174,14 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         CompoundTag snap = readSnapshot(snapshot);
         if (snap == null) {
             if (Files.notExists(snapshot)) MCphone.LOGGER.info("[MCphone] 还没有货币的原子快照，用 SavedData 那份");
-            return load(saved, clock);
+            return load(saved, clock, SAVED_DATA);
         }
         long gs = generationOf(snap), gm = generationOf(saved);
         if (gm > gs) {
             MCphone.LOGGER.warn("[MCphone] 货币的原子快照比 SavedData 旧（第 {} 次对第 {} 次保存，上次写快照失败过），用 SavedData 那份", gs, gm);
-            return load(saved, clock);
+            return load(saved, clock, SAVED_DATA);
         }
-        EconomyData d = load(snap, clock);
+        EconomyData d = load(snap, clock, "原子快照 " + snapshot);
         if (gm < gs) {
             MCphone.LOGGER.warn("[MCphone] 货币的 SavedData 比原子快照旧（第 {} 次对第 {} 次保存），用快照 {}", gm, gs, snapshot);
             d.setDirty();
@@ -367,14 +371,18 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         try {
             EconomySnapshot.write(snapshotFile, tag);
         } catch (java.io.IOException e) {
-            MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；{}", e.toString(),
-                    present(snapshotFile) ? "上一份快照挪到 " + stale
-                            : present(stale) ? "上一份快照留在 " + stale + "（没核对它读不读得出）" : "盘上没有别的快照");
-            try {
-                if (present(snapshotFile)) Files.move(snapshotFile, stale, StandardCopyOption.REPLACE_EXISTING);
-            } catch (java.io.IOException moved) {
-                MCphone.LOGGER.error("[MCphone] 上一份快照 {} 挪不开（{}）：SavedData 再坏的话开服会回滚到它", snapshotFile, moved.toString());
+            String what;
+            if (present(snapshotFile)) {
+                try {
+                    Files.move(snapshotFile, stale, StandardCopyOption.REPLACE_EXISTING);
+                    what = "上一份快照挪到 " + stale;
+                } catch (java.io.IOException moved) {
+                    what = "上一份快照 " + snapshotFile + " 挪不开（" + moved + "）：SavedData 再坏的话开服会回滚到它";
+                }
+            } else {
+                what = present(stale) ? "上一份快照留在 " + stale + "（没核对它读不读得出）" : "盘上没有别的快照";
             }
+            MCphone.LOGGER.error("[MCphone] 货币的原子快照写不进去（{}），这次只有 SavedData 那份；{}", e.toString(), what);
             return;
         }
         try {
@@ -394,22 +402,28 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
      * （抛了也兜得住 —— 原版会转头调 {@link #get} 里那个 create，而文件在，于是整份锁住 —— 但那样就丢了"只锁一种"的精度。）
      */
     public static EconomyData load(CompoundTag tag, LongSupplier clock) {
+        return load(tag, clock, null);
+    }
+
+    /** {@code source} 说这份 tag 是从哪个文件读的，写进锁住原因：只有一份坏时，服主据此只挪走坏的那份。 */
+    static EconomyData load(CompoundTag tag, LongSupplier clock, String source) {
+        String origin = source == null ? "" : source + "：";
         if (!tag.contains("dataVersion", Tag.TAG_INT)) {
-            return locked("存档里没有 dataVersion（这一版起每份都写），认不出是什么格式，不猜", clock);
+            return locked(origin + "存档里没有 dataVersion（这一版起每份都写），认不出是什么格式，不猜", clock);
         }
         int v = tag.getInt("dataVersion");
         if (v > DATA_VERSION) {
-            return locked("存档是更新版本的 MCphone 写的（格式第 " + v + " 版，这一版只认到第 " + DATA_VERSION
+            return locked(origin + "存档是更新版本的 MCphone 写的（格式第 " + v + " 版，这一版只认到第 " + DATA_VERSION
                     + " 版）；不降级、不覆盖，装回新版本就好", clock);
         }
         CompoundTag t = tag;
         for (int from = v; from < DATA_VERSION; from++) {
             UnaryOperator<CompoundTag> step = MIGRATIONS.get(from);
-            if (step == null) return locked("存档格式第 " + from + " 版没有迁移到第 " + (from + 1) + " 版的办法", clock);
+            if (step == null) return locked(origin + "存档格式第 " + from + " 版没有迁移到第 " + (from + 1) + " 版的办法", clock);
             try {
                 t = step.apply(t.copy());
             } catch (RuntimeException e) {
-                return locked("存档格式从第 " + from + " 版迁移失败：" + e, clock);
+                return locked(origin + "存档格式从第 " + from + " 版迁移失败：" + e, clock);
             }
         }
 
@@ -419,7 +433,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
         Map<String, Tag> rawCurrencies = new LinkedHashMap<>();
         if (t.contains("currencies")) {
-            if (!t.contains("currencies", Tag.TAG_COMPOUND)) return locked("currencies 不是一张表", clock);
+            if (!t.contains("currencies", Tag.TAG_COMPOUND)) return locked(origin + "currencies 不是一张表", clock);
             CompoundTag cs = t.getCompound("currencies");
             for (String id : cs.getAllKeys()) {
                 Tag raw = cs.get(id);
@@ -430,10 +444,10 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         }
 
         if (t.contains("escrow")) {
-            if (!t.contains("escrow", Tag.TAG_LIST)) return locked("escrow 不是一个列表", clock);
+            if (!t.contains("escrow", Tag.TAG_LIST)) return locked(origin + "escrow 不是一个列表", clock);
             ListTag list = t.getList("escrow", Tag.TAG_COMPOUND);
             if (list.size() != ((ListTag) t.get("escrow")).size()) {
-                return locked("escrow 里有不是表的条目", clock);
+                return locked(origin + "escrow 里有不是表的条目", clock);
             }
             Map<UUID, EscrowLedger.Entry> ok = new LinkedHashMap<>();
             List<CompoundTag> pending = new ArrayList<>();
@@ -445,7 +459,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
             for (int i = 0; i < list.size(); i++) {
                 CompoundTag e = list.getCompound(i);
                 if (!e.contains("currency", Tag.TAG_STRING)) {
-                    return locked("第 " + (i + 1) + " 笔托管读不出是哪种货币，不知道该锁哪一种", clock);
+                    return locked(origin + "第 " + (i + 1) + " 笔托管读不出是哪种货币，不知道该锁哪一种", clock);
                 }
                 String currency = e.getString("currency");
                 // 大写之类的 id 不锁的话，这笔就成了哪种货币都不认领的孤儿

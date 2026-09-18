@@ -537,6 +537,33 @@ public class ScriptEngineTest {
         check(withCtx("ctx.currency.pay(" + c + ", 5, 5n)", b).startsWith("ScriptAbort"),
                 "收款人传了 Number：类型写错了，照旧中断");
 
+        // provider 在动钱时抛了（结果不明）：原样抛出、脚本接不住，不改写成 UNAVAILABLE 让 App 当"没动"去重试；也不是 ScriptAbort（不记过失）
+        var open = new com.november.mcphone.core.script.server.economy.CurrencyGateway(Runnable::run, () -> true);
+        open.open();
+        var gatedReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(open);
+        var halfway = (com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    if (java.util.Set.of("transfer", "hold", "release", "refund").contains(m.getName())) {
+                        throw new com.november.mcphone.core.script.server.economy.CurrencyUnavailableException("provider.own");
+                    }
+                    return m.invoke(provider, args);
+                });
+        gatedReg.register(halfway, true);
+        var gb = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, gatedReg);
+        for (String call : new String[]{"pay(" + c + ", " + to + ", 5n)", "hold(" + c + ", " + to + ", 5n)",
+                "release(" + c + ", " + u + ")", "refund(" + c + ", " + u + ")"}) {
+            String got = withCtx("try { ctx.currency." + call + " } catch (e) { 'caught' }", gb);
+            check(got.startsWith("CurrencyUnavailableException"), call + "：provider 抛的原样穿出、脚本接不住 —— " + got);
+        }
+        var refusingReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(
+                new com.november.mcphone.core.script.server.economy.CurrencyGateway(Runnable::run, () -> false));
+        refusingReg.register(halfway, true);
+        var rb = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, refusingReg);
+        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5n)", rb), "UNAVAILABLE", "对照：网关自己拒的（provider 没跑）照样是 UNAVAILABLE");
+
         var noDefault = new com.november.mcphone.core.script.server.economy.CurrencyRegistry();
         noDefault.register(new com.november.mcphone.core.script.server.economy.BuiltinProvider(
                 coin, data, data.escrow(), null, () -> 1, false, 1_000_000L), false);

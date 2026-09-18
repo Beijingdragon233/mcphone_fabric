@@ -168,7 +168,7 @@ public final class CurrencyGateway {
         if (now - last > 1_000_000_000L && lastWarn.compareAndSet(last, now)) {
             MCphone.LOGGER.warn("[MCphone] 货币调用没执行：{}（排着 {} 个）", key, pending.get());
         }
-        return CurrencyUnavailableException.refusedBeforeRunning(key);
+        return new CurrencyUnavailableException(key);
     }
 
     private final class Call<T> implements Runnable {
