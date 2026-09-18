@@ -12,10 +12,11 @@ import java.util.function.LongSupplier;
  *
  * <h2>必须持久化</h2>
  *
- * 落在 {@code world/mcphone/economy/escrow.dat}：<b>服务器重启不能把托管中的钱吃掉</b>。
- * 启动时扫一遍，超过 {@link #DEFAULT_TIMEOUT_MS} 的自动退款并记流水。
+ * <b>服务器重启不能把托管中的钱吃掉</b>。生产环境的这一本归 {@link EconomyData} 所有，
+ * 与余额同一份世界存档、同一次落盘；启动时扫一遍，超过 {@link #DEFAULT_TIMEOUT_MS} 的自动退款并记流水。
  *
- * <p>这个类只管账本逻辑；序列化由调用方接到 SavedData 上 —— 那是平台侧的事。
+ * <p><b>没有锁，只许主线程碰</b>（{@link CurrencyGateway}）。别在这里加锁当跨线程保证 ——
+ * 两个 provider 实例各拿各的锁写同一份账，实测照样丢钱（E25 ③）。
  *
  * <h2>重复结算要认得出来</h2>
  *
@@ -27,6 +28,12 @@ public final class EscrowLedger {
     /** 托管超时，默认 7 天（§22.4）。到点自动退款。 */
     public static final long DEFAULT_TIMEOUT_MS = 7L * 24 * 3600 * 1000;
 
+    /**
+     * 已结清的留多久。留着是为了重复结算时答得出 {@code ALREADY_SETTLED}；
+     * 过了这个期限再来就是 {@code UNKNOWN_ESCROW}。工程常值，不是方案里的数。
+     */
+    public static final long SETTLED_KEEP_MS = 30L * 24 * 3600 * 1000;
+
     /** 一笔托管。 */
     public record Entry(UUID owner, UUID beneficiary, String currencyId, long amount,
                         long createdAt, boolean settled) {
@@ -35,20 +42,39 @@ public final class EscrowLedger {
     private final Map<UUID, Entry> entries = new HashMap<>();
     private final LongSupplier clock;
     private final long timeoutMs;
+    private final Runnable onChange;
+    private final java.util.function.Function<String, String> lockedReason;
 
     public EscrowLedger(LongSupplier clock) {
         this(clock, DEFAULT_TIMEOUT_MS);
     }
 
     public EscrowLedger(LongSupplier clock, long timeoutMs) {
+        this(clock, timeoutMs, () -> { }, currencyId -> null);
+    }
+
+    /**
+     * @param onChange     每次改动之后调一次 —— 落盘靠它标脏，与改动在同一个主线程操作里
+     * @param lockedReason 货币 id → 这种货币的账为什么动不了（翻译键）；动得了就是 null
+     */
+    public EscrowLedger(LongSupplier clock, long timeoutMs, Runnable onChange,
+                        java.util.function.Function<String, String> lockedReason) {
         this.clock = clock;
         this.timeoutMs = timeoutMs;
+        this.onChange = onChange;
+        this.lockedReason = lockedReason;
+    }
+
+    /** 这种货币的托管现在动不动得了。动不了返回原因的翻译键（存档读坏了，见 {@link EconomyData}），动得了返回 null。 */
+    public String unavailableReasonKey(String currencyId) {
+        return lockedReason.apply(currencyId);
     }
 
     /** 建一笔。钱已经从 owner 身上扣掉了 —— 这里只记账。 */
     public EscrowId create(UUID owner, UUID beneficiary, String currencyId, long amount) {
         UUID id = UUID.randomUUID();
         entries.put(id, new Entry(owner, beneficiary, currencyId, amount, clock.getAsLong(), false));
+        onChange.run();
         return new EscrowId(id);
     }
 
@@ -63,6 +89,7 @@ public final class EscrowLedger {
         if (e == null || e.settled()) return false;
         entries.put(id.value(), new Entry(e.owner(), e.beneficiary(), e.currencyId(),
                 e.amount(), e.createdAt(), true));
+        onChange.run();
         return true;
     }
 
@@ -86,6 +113,23 @@ public final class EscrowLedger {
             }
         }
         return out;
+    }
+
+    /**
+     * 清掉建立时间早于 {@link #SETTLED_KEEP_MS} 的已结清条目。启动扫描时调。
+     *
+     * <p>按建立时间算而不是按结清时间：结清时间没有记，而超时是 7 天，
+     * 30 天前建的那一笔要么早就结了、要么在这之前的扫描里已经被退款结清。
+     *
+     * @return 清掉几条
+     */
+    public int pruneSettled() {
+        long cutoff = clock.getAsLong() - SETTLED_KEEP_MS;
+        int before = entries.size();
+        entries.values().removeIf(e -> e.settled() && e.createdAt() < cutoff);
+        int n = before - entries.size();
+        if (n > 0) onChange.run();
+        return n;
     }
 
     /** 落盘用：全部条目。 */

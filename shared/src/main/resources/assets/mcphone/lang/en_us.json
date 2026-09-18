@@ -404,5 +404,11 @@
   "mcphone.picker.preview.loading": "Loading…",
   "mcphone.economy.scoreboard.no_server": "The server is not running yet, so this ledger cannot be read.",
   "mcphone.economy.scoreboard.off_thread": "This operation is off the server main thread; the scoreboard cannot be changed.",
-  "mcphone.economy.scoreboard.no_objective": "The scoreboard has no objective for this ledger, and one could not be created."
+  "mcphone.economy.scoreboard.no_objective": "The scoreboard has no objective for this ledger, and one could not be created.",
+  "mcphone.economy.unavailable.data_locked": "Currency data failed to load and is locked; no money was lost (see the server log).",
+  "mcphone.economy.unavailable.main_thread_busy": "The server is busy. Nothing was done; try again shortly.",
+  "mcphone.economy.unavailable.queue_full": "Too many currency requests are queued. Nothing was done; try again shortly.",
+  "mcphone.economy.unavailable.stopping": "The server is stopping. Nothing was done.",
+  "mcphone.economy.unavailable.interrupted": "The request was interrupted. Nothing was done.",
+  "mcphone.economy.unavailable.wait_budget": "This call waited too long for the server; the remaining currency operations were skipped."
 }

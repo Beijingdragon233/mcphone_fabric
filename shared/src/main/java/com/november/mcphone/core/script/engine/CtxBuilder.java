@@ -241,7 +241,12 @@ public final class CtxBuilder {
             // balance 只能读自己（§22.5）。读别人是 currency.read.other，granted 档，本步不给
             HostFn.put(cur, scope, "balance", 1, (c, s, a) -> {
                 ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.balance"));
-                return Amounts.toScript(prov.balance(player.uuid()));
+                try {
+                    return Amounts.toScript(prov.balance(player.uuid()));
+                } catch (com.november.mcphone.core.script.server.economy.CurrencyUnavailableException e) {
+                    // 读不到就明说，不返回 0：App 拿 0 当余额，会告诉玩家他没钱
+                    throw new ScriptAbort(ScriptAbort.Reason.HOST, "currency.balance 暂时读不到：" + e.reasonKey());
+                }
             });
 
             // format 必须用宿主（§22.5）：自己拼小数点，负数与不足位就各错各的

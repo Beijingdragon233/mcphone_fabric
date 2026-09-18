@@ -21,7 +21,8 @@ import java.util.UUID;
  * <pre>world/mcphone/economy/ledger/&lt;yyyy-MM-dd&gt;.log</pre>
  *
  * <p>字段顺序照 §22.10 的原文：
- * {@code 时间 | 货币id | 类型 | from | to | 金额 | appId | kind | ref | 结果}
+ * {@code 时间 | 货币id | 类型 | from | to | 金额 | appId | kind | ref | 结果}。
+ * 以 {@code #} 开头的是注释行（存档点、重启说明），不满 10 格。
  *
  * <h2>这是经济系统唯一的安全网</h2>
  *
@@ -48,10 +49,29 @@ public final class TxnLog {
 
     private final Path dir;
     private final ZoneId zone;
+    private final Journal journal;
 
     public TxnLog(Path economyDir, ZoneId zone) {
+        this(economyDir, zone, null);
+    }
+
+    public TxnLog(Path economyDir, ZoneId zone, Journal journal) {
         this.dir = economyDir.resolve("ledger");
         this.zone = zone;
+        this.journal = journal;
+    }
+
+    /**
+     * 每记一行都告诉它（实现在 {@link EconomyData}，与余额同一次落盘）：
+     * <ul>
+     *   <li>成功的 mint / burn 记进累计 —— 对账读累计，不读流水文件：流水 {@link #RETENTION_DAYS} 天后会被清掉，
+     *       强杀之后还会比存档超前一截，拿它对账要么早晚不平、要么重启之后不平。</li>
+     *   <li>任何一笔成功都标脏 —— 下一次世界保存必定写存档点（{@link #checkpoint}）。计分板档的转账不碰这份存档，
+     *       不标脏的话它们永远排在最后一个存档点之后，正常停服再开也会被当成"没进存档"。</li>
+     * </ul>
+     */
+    public interface Journal {
+        void recorded(String currencyId, Kind kind, long amount, TxnResult result);
     }
 
     /** 一笔变动的种类。 */
@@ -59,9 +79,10 @@ public final class TxnLog {
         TRANSFER, MINT, BURN, HOLD, RELEASE, REFUND
     }
 
-    /** 记一行。 */
+    /** 记一行。成功的 mint / burn 同时记进 {@link Journal} 的累计 —— 与余额的改动在同一个主线程操作里。 */
     public void append(Instant at, String currencyId, Kind kind, UUID from, UUID to,
                        long amount, String appId, TxnReason reason, TxnResult result) {
+        if (journal != null) journal.recorded(currencyId, kind, amount, result);
         String line = String.join(String.valueOf(SEP),
                 at.toString(),
                 currencyId,
@@ -74,6 +95,68 @@ public final class TxnLog {
                 reason == null ? "-" : reason.ref(),
                 result.name());
         write(at, line);
+    }
+
+    /** 注释行的开头。{@link #sumMintAndBurn} 这类按竖线切的解析，切出来不满 10 格，自然跳过。 */
+    private static final String CHECKPOINT = "# 存档点 ";
+
+    /**
+     * 世界保存时写一行存档点（{@link EconomyData} 在序列化时调）。开服时拿它判断流水比存档超前了几笔。
+     *
+     * <p>序列化与真正写盘之间被强杀的话，这一行会多说一次"存过了"，那一个保存周期里的变动就漏报了。
+     */
+    public void checkpoint(Instant at) {
+        write(at, CHECKPOINT + at);
+    }
+
+    /**
+     * 开服时调：上一个存档点之后还有成功的变动，说明它们没进存档（强杀或崩溃），写一行标出来。
+     * 不标出来，服主会拿着一行「A 付给 B 100」去对一笔并没有生效的账。
+     *
+     * <p>只看最新的两个文件：存档点至少每次世界保存写一次，跨两个文件还找不到就是老流水、判断不了，不报。
+     *
+     * @return 没进存档的成功变动有几笔
+     */
+    public int noteRestart(Instant now) {
+        if (!Files.isDirectory(dir)) return 0;
+        List<Path> files = new ArrayList<>();
+        try (var s = Files.list(dir)) {
+            for (Path p : s.toList()) {
+                if (p.getFileName().toString().endsWith(".log")) files.add(p);
+            }
+            files.sort((x, y) -> {
+                try {
+                    return Files.getLastModifiedTime(y).compareTo(Files.getLastModifiedTime(x));
+                } catch (IOException e) {
+                    return 0;
+                }
+            });
+        } catch (IOException e) {
+            com.november.mcphone.MCphone.LOGGER.warn("[MCphone] 读流水失败: {}", e.toString());
+            return 0;
+        }
+        int unsaved = 0;
+        for (Path p : files.subList(0, Math.min(2, files.size()))) {
+            List<String> lines;
+            try {
+                lines = Files.readAllLines(p, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                return 0;
+            }
+            for (int i = lines.size() - 1; i >= 0; i--) {
+                String line = lines.get(i);
+                if (line.startsWith(CHECKPOINT)) {
+                    if (unsaved > 0) {
+                        write(now, "# " + now + " 重启：上一个存档点之后有 " + unsaved
+                                + " 笔成功的变动没进存档（强杀或崩溃），以存档为准");
+                    }
+                    return unsaved;
+                }
+                String[] f = line.split("\\|", -1);
+                if (f.length >= 10 && "OK".equals(f[9])) unsaved++;
+            }
+        }
+        return 0;
     }
 
     private void write(Instant at, String line) {

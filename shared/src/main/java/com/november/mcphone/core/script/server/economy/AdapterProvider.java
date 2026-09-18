@@ -130,6 +130,8 @@ public final class AdapterProvider implements ICurrencyProvider {
         if (from == null || beneficiary == null) return HoldResult.fail(TxnResult.INVALID);
         TxnResult bad = com.november.mcphone.api.economy.Balances.checkAmount(amount);
         if (bad != TxnResult.OK) return HoldResult.fail(bad);
+        // 托管记在世界存档里；存档锁住时记不进去，就别先从外部钱包扣
+        if (escrow.unavailableReasonKey(id()) != null) return HoldResult.fail(TxnResult.UNAVAILABLE);
         if (!wallet.withdraw(from, amount)) return HoldResult.fail(TxnResult.INSUFFICIENT);
         return HoldResult.ok(escrow.create(from, beneficiary, id(), amount));
     }
@@ -145,6 +147,8 @@ public final class AdapterProvider implements ICurrencyProvider {
     }
 
     private TxnResult settle(EscrowId id, boolean toBeneficiary) {
+        // 锁住的货币，它的托管条目根本没读进来 —— 先判锁，否则会答成 UNKNOWN_ESCROW
+        if (escrow.unavailableReasonKey(id()) != null) return TxnResult.UNAVAILABLE;
         EscrowLedger.Entry e = escrow.get(id);
         if (e == null) return TxnResult.UNKNOWN_ESCROW;
         // 托管号要认货币（E25）

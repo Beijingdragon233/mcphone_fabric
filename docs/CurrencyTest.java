@@ -269,7 +269,7 @@ public class CurrencyTest {
 
     // ================================================================ 真 provider（§22.7 builtin）
 
-    /** 内存里的余额表。真正的落在 PhonePlayerData.economy()，那要服务器。 */
+    /** 内存里的余额表。真正的是世界级存档 EconomyData，见 EconomyDataTest。 */
     static final class MemBalances implements BalanceStore {
         final java.util.Map<String, Long> m = new ConcurrentHashMap<>();
 

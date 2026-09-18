@@ -5,7 +5,6 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.music.DiscState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
-import com.november.mcphone.core.script.server.store.ScriptEconomy;
 import com.november.mcphone.core.script.server.store.ScriptGuards;
 import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
@@ -58,7 +57,6 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
     private static final String KEY_PURCHASED = "purchased_apps";
     private static final String KEY_SCRIPT_KV = "script_kv";
     private static final String KEY_SCRIPT_GUARDS = "script_guards";
-    private static final String KEY_SCRIPT_ECONOMY = "script_economy";
 
     private WallpaperData wallpaper = WallpaperData.DEFAULT;
     private NoteList notes = NoteList.EMPTY;
@@ -68,7 +66,6 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
     private PurchasedApps purchasedApps = PurchasedApps.EMPTY;
     private ScriptKv scriptKv = ScriptKv.DEFAULT;
     private ScriptGuards scriptGuards = ScriptGuards.DEFAULT;
-    private ScriptEconomy economy = ScriptEconomy.DEFAULT;
 
     public WallpaperData wallpaper() {
         return wallpaper;
@@ -150,18 +147,6 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
     public void setScriptGuards(ScriptGuards value) {
         this.scriptGuards = value;
     }
-    /**
-     * builtin 货币提供者的余额（§22.7）。<b>与 scriptKv() 分开</b> ——
-     * 脚本写得到 scriptKv，余额塞进去等于让脚本改自己的钱。
-     */
-    public ScriptEconomy economy() {
-        return economy;
-    }
-
-    public void setEconomy(ScriptEconomy value) {
-        this.economy = value;
-    }
-
     /** 把 other 的内容整个拷过来。玩家重生/换维度时由 ModCapabilities 调用 */
     public void copyFrom(PhonePlayerData other) {
         this.wallpaper = other.wallpaper;
@@ -172,7 +157,6 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         this.purchasedApps = other.purchasedApps;
         this.scriptKv = other.scriptKv;
         this.scriptGuards = other.scriptGuards;
-        this.economy = other.economy;
     }
 
     /**
@@ -190,10 +174,12 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
      *                                                 不该因为死一次就没）
      *   purchasedApps   标了                     → 拷（买过的东西不能因为死一次就没了）
      *   scriptKv        标了                     → 拷（App 的进度不该因为死一次就没）
-     *   economy         标了                     → 拷【必须】：不拷的话死一次钱就没了
      *   scriptGuards    标了                     → 拷【必须】：不拷的话死一次就能重领，
      *                                                 而死亡在 Minecraft 里是随时可以自己
      *                                                 安排的事（§20.2 铁规 2 的延伸）
+     *
+     * 货币余额不在这里：它在世界级存档（EconomyData），不挂玩家，死亡与它无关。
+     * 旧存档里的 script_economy 那一格读的时候直接忽略 —— 它从来没有被写进过非空的值。
      */
     public void copyDeathPersistentFrom(PhonePlayerData other) {
         this.notes = other.notes;
@@ -203,7 +189,6 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         this.purchasedApps = other.purchasedApps;
         this.scriptKv = other.scriptKv;
         this.scriptGuards = other.scriptGuards;
-        this.economy = other.economy;
     }
 
     @Override
@@ -233,9 +218,6 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         ScriptGuards.CODEC.encodeStart(NbtOps.INSTANCE, scriptGuards)
                 .resultOrPartial(err -> MCphone.LOGGER.error("脚本守卫写入存档失败: {}", err))
                 .ifPresent(encoded -> tag.put(KEY_SCRIPT_GUARDS, encoded));
-        ScriptEconomy.CODEC.encodeStart(NbtOps.INSTANCE, economy)
-                .resultOrPartial(err -> MCphone.LOGGER.error("余额写入存档失败: {}", err))
-                .ifPresent(encoded -> tag.put(KEY_SCRIPT_ECONOMY, encoded));
         return tag;
     }
 
@@ -252,14 +234,6 @@ public final class PhonePlayerData implements INBTSerializable<CompoundTag> {
         purchasedApps = PurchasedApps.EMPTY;
         scriptKv = ScriptKv.DEFAULT;
         scriptGuards = ScriptGuards.DEFAULT;
-        economy = ScriptEconomy.DEFAULT;
-
-        Tag eco = tag.get(KEY_SCRIPT_ECONOMY);
-        if (eco != null) {
-            ScriptEconomy.CODEC.parse(NbtOps.INSTANCE, eco)
-                    .resultOrPartial(err -> MCphone.LOGGER.warn("余额读取失败，已退回 0: {}", err))
-                    .ifPresent(value -> economy = value);
-        }
 
         Tag skv = tag.get(KEY_SCRIPT_KV);
         if (skv != null) {

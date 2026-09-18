@@ -6,10 +6,9 @@ import java.util.UUID;
 /**
  * builtin 提供者把余额存在哪（施工方案 §22.7）。
  *
- * <p>抽成接口是为了能测：真正的实现落在 {@code PhonePlayerData.economy()} 上，
- * 而那要一台服务器；断言测试喂一个内存实现，就能把 §22.9 的五条不变量与守恒逐条判掉。
- *
- * <p><b>落盘不许另造第三套机制</b>（勘误 E15）：走 S14 建的那条具名访问器的路。
+ * <p>生产环境的实现是 {@link EconomyData}：世界级存档，按 UUID 索引 ——
+ * 余额不能挂在玩家身上，离线玩家没有那份数据，而收款方离线照样要收得到（§22.4）。
+ * 断言测试喂一个内存实现，就能把 §22.9 的五条不变量与守恒逐条判掉。
  */
 public interface BalanceStore {
 
@@ -19,4 +18,13 @@ public interface BalanceStore {
 
     /** 对账要把所有玩家的余额加起来（§22.10）。离线玩家也要算进去。 */
     Map<UUID, Long> all(String currencyId);
+
+    /**
+     * 这种货币的账现在动不动得了。动不了返回原因的翻译键，动得了返回 null。
+     *
+     * <p>存档读坏了的那种货币要锁住：拿一本空账接着记，下次保存就把原来的账盖掉了（见 {@link EconomyData}）。
+     */
+    default String unavailableReasonKey(String currencyId) {
+        return null;
+    }
 }
