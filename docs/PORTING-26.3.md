@@ -374,6 +374,7 @@ verifySeamsDocCurrent        通过（26.3 那段标记早就手工加好了）
 ## 十二、下一步（1d）的顺序，按收益排
 
 1. 补 `MCphone.java` 的 `LOGGER` / `MODID` / `getVersion()` —— 279 条当场消失。
+   **做完了，实测见 §十三。**
 2. 补 `platform/client/PhoneScreenBase`、`Draw`、`ModPresence`、`SystemFiles`、
    `KeyModifiers`、`EditBoxes`、`CameraGui`、`VanillaAudio`、`PlayerSkins`、`Slots`、
    `StackCodecs`、`ClientTicks`、`CompatModules` 这批**小门面**（13 个文件、约 560 行），
@@ -385,3 +386,71 @@ verifySeamsDocCurrent        通过（26.3 那段标记早就手工加好了）
 
 一句话：**这一支现在离「能玩」还差 47 个平台文件 + 69 个真改文件，但原先估的「绘制族要
 全面接渲染管线」是错的，那一族其实只是改名。**
+
+---
+
+## 十三、1d 第 1 步做完了：真入口替掉探针
+
+`platforms/26.3-neoforge/.../MCphone.java` 从探针换成真入口：`MODID`、`LOGGER`、
+`version` 加 `getVersion()`，构造函数 `(IEventBus, ModContainer)`。注册那一大段
+【没有抄过来】—— 它引用的 12 个类在这一支一个都还没有，写上去只换来十几行
+`cannot find symbol`。为什么现在不写、以及一份逐条注明「等谁」的清单，都在那个文件的
+类注释里；构造形状另取过一次证（`NeoForgeMod(IEventBus, Dist, ModContainer)`、
+`ClientNeoForgeMod(IEventBus, ModContainer)`、`@Mod` 的 `@Target` 仍只有 `TYPE`、
+`IModInfo.getVersion()` 返回 `ArtifactVersion`）。
+
+| | 1c | 这一步之后 |
+|---|---:|---:|
+| javac 错误 | 1,523 | **1,244** |
+| 报错文件数 | 214 | **193** |
+| 一个字没改就编过 | 208 / 422 | **229 / 422**（54.3%） |
+| A 改名 | 588 | 588 |
+| B 平台文件未补 | 504 | **225** |
+| E 级联 | 186 | 186 |
+| C 覆写 / D 附属 / F GLFW / G 形变 | 41 / 54 / 16 / 134 | 一字未动 |
+| 真断小计 | 245 条 / 69 文件 | 245 条 / 69 文件 |
+
+少的 279 条【全部落在 B 桶】，真断一条没动 —— 这正是这一步的本意：把日志洗干净，
+不碰设计问题。21 个文件当场全绿（214 − 193），而 §一 那句「只要改名 + 补平台文件
+就可能转绿」的文件数从 145 掉到 124，差的正是那 21 个。
+闸那边：`verifyPlatformTwins` 先按设计红了（差异 277 → 257，基线没跟上），
+跑 `updateTwinBaseline` 把合计从 4,728 压到 4,708，其余四道绿。
+
+### A 桶现在拆得开了：588 条其实是【两个名字】
+
+| 名字 | 条数 | 文件 | 其中 import 行 |
+|---|---:|---:|---:|
+| `ResourceLocation` → `Identifier` | 314 | 86 | 85 |
+| `GuiGraphics` → `GuiGraphicsExtractor` | 244 | 55 | 55 |
+| 其余 11 个改名（`ToastComponent`、`GameProfileCache` 等） | 30 | — | — |
+
+128 个文件里这两个名字至少出现一次；**79 个文件的错误【全部】只来自这两个名字**，
+共 287 条。这两个名字一解决，1,244 当场下去 588。
+
+### 但 588 是下界：还有一族被它盖着
+
+`GuiGraphics` 解析不成功的时候，javac 不会去报它身上的方法名。类型一到位，这一批会
+当场冒出来：`drawString(` 215 处（213 处接收者写作 `g.`，另外 2 处在 `PhoneCanvas`
+与 `IPhonePage` 的 javadoc 示例里）加 `drawCenteredString(` 5 处，26.3 上改叫
+`text` / `centeredText`，实参个数一字未改 —— 与 §四 那条普查一致。
+
+顺手量了一件对「要不要机械改」有决定意义的事：全仓 `drawString` / `drawCenteredString`
+【没有任何自家定义】（查过，零命中），而 213 处的接收者名字写死了是 `g`。
+也就是说这一族真要批量改，没有歧义地雷。
+
+### 岔路：这两个名字怎么办，要人拍板（未决）
+
+§九 定过「不给层加 `until`」，签名不同的东西走门面。那条路对 `GuiGraphics` 走得住
+（`Draw` 收口，244 条），但对 `ResourceLocation` 走不住：它是被当成【类型】用的 ——
+字段、形参、局部变量、泛型实参，86 个文件 229 处非 import 的引用。门面能包住调用，
+包不住「这个类型叫什么名字」。两条路：
+
+1. **门面收口**（§十二 原方案）：`shared/` 不再直呼这两个类型名。要动 128 个文件，
+   其中 `ResourceLocation` 那一族等于把全仓的 id 类型换个说法重写。结构最干净，
+   代价最大，而且 `1.21.1-neoforge` 那支跟着一起改（同一个 `shared/`）。
+2. **挂载时改名**：给目标声明一张改名表（26.3 就是那两条，也许再加 `drawString→text`），
+   挂载共用代码时按词边界生成一份改过名的副本。一条声明换 588 条（连被盖住的那 220 处），
+   代价是引入一个仓库里没有过的机制：改的是【源码文本】而不是【文件归属】，
+   而且挂载点编的东西跟 `git show` 出来的不再是同一份字。
+
+这一步没顺手往下做，因为两条路的下一步长得不一样：走 1 要先写 `Draw`，走 2 不用。
