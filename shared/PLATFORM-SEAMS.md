@@ -223,7 +223,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-neoforge -->
 
-#### 共用代码引用了的（34）
+#### 共用代码引用了的（35）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -260,6 +260,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
 - `platform.client.SystemFiles`
+- `platform.client.Transforms`
 - `platform.client.VanillaAudio`
 
 #### 平台内部的（14）
@@ -292,7 +293,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（74）
+#### 共用代码引用了的（75）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -369,6 +370,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
 - `platform.client.SystemFiles`
+- `platform.client.Transforms`
 - `platform.client.VanillaAudio`
 
 #### 平台内部的（33）
@@ -413,7 +415,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-fabric -->
 
-#### 共用代码引用了的（36）
+#### 共用代码引用了的（37）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -452,6 +454,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
 - `platform.client.SystemFiles`
+- `platform.client.Transforms`
 - `platform.client.VanillaAudio`
 
 #### 平台内部的（28）
@@ -491,7 +494,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
 
-#### 共用代码引用了的（26）
+#### 共用代码引用了的（27）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -521,6 +524,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
 - `platform.client.SystemFiles`
+- `platform.client.Transforms`
 
 #### 平台内部的（10）
 

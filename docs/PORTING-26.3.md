@@ -671,6 +671,88 @@ G 那一桶里新冒出来的两族值得单记：`ServerPlayer.server` 变 priv
 26.3 叫 `handle()`，但句柄本身是不是还发得出一个 GLFW 窗口 id，本轮没验 —— 它跟 GLFW→SDL
 那 20 条是同一个问题，一起解。
 
+### 数字
+
+| | 526（上一步末） | 452（这一步末） |
+|---|---:|---:|
+| javac 错误 | 526 | **452** |
+| 报错文件 | 109 | **105** |
+| 挂载源 | 429 | **457** |
+| 一字未改就编过 | 320（74.6%） | **352（77.0%）** |
+| B 平台文件没补 | 175 | **13** |
+| G 真断·形变 | 208 | **256** |
+| E 级联 | 27 | **30** |
+| A 改名 | 60 | 60 |
+| D 附属模组 | 56 | 56 |
+| F GLFW | 20 | 20 |
+| C 覆写 | 17 | 17 |
+
+B 从 175 掉到 **13**：这条台阶【到此吃完】。往后没有「补一个文件掉一百条」了。
+真断小计（C+D+F+G）349 条 / 452，也就是剩下 77% 全是得逐处重写的。
+G 与 E 这两步里升（+48、+3）跟 §十五 同理 —— 父类与兄弟文件一修好，原先被 error type
+挡住的真断就露出来，量尺变准不是回退。
+
+接缝清单 26.3 那一段 8 → **36** 个（共用代码引用到 26 个），双胞胎基线 4,838 → **5,904** 行 /
+110 对。`updateSeamsDoc` 与 `updateTwinBaseline` 都重新生成过，五道闸全绿。
+
+### 剩下 452 条里最大那几块（按聚合计数，取自本轮 `hist`）
+
+| 族 | 条 | 去处 |
+|---|---:|---|
+| `Util` 换包 | 24 | 【这一族不用门面，一次改名就吃完，见下】 |
+| `ServerPlayer.server` private | 23 | 一个小门面 |
+| GLFW 一族 | 20 | `com.mojang.blaze3d.platform` 下换成了 SDL（`SDLEventHandler`） |
+| `pose()` → `Matrix3x2fStack` | 49（`pushPose` 10 / `popPose` 10 / `int→Matrix3x2f` 12 / `float→` 9 / 其余 8 条 `setColor`） | `Draw` 里的 2D 变换门面；**`Renderer.java:264` 那处 `translate(x,y,200)` 的 z 在 26.x 的 2D 栈里没有对应物，得单独定** |
+| `displayClientMessage` | 13 | 消息组件参数变了形状 |
+| `setScreen` | 10 | 26.3 叫 `setScreenAndShow(Screen)`（已验在）；改名表的【方法】那半本来就吃这个，加上 `setScreen → setScreenAndShow` 一条就是 10 条 |
+| `AbstractContainerScreen`（`renderBg` 没了、`imageWidth/imageHeight` 变 final） | 9 | 一个 `PhoneContainerScreenBase`，跟 §十五 同一个思路 |
+| 附属模组（D） | 56 | 【产品决策，等一句话】首发要不要带那几个联动 |
+
+`hideGui`（4 条）单记：`Options.hideGui` 这个字段在 26.3 全 jar 查不到，F3 那套现在叫
+`Hud.isHidden()` + `toggle()`，是【状态搬了家且只有一个开关】，所以 `CameraGui` 那个
+返回 boolean 的门面形状撑不住，得重新设计。
+
+### `Util` 那 24 条：§十一 那句「成员有增减」说重了
+
+本轮把 24 条【逐条落到源码行上】数了一遍（脚本 `ut1l1d4.py`，不是估的）：
+
+| | 条 |
+|---|---:|
+| `import net.minecraft.Util;` 那一行 | 10 |
+| `Util.backgroundExecutor()` | 12（其中 `PhoneScreen.java:412` 那处写的是全限定名） |
+| `Util.getFilenameFormattedDateTime()` | 1 |
+| `Util.getPlatform().openFile(File)` | 1 |
+
+对着 26.3 的源逐个看：`net/minecraft/Util.java`【不存在】而 `net/minecraft/util/Util.java`
+【存在】，搬家这条是真的；`backgroundExecutor()` 与 `getFilenameFormattedDateTime()`
+在那份源里【原样还在】（`public static TracingExecutor backgroundExecutor()` /
+`public static String getFilenameFormattedDateTime()`），`getPlatform()` 也在、返回 `Util.OS`。
+唯一真没了的是【`OS` 这个枚举的成员】：26.3 里它是 `public enum OS { OS(String telemetryName) }`
+—— 只剩一个 `telemetryName()`，`openFile` / `openPath` 都不在了，去处是
+`com/mojang/blaze3d/Blaze3D.java` 的 `openPath(Path)` 与 `openUri(URI)`。
+
+所以准确的说法是【23 条纯粹是包路径搬家，1 条是真断】：那 1 条就是 `BookList.java:566` 的
+`Util.getPlatform().openFile(TxtLibrary.directory().toFile())`，它得改走本轮新写的 `SystemFiles`。
+（另两处 `Util.ioPool()` / 第二处 `getFilenameFormattedDateTime` 出现在注释里，本来就不算错误。）
+
+顺带把 §十一 那句话改准：当时写「整类换包【且成员有增减】」，方向对、比例错得离谱 ——
+听起来像一整族要重写，实际是 10 行 import 加 13 个调用点。
+
+所以这 24 条的根因只有一句话：【包路径从 `net.minecraft` 挪到了 `net.minecraft.util`】。
+改名表现在只按【标识符】换名，而这里标识符没变、变的是它前面的包名，所以吃不下 ——
+这不是要加门面，是要给改名表加【整行精确替换】这一档（`import net.minecraft.Util;` →
+`import net.minecraft.util.Util;`，另外那 1 处全限定名同理）。
+加完这一档就是【23 条一次清】（那 1 条真断的 `openFile` 另算），是 452 之后单位收益最大的一块；
+`setScreen` 那 10 条也顺手一起 —— 它的锚点本来就合适用【方法名】那一档：报错的 10 处
+全写作 `.setScreen(`，前面必定带点，`PhoneItemData.setScreenOn(ItemStack)` 那种自家定义撞不上。
+
+`setScreen → setScreenAndShow` 这条加之前先记两个坑（本轮量的）：
+仓库里另有一个【自己声明的】`setScreenOn(ItemStack)`（`core/PhoneItemData.java:105`），
+改名要是按【前缀】匹配就会把它一起带走 —— 现在这套机制是按标识符整词换的，验一条即可；
+另外有 3 处 `setScreen` 出现在【注释与 javadoc】里（`PhoneScreenOpener.java:23`、
+`IPhonePage.java:10`、`ImmersiveEngineeringManual.java:25`，都是写给模组作者看的说明文字），
+按标识符换会连注释一起换 —— 换完读起来别扭但不算错，先记下，别到时就忘了它为什么变了。
+
 ## 十七、1d 第 5 步：改名表加第三档「限定名搬家」。452 → 418
 
 §十六 末尾说的【单位收益最大那块】这一步就做掉了，而且它顺带把改名机制的适用面补全了一块。
@@ -846,84 +928,120 @@ G 一次掉 23 且【没有新的冒出来】—— 这是这几轮里少见的�
 `1.21.1-neoforge` / `1.21.1-fabric` / `1.20.1-forge` 三支仍 `BUILD SUCCESSFUL` ——
 最后那支是这条替换式能不能用的真正裁判，它编过了。
 
+## 二十、1d 第 8 步：`pose` 那一族收进 `Transforms` 接缝。369 → 324
+
+§十六 排下来的那一族这一步吃掉了 45 条。它【不能走改名表】，理由是形状不一致：
+`pushPose` → `pushMatrix` 是改名；`translate(x, y, 0)` → `translate(x, y)` 是【少一个参数】；
+`pose().last().pose()` 是【多出来一层】。一张按标识符换名的表吃不下三种改形，
+而按 §九 那条判据（两支写出来没有一行是一样的）这就该收在一个每平台接缝上：
+新文件 `platform/client/Transforms`，四支各一份，七个静态方法
+`push` / `pop` / `translate` / `scale` / `translateAboveItemModel` / `mapX` / `mapY`。
+
+### 26.x 那三支的差异是真的，不是起个新名字
+
+对着 26.3 的源与 `joml-1.10.9` 量过的三条事实：
+
+- `GuiGraphicsExtractor.pose()` 返回 `org.joml.Matrix3x2fStack`，压弹叫
+  `pushMatrix()` / `popMatrix()`，`translate` 与 `scale`【只收两个 float】。
+- 【整个栈没有 z 这一维】。老平台上 `translate(x, y, 0)` 那个 0 是「不抬深度」，
+  丢掉它语义一模一样；`scale(sx, sy, 1)` 那个 1 同理。
+- `mapX` / `mapY` 这两支根本不是同一句话：1.21.1 走 `pose().last().pose()` 摊出来的
+  那张 `Matrix4f` 再 `transformPosition(x, y, 0, Vector3f)`；26.x 的栈【本身】就是当前那张
+  `Matrix3x2f`（`Matrix3x2fStack extends Matrix3x2f`），少的那个参数不是丢了的语义。
+
+### 那个 `z = 200`：这一支靠提交顺序，而且【还没在游戏里复核】
+
+`Renderer.drawItemCount` 写的是 `translate(x, y, 200)`，为的是把数量角标抬到物品模型
+（画在 z≈150）之上。26.x 没有那一维，挡不挡只能落在【提交顺序】上 —— 而调用点本来就是
+先画物品、紧接着画数字。所以这一支的 `translateAboveItemModel` 收成普通平移。
+
+**这条推断没验过**：角标到底会不会被物品模型压住，得开起来看一眼。它写在接缝的类注释里，
+不是在代码里偷偷假设掉的。
+
+### 45 条是怎么数的（两条日志逐条对过，不是估的）
+
+| 消失的错误 | 条 |
+|---|---:|
+| `找不到符号` · `pushPose` | 11 |
+| `找不到符号` · `popPose` | 11 |
+| `找不到符号` · `last` | 1（`BrowserScreen:224` 那处【仍在】，见下） |
+| `int无法转换为Matrix3x2f`（`translate` 三个参数） | 12 |
+| `float无法转换为Matrix3x2f`（`scale` 三个参数） | 9 |
+| `从double转换到float可能会有损失` | 1 |
+| 合计 | **45** |
+
+前 23 条按 `符号:` 那一行分：`pushPose` 11、`popPose` 11、`last` 由 2 条掉到 1 条。
+后 22 条是类型转换那一族，我把日志里这 22 条的【javac 回显源码行】逐条看过：
+【22 条全部落在含 `.pose().` 的行上】，按调用名分是 `translate` 12、`scale` 10；
+按消息分是 `int无法转换为Matrix3x2f` 12、`float无法转换为Matrix3x2f` 9、
+`从double转换到float可能会有损失` 1。两个切法乘起来正好是这 22 条，没有一条是别的族混进来的。
+
+也就是说 45 = 23 + 22，一步不差；而 `setColor` 那 8 条（§十六 表里跟这族记在一起）
+这一步【一条没动】，它得单独一刀。
+
+### 改了哪些调用点
+
+脚本切的，不是手抄的：按【括号深度】配平再切参数，不靠正则猜逗号，所以
+`translate(x + (NAV_BTN_W - gw) / 2f, y + (h - gh) / 2f, 0)` 这种参数里带括号也切得对。
+它只认三种形状：第三参数是字面量 `0`（几种写法都算）→ `translate`；是 `200` →
+`translateAboveItemModel`；`scale` 的第三参数是 `1`。【对不上就停下来报出来】，
+这一轮停下来的只有接缝自己的那份文件（它的 `translate` 只有两个参数，本来就该跳过）。
+
+- 共用代码 `shared/`：**41 处**，落在 9 个文件：`GuiUtil` 8、`PhoneScreen` 5、
+  `Renderer` 4、`BrowserScreen` 4、`CameraStamp` 4、`ClockPage` 4、`PatchouliSource` 4、
+  `PhoneHudEditor` 4、`WeatherPage` 4。加上下面那 3 处本平台调用点，脚本报的 44 处正好对上。
+- 本平台文件 `PhoneMultiLineEditBox`：四支【各 3 处】。26.3 那 3 处本来就是 3 条错误
+  （本平台文件不过改名挂载，老名字得直接写），另三支是被接缝顺手带过去的，见下。
+- 手工两处：`GuiUtil.enableScissor` 的投影改成 `Transforms.mapX` / `mapY` 各取两回
+  （两头取整方向那段注释原样留着，那是业务不是形状）；`BrowserScreen:224` 那句
+  `g.pose().last().pose()` 【不动】—— 它喂的是 `Draw.texturedQuad(Matrix4f, …)`，
+  那一路卡在 renderpearl 的顶点上传上（`Tesselator` / `BufferUploader` / `VertexFormat`
+  在 26.x 整个没了），单收在这一族里只会把两件事搅在一起。
+
+### 一次「只给新目标打补丁」被棘轮拦下来
+
+第一刀我只改了 26.3 那一份 `PhoneMultiLineEditBox`。`updateTwinBaseline` 当场把它的差异
+从 **13 行写成 20 行** —— 而 `verifyPlatformTwins` 的判据是【只许降不许升】，
+`worse` 那一档是直接抛异常的（`gradle/mcphone-checks.gradle:1062`、`:1073`）。
+换句话说：同一份文件的同一个绘制块，26.3 走接缝、另三支还留着 `g.pose().pushPose()`，
+四支都编得过，编译器不会说话，只有这道闸会红。
+
+修法不是把基线抬上去，是把另三支的【同一个块】也收进接缝 —— 于是那 3 行在四份拷贝里
+重新逐字相同，差异降回 **13**（顺带把 `GuiGraphics` / `GuiGraphicsExtractor` 那个类型名
+从注释里摘掉，注释不进比对，纯为读起来一致）。`Transforms` 自己作为一对新双胞胎记进基线，
+差 32 行 —— 那 32 行就是 §上面那小节列的真差异，是有意的接缝，不是漂移。
+
 ### 数字
 
-| | 526（上一步末） | 452（这一步末） |
+| | 369（上一步末） | 324（这一步末） |
 |---|---:|---:|
-| javac 错误 | 526 | **452** |
-| 报错文件 | 109 | **105** |
-| 挂载源 | 429 | **457** |
-| 一字未改就编过 | 320（74.6%） | **352（77.0%）** |
-| B 平台文件没补 | 175 | **13** |
-| G 真断·形变 | 208 | **256** |
-| E 级联 | 27 | **30** |
-| A 改名 | 60 | 60 |
-| D 附属模组 | 56 | 56 |
-| F GLFW | 20 | 20 |
-| C 覆写 | 17 | 17 |
+| javac 错误 | 369 | **324** |
+| 报错文件 | 93 | **91** |
+| G 真断·形变 | 206 | **161** |
+| 真断小计（C+D+F+G） | 299 | **254** |
+| 挂载副本 / 本平台自己的文件 | 307 / 62 | **265 / 59** |
 
-B 从 175 掉到 **13**：这条台阶【到此吃完】。往后没有「补一个文件掉一百条」了。
-真断小计（C+D+F+G）349 条 / 452，也就是剩下 77% 全是得逐处重写的。
-G 与 E 这两步里升（+48、+3）跟 §十五 同理 —— 父类与兄弟文件一修好，原先被 error type
-挡住的真断就露出来，量尺变准不是回退。
+其余六桶【一条没动】：D 56、E 30、A 27、F 20、C 17、B 13 —— 加上新掉的 G 45，
+两张表都是 369 与 324，闭合。「挂载 / 本平台」那一行是按错误路径落在
+`build/generated/name-renames/` 还是 `platforms/26.3-neoforge/src/` 数的，
+两轮用同一个脚本量，所以这两格可以直接相减。
 
-接缝清单 26.3 那一段 8 → **36** 个（共用代码引用到 26 个），双胞胎基线 4,838 → **5,904** 行 /
-110 对。`updateSeamsDoc` 与 `updateTwinBaseline` 都重新生成过，五道闸全绿。
+四支【全部本地重编】：26.3 到 324，`1.20.1-forge` / `1.21.1-neoforge` / `1.21.1-fabric`
+仍 `BUILD SUCCESSFUL`。五道闸全绿：`verifyPlatformTwins` 111 对、差异合计 6,004 行（基线内，
+上一轮是 110 对 / 5,972 行），`verifyLoaderTwins` 7 组，`verifySharedIsTargetNeutral`
+与 `verifySharedThirdPartyImports` 各 354 个文件，`verifySeamsDocCurrent` 通过 ——
+接缝清单四段各 +1（34→35、74→75、36→37、26→27），多的那一个都是 `platform.client.Transforms`。
 
-### 剩下 452 条里最大那几块（按聚合计数，取自本轮 `hist`）
+### 剩下 324 条里下一批（都是本轮聚合的实数）
 
-| 族 | 条 | 去处 |
+| 族 | 条 | 说法 |
 |---|---:|---|
-| `Util` 换包 | 24 | 【这一族不用门面，一次改名就吃完，见下】 |
-| `ServerPlayer.server` private | 23 | 一个小门面 |
-| GLFW 一族 | 20 | `com.mojang.blaze3d.platform` 下换成了 SDL（`SDLEventHandler`） |
-| `pose()` → `Matrix3x2fStack` | 49（`pushPose` 10 / `popPose` 10 / `int→Matrix3x2f` 12 / `float→` 9 / 其余 8 条 `setColor`） | `Draw` 里的 2D 变换门面；**`Renderer.java:264` 那处 `translate(x,y,200)` 的 z 在 26.x 的 2D 栈里没有对应物，得单独定** |
-| `displayClientMessage` | 13 | 消息组件参数变了形状 |
-| `setScreen` | 10 | 26.3 叫 `setScreenAndShow(Screen)`（已验在）；改名表的【方法】那半本来就吃这个，加上 `setScreen → setScreenAndShow` 一条就是 10 条 |
-| `AbstractContainerScreen`（`renderBg` 没了、`imageWidth/imageHeight` 变 final） | 9 | 一个 `PhoneContainerScreenBase`，跟 §十五 同一个思路 |
-| 附属模组（D） | 56 | 【产品决策，等一句话】首发要不要带那几个联动 |
-
-`hideGui`（4 条）单记：`Options.hideGui` 这个字段在 26.3 全 jar 查不到，F3 那套现在叫
-`Hud.isHidden()` + `toggle()`，是【状态搬了家且只有一个开关】，所以 `CameraGui` 那个
-返回 boolean 的门面形状撑不住，得重新设计。
-
-### `Util` 那 24 条：§十一 那句「成员有增减」说重了
-
-本轮把 24 条【逐条落到源码行上】数了一遍（脚本 `ut1l1d4.py`，不是估的）：
-
-| | 条 |
-|---|---:|
-| `import net.minecraft.Util;` 那一行 | 10 |
-| `Util.backgroundExecutor()` | 12（其中 `PhoneScreen.java:412` 那处写的是全限定名） |
-| `Util.getFilenameFormattedDateTime()` | 1 |
-| `Util.getPlatform().openFile(File)` | 1 |
-
-对着 26.3 的源逐个看：`net/minecraft/Util.java`【不存在】而 `net/minecraft/util/Util.java`
-【存在】，搬家这条是真的；`backgroundExecutor()` 与 `getFilenameFormattedDateTime()`
-在那份源里【原样还在】（`public static TracingExecutor backgroundExecutor()` /
-`public static String getFilenameFormattedDateTime()`），`getPlatform()` 也在、返回 `Util.OS`。
-唯一真没了的是【`OS` 这个枚举的成员】：26.3 里它是 `public enum OS { OS(String telemetryName) }`
-—— 只剩一个 `telemetryName()`，`openFile` / `openPath` 都不在了，去处是
-`com/mojang/blaze3d/Blaze3D.java` 的 `openPath(Path)` 与 `openUri(URI)`。
-
-所以准确的说法是【23 条纯粹是包路径搬家，1 条是真断】：那 1 条就是 `BookList.java:566` 的
-`Util.getPlatform().openFile(TxtLibrary.directory().toFile())`，它得改走本轮新写的 `SystemFiles`。
-（另两处 `Util.ioPool()` / 第二处 `getFilenameFormattedDateTime` 出现在注释里，本来就不算错误。）
-
-顺带把 §十一 那句话改准：当时写「整类换包【且成员有增减】」，方向对、比例错得离谱 ——
-听起来像一整族要重写，实际是 10 行 import 加 13 个调用点。
-
-所以这 24 条的根因只有一句话：【包路径从 `net.minecraft` 挪到了 `net.minecraft.util`】。
-改名表现在只按【标识符】换名，而这里标识符没变、变的是它前面的包名，所以吃不下 ——
-这不是要加门面，是要给改名表加【整行精确替换】这一档（`import net.minecraft.Util;` →
-`import net.minecraft.util.Util;`，另外那 1 处全限定名同理）。
-加完这一档就是【23 条一次清】（那 1 条真断的 `openFile` 另算），是 452 之后单位收益最大的一块；
-`setScreen` 那 10 条也顺手一起 —— 它的锚点本来就合适用【方法名】那一档：报错的 10 处
-全写作 `.setScreen(`，前面必定带点，`PhoneItemData.setScreenOn(ItemStack)` 那种自家定义撞不上。
-
-`setScreen → setScreenAndShow` 这条加之前先记两个坑（本轮量的）：
-仓库里另有一个【自己声明的】`setScreenOn(ItemStack)`（`core/PhoneItemData.java:105`），
-改名要是按【前缀】匹配就会把它一起带走 —— 现在这套机制是按标识符整词换的，验一条即可；
-另外有 3 处 `setScreen` 出现在【注释与 javadoc】里（`PhoneScreenOpener.java:23`、
-`IPhonePage.java:10`、`ImmersiveEngineeringManual.java:25`，都是写给模组作者看的说明文字），
-按标识符换会连注释一起换 —— 换完读起来别扭但不算错，先记下，别到时就忘了它为什么变了。
+| GLFW → SDL | 20 | `GLFW` 15 + `程序包 org.lwjgl.glfw 不存在` 5。`Window.handle()` 那条 §十六 记过，整族要对着 SDL 重写 |
+| `displayClientMessage` | 13 | 消息组件参数换了形状 |
+| 容器界面 | 9 | `imageWidth` 3 + `imageHeight` 3（变 `protected final`，"无法为 final 变量分配值"）+ `renderBg` 覆写 3 → 一个 `PhoneContainerScreenBase`，§十五 同一思路 |
+| 鼠标键盘事件 | 9 | `AbstractWidget.mouseClicked` 3、`EditBox.keyPressed` 3、`EditBox.charTyped` 3，全是"应用到给定类型"即签名变了，本轮聚合里刚冒到前面 |
+| `setColor` | 8 | 26.x 的 `GuiGraphicsExtractor` 上【没有】`setColor`，走 `AbstractWidget.setAlpha(float)` + 每次绘制传 `ARGB.white(alpha)` |
+| `ModAttachments` | 9 | `Builder.serialize` 只剩 `IAttachmentSerializer<T>` / `MapCodec<T>`，裸 `Codec<T>` 不收 |
+| `hideGui` | 4 | `Options.hideGui` 整字段没了，`CameraGui` 那个返回 boolean 的门面形状撑不住，得重设计 |
+| renderpearl 顶点上传 | 一坨 | `Draw.texturedQuad` 那条链（含 `BrowserScreen:224` 那个 `last()`），`Tesselator` / `BufferUploader` / `VertexFormat` 在 26.x 查无此类 |
+| 附属模组（D） | 56 | 【还是那句话，等一个产品决策】首发要不要带那几个联动：Curios / Patchouli / MCEF / RefinedStorage 在 26.3 一个构件都没有 |

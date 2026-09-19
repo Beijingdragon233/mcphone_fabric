@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.browser.client;
 
 import com.november.mcphone.platform.client.Draw;
+import com.november.mcphone.platform.client.Transforms;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -292,11 +293,11 @@ public final class BrowserScreen extends PhoneScreenBase {
         float gw = font.width(glyph) * sc;
         float gh = font.lineHeight * sc;
 
-        g.pose().pushPose();
-        g.pose().translate(x + (NAV_BTN_W - gw) / 2f, y + (h - gh) / 2f, 0);
-        g.pose().scale(sc, sc, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, x + (NAV_BTN_W - gw) / 2f, y + (h - gh) / 2f);
+        Transforms.scale(g, sc, sc);
         g.drawString(font, glyph, 0, 0, color, false);
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     /** 正在加载时右上角亮一个点：亮了说明点击送到了、导航发起了，没亮说明点击没到网页 */

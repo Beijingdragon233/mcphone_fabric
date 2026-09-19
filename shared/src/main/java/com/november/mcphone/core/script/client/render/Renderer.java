@@ -1,6 +1,7 @@
 package com.november.mcphone.core.script.client.render;
 
 import com.november.mcphone.api.client.ui.PhoneCanvas;
+import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.api.client.ui.PhoneStyle;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.script.ItemRefs;
@@ -260,11 +261,11 @@ public final class Renderer {
     /** 数量画在右下角。z 抬到 200：物品模型画在 z≈150，同一深度的字会被它挡住。 */
     private static void drawItemCount(GuiGraphics g, Font font, int count, int x, int y, int size) {
         String text = String.valueOf(count);
-        g.pose().pushPose();
-        g.pose().translate(x, y, 200);
-        if (size != 16) g.pose().scale(size / 16f, size / 16f, 1f);
+        Transforms.push(g);
+        Transforms.translateAboveItemModel(g, x, y);
+        if (size != 16) Transforms.scale(g, size / 16f, size / 16f);
         g.drawString(font, text, 17 - font.width(text), 9, 0xFFFFFFFF, true);
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     private static void drawToggle(GuiGraphics g, Font font, PhoneStyle p, LayoutNode n, UiState state,

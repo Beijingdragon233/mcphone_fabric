@@ -9,6 +9,7 @@ import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneItemData;
 import com.november.mcphone.core.PhoneLocation;
 import com.november.mcphone.platform.client.Draw;
+import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.feature.chat.client.ChatAddContact;
 import com.november.mcphone.feature.chat.client.ChatConversation;
 import com.november.mcphone.core.ServerConfig;
@@ -854,10 +855,10 @@ public final class PhoneScreen extends PhoneScreenBase {
         int cx = phoneLeft + metrics.screenW() / 2;
         int cy = phoneTop + metrics.screenH() / 2;
 
-        g.pose().pushPose();
-        g.pose().translate(cx, cy, 0);
-        g.pose().scale(scale, scale, 1.0f);
-        g.pose().translate(-cx, -cy, 0);
+        Transforms.push(g);
+        Transforms.translate(g, cx, cy);
+        Transforms.scale(g, scale, scale);
+        Transforms.translate(g, -cx, -cy);
 
         renderScreenBackground(g);
         renderStatusBar(g);
@@ -954,7 +955,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 外壳圈的是【整块屏幕】，不是页面能用的那块，所以这里也不能用上面的 sw
         PhoneChassis.drawFrame(g, phoneLeft, phoneTop, metrics.screenW(), sh, metrics);
 
-        g.pose().popPose();
+        Transforms.pop(g);
 
     }
 

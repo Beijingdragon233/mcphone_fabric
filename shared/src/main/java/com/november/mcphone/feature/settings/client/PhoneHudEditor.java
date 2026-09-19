@@ -8,6 +8,7 @@ import com.november.mcphone.core.client.PhoneTheme;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import com.november.mcphone.platform.client.PhoneScreenBase;
+import com.november.mcphone.platform.client.Transforms;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -116,9 +117,9 @@ public final class PhoneHudEditor extends PhoneScreenBase {
         float s = PhoneHudPlacement.effectiveScale(metrics, this.width, this.height);
         int b = PhoneTheme.PHONE_BORDER;
 
-        g.pose().pushPose();
-        g.pose().translate(x, y, 0);
-        g.pose().scale(s, s, 1.0F);
+        Transforms.push(g);
+        Transforms.translate(g, x, y);
+        Transforms.scale(g, s, s);
 
         // 缩放之后原点就是机身左上角，屏幕内区域再往里缩一个边框
         PhoneChassis.drawScreenBackground(g, b, b, metrics.screenW(), metrics.screenH());
@@ -127,7 +128,7 @@ public final class PhoneHudEditor extends PhoneScreenBase {
         PhoneChassis.drawNavBar(g, this.font, b, b, metrics, -1, -1);
         PhoneChassis.drawFrame(g, b, b, metrics.screenW(), metrics.screenH(), metrics);
 
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     private void drawOutline(GuiGraphics g, int x, int y, int w, int h, int color) {
