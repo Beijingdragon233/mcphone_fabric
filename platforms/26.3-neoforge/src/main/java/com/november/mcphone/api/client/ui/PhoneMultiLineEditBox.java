@@ -2,7 +2,7 @@ package com.november.mcphone.api.client.ui;
 
 import com.november.mcphone.core.client.GuiUtil;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.network.chat.Component;
 
@@ -13,7 +13,7 @@ import net.minecraft.network.chat.Component;
  *
  * 和原版 {@link MultiLineEditBox} 一模一样地 new 出来，每帧
  * {@code box.render(canvas.graphics(), mouseX, mouseY, partialTick)} 画一次，鼠标键盘照旧
- * 转发给它。【不用把 {@link PhoneCanvas} 交给它】——缩放是从 GuiGraphics 当前的变换矩阵里
+ * 转发给它。【不用把 {@link PhoneCanvas} 交给它】——缩放是从 GuiGraphicsExtractor 当前的变换矩阵里
  * 读的，手机套了几层缩放它都跟得上。你自己画的东西要裁剪仍然用 {@link PhoneCanvas#clipped}，
  * 两者互不相干。
  *
@@ -56,7 +56,7 @@ public final class PhoneMultiLineEditBox extends MultiLineEditBox {
     }
 
     @Override
-    public void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+    public void renderWidget(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
         if (!this.visible) return;
 
         this.renderBackground(g);

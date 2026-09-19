@@ -10,7 +10,7 @@ import com.november.mcphone.feature.store.PurchasedApps;
 import com.november.mcphone.core.net.RequestThrottle;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
@@ -26,7 +26,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * 为什么只有【被报过价】的 App 才能购买
  *
  * 因为服务端不知道世界上有哪些 App。App 目录（PhoneScreenRegistry）是
- * 客户端专用的——IPhoneApp 的签名里有 GuiGraphics，服务端加载不了。
+ * 客户端专用的——IPhoneApp 的签名里有 GuiGraphicsExtractor，服务端加载不了。
  *
  * 于是"这个 id 是不是一个真的 App"服务端答不上来。不管的话，伪造客户端
  * 可以拿任意字符串来"购买"，反正没报价就是免费，附件会被垃圾 id 撑爆。
@@ -88,7 +88,7 @@ public final class StoreNetworking {
             return;
         }
 
-        ResourceLocation appId = packet.appId();
+        Identifier appId = packet.appId();
 
         // 白名单：只有被报过价的才能买。理由见类注释
         if (!AppPriceRegistry.isPaid(appId)) {

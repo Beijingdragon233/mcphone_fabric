@@ -15,7 +15,7 @@ import com.november.mcphone.feature.store.AppAccess;
 import com.november.mcphone.feature.waystone.net.OpenWaystoneSelectionPacket;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.SimpleMenuProvider;
@@ -36,10 +36,10 @@ public final class NetworkHandler {
 
     // 两个要服务端干活、且已定价的内建 App。id 写在这里而不是每处现拼：
     // 拼错了不会报错，只会变成"未定价"从而静默放行——那正好是这道闸要防的事
-    private static final ResourceLocation APP_ENDER_CHEST =
-            ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "ender_chest");
-    private static final ResourceLocation APP_WAYSTONE =
-            ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "waystone");
+    private static final Identifier APP_ENDER_CHEST =
+            Identifier.fromNamespaceAndPath(MCphone.MODID, "ender_chest");
+    private static final Identifier APP_WAYSTONE =
+            Identifier.fromNamespaceAndPath(MCphone.MODID, "waystone");
 
     /**
      * 告诉玩家这个 App 还没买。

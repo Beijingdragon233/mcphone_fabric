@@ -4,10 +4,10 @@ import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.AppOptions;
 import com.november.mcphone.core.client.ClientConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.PostChain;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 /**
  * 拍照那一下的反馈：默认是一片白闪，也可以换成【模糊一下】。
@@ -43,8 +43,8 @@ public final class CameraFlash {
     private static final float MAX_RADIUS = GameRenderer.MAX_BLUR_RADIUS;
 
     /** 原版那条链。我们只是再 new 一份，没有自带任何着色器文件 */
-    private static final ResourceLocation BLUR =
-            ResourceLocation.withDefaultNamespace("shaders/post/blur.json");
+    private static final Identifier BLUR =
+            Identifier.withDefaultNamespace("shaders/post/blur.json");
 
     /** true = 模糊，false = 白闪。值的真身在配置里，这里是渲染每帧要读的那一份 */
     private static boolean soft = false;
@@ -87,7 +87,7 @@ public final class CameraFlash {
      * 模糊那一版。要画在取景框【之前】：模糊的是已经画完的那部分画面，
      * 卡尺与准星得留在清楚的一层上，否则玩家会以为是自己眼花。
      */
-    public static void renderBlur(GuiGraphics g, float partialTick, long nowMs) {
+    public static void renderBlur(GuiGraphicsExtractor g, float partialTick, long nowMs) {
         if (!soft) return;
 
         float t = progress(nowMs);
@@ -97,7 +97,7 @@ public final class CameraFlash {
         PostChain blur = chain(mc);
         if (blur == null) return;
 
-        // GuiGraphics 是攒一批再画的。不 flush 的话，这一帧的 HUD 还没落到目标上，
+        // GuiGraphicsExtractor 是攒一批再画的。不 flush 的话，这一帧的 HUD 还没落到目标上，
         // 模糊处理的就是上一帧的内容，快门那一下会看起来慢半拍
         g.flush();
 
@@ -111,7 +111,7 @@ public final class CameraFlash {
     }
 
     /** 白闪那一版。画在最上面，盖住取景框才像"闪了一下" */
-    public static void renderWhite(GuiGraphics g, int w, int h, long nowMs) {
+    public static void renderWhite(GuiGraphicsExtractor g, int w, int h, long nowMs) {
         if (soft) return;
 
         float t = progress(nowMs);

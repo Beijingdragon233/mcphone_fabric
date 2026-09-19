@@ -7,8 +7,8 @@ import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneLocation;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -80,8 +80,8 @@ public final class PhoneHud {
     private PhoneHud() {}
 
     /** 层的 id。插在原版战利品条之后 —— 玩法 HUD 之上，F3 与聊天框之下 */
-    private static final ResourceLocation LAYER_ID =
-            ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "offhand_phone");
+    private static final Identifier LAYER_ID =
+            Identifier.fromNamespaceAndPath(MCphone.MODID, "offhand_phone");
 
     /** 副手上那部一直开着的手机，null 表示此刻没挂 */
     private static PhoneScreen phone;
@@ -203,7 +203,7 @@ public final class PhoneHud {
 
     //  渲染
 
-    private static void render(GuiGraphics g, DeltaTracker delta) {
+    private static void render(GuiGraphicsExtractor g, DeltaTracker delta) {
         if (phone == null) return;
 
         Minecraft mc = Minecraft.getInstance();
@@ -424,7 +424,7 @@ public final class PhoneHud {
      * 有真手机就画真的，玩家摆的是他自己那一页的内容，比一块占位的黑屏好判断得多。
      * 手机不在副手时（在背包里也点得进这一页）返回 false，由编辑器自己画一部空壳。
      */
-    public static boolean renderPreview(GuiGraphics g, float partialTick) {
+    public static boolean renderPreview(GuiGraphicsExtractor g, float partialTick) {
         if (phone == null) return false;
         syncSize(Minecraft.getInstance());
         phone.renderAsHud(g, partialTick);

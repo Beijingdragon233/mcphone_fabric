@@ -726,6 +726,82 @@ setScreen→setScreenAndShow 改 9 处/7 文件（字面量里留 0 处）
 意思是：那 26 个文件是从 1.21.1【逐字拷】过来的，拷进来还带着老名字，
 而它们不过改名那道任务 —— 这 33 条是【下一级的低垂果实】，机械换名即可。
 
+## 十八、1d 第 6 步：本平台文件里的老名字直接换掉。418 → 392
+
+§十七 末尾那 33 条。做法是给本平台目录下那 36 个文件跑一遍【与挂载任务同一套锚点】的改名
+（脚本在 `C:\...\mcphone263probe\plat_rename.py`，一次性工具，不进仓）：
+`ResourceLocation` → `Identifier`、`GuiGraphics` → `GuiGraphicsExtractor`，
+限定名与 import 行一起算，方法名那两族也带上（本轮命中 0 处 —— 本平台文件里没有
+`g.drawString(`，那三处都在 `shared/`，早被挂载改过了）。
+
+当场验三条，与挂载那边对齐：【字面量一字不动】、【代码段改完不许剩旧名】、
+【改完不许冒出重复 import】。最后一条是这一边特有的担心：`ResourceLocation` 与
+`Identifier` 同在 `net.minecraft.resources` 包下，一个文件两边都 import 过就撞车。
+
+预演命中 9 个文件，落盘只改了 7 个 —— 排除了 `platform/client/PhoneScreenBase.java` 与
+`PlayerSkins.java`。理由不是它们干净，而是那两处命中【恰好都是拿旧名做对照的注释】：
+一句是「`render(GuiGraphics,...)` 变成 `extractRenderState(GuiGraphicsExtractor,...)`」，
+一句是「26.3 上叫 `Identifier`，1.21.1 上叫 `ResourceLocation`，同一个东西」。
+挂载那边【注释照改】是对的（那些注释只是顺带提到一个类型名），而这两句里旧名是
+【被说的那个东西】，跟着改名就把话讲反了 —— 所以这一族得手工判，不能一把推。
+改动 35 行、`+35 / -35` 一字不多一字不少，确认没有整行增删。
+
+### 数字
+
+| | 418（上一步末） | 392（这一步末） |
+|---|---:|---:|
+| javac 错误 | 418 | **392** |
+| 报错文件 | 105 → 97 | **95** |
+| A 改名 | 60 | **27** |
+| ├ 挂载副本 | 27 | 27 |
+| └ 本平台自己的文件 | 33 | **0** |
+| G 真断·形变 | 222 | **229** |
+
+G 又涨 7 条，还是那句：类型一解析出来，原本被 error type 盖住的真断就露头。
+
+### 顺手量出一条以前没有的维度：这些错是【谁的】
+
+| | 452 | 418 | 392 |
+|---|---:|---:|---:|
+| 挂载副本（改名表管得到） | | 328 | 328 |
+| 本平台自己的文件（改名表管不到） | | 90 | **64** |
+
+这条比桶号更直接影响下一步怎么选：【管得到的那 328 条】里还能不能再榨出改名，
+要看名字本身；【管不到的那 64 条】只能改文件。
+
+### 改名这一族到此见底（这一步最重要的结论）
+
+剩下那 27 条 A 桶逐个查过 26.3 的源 —— 它们【不是搬家，是整类不存在】：
+
+| 名字 | 条 | 26.3 里的实情 |
+|---|---:|---|
+| `GameProfileCache` | 5 | 全 jar 没有任何 `*ProfileCache.java` |
+| `ToastComponent` | 4 | `toasts/` 包只剩 `Toast` 与几个具体 toast，管 toast 的那个类没这个名 |
+| `MetadataSectionSerializer` | 3 | 换成 `server/packs/metadata/MetadataSectionType`（还挪了包） |
+| `InteractionResultHolder` | 3 | `world/` 下只剩 `InteractionResult` 与 `InteractionHand`，那个 holder 没了 |
+| `ItemProperties` / `ClampedItemPropertyFunction` | 5 | 全 jar 没有任何 `*ItemPropert*.java` |
+| `BakedModel` | 2 | `client/resources/model/` 下只剩 `UnbakedModel`，`BakedModel` 整个不在这个名下了 |
+| `PlayerFaceRenderer` | 2 | 换名 `PlayerFaceExtractor` —— 这一条【是】改名，但方法形状也变了（`draw` → `extractRenderState`，收的是 `PlayerSkin`/`Identifier`），改名表换了名照样编不过 |
+| `Tesselator` / `BufferUploader` / `VertexFormat` | 3 | `blaze3d.vertex` 里没了；`VertexFormat` 挪到 `com.mojang.renderpearl.api.vertex`，另两个是渲染栈整个换掉 |
+
+所以【改名表这条路到此为止】。它到这一步为止的命中数（都是构建当场打的，不是估的）：
+
+| 规则 | 挂载副本里改 | 本平台文件里直接改 |
+|---|---:|---:|
+| `ResourceLocation` → `Identifier` | 333 处 / 89 文件 | 25 处 |
+| `GuiGraphics` → `GuiGraphicsExtractor` | 262 处 / 60 文件 | 11 处 |
+| `drawString` → `text` | 215 处 / 38 文件 | 0 |
+| `drawCenteredString` → `centeredText` | 5 处 / 3 文件 | 0 |
+| `net.minecraft.Util` → `net.minecraft.util.Util` | 9 处 / 9 文件 | 1 处（`ChatNetworking`） |
+| `setScreen` → `setScreenAndShow` | 9 处 / 7 文件 | 4 处（`PhoneHud`） |
+
+要说清一句：1,523 → 392 这一千多条【不能都记在改名头上】，`PhoneScreenBase`、
+六个门面、搬过来的 26 个平台文件各吃了自己那一块（§十三 ~ §十六 分开记的）。
+改名的账只到它该到的地方 —— 而它现在【没有下一个名字可换了】：剩下的 27 条 A 桶
+全是「整类不存在」。往后 392 条只能一条一条改代码，这也是 §十二 排的那几族真断
+（`ServerPlayer.server` 23、`pose` 49、GLFW→SDL 20、容器界面 9、附属模组 56）
+从下一步起变成主干的原因。
+
 ### 数字
 
 | | 526（上一步末） | 452（这一步末） |

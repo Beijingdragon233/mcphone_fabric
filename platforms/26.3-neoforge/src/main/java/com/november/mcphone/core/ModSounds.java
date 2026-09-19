@@ -2,7 +2,7 @@ package com.november.mcphone.core;
 
 import com.november.mcphone.MCphone;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvent;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
@@ -45,5 +45,5 @@ public final class ModSounds {
     public static final DeferredHolder<SoundEvent, SoundEvent> DISC_STREAM =
             SOUND_EVENTS.register("disc_stream",
                     () -> SoundEvent.createVariableRangeEvent(
-                            ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "disc_stream")));
+                            Identifier.fromNamespaceAndPath(MCphone.MODID, "disc_stream")));
 }

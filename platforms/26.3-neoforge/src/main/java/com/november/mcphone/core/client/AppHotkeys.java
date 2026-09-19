@@ -5,7 +5,7 @@ import com.november.mcphone.MCphone;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 
 import java.util.ArrayList;
@@ -131,7 +131,7 @@ public final class AppHotkeys {
     }
 
     /** appId → 绑定。用 LinkedHashMap：写回配置时顺序稳定，不然每次存盘文件都在无谓地变 */
-    private static final Map<ResourceLocation, Binding> BOUND = new LinkedHashMap<>();
+    private static final Map<Identifier, Binding> BOUND = new LinkedHashMap<>();
 
     /** 配置里一条的写法：{@code <appId>=<绑定>}。appId 里不可能有等号，切一刀就够 */
     private static final char SEP = '=';
@@ -139,13 +139,13 @@ public final class AppHotkeys {
     //  查
 
     /** 这个 App 绑的组合，没绑就是 null */
-    public static Binding get(ResourceLocation appId) {
+    public static Binding get(Identifier appId) {
         return BOUND.get(appId);
     }
 
     /** 这个组合绑给了哪个 App，没有就是 null。主键与修饰键都要一模一样 */
-    public static ResourceLocation appFor(Binding binding) {
-        for (Map.Entry<ResourceLocation, Binding> e : BOUND.entrySet()) {
+    public static Identifier appFor(Binding binding) {
+        for (Map.Entry<Identifier, Binding> e : BOUND.entrySet()) {
             if (e.getValue().equals(binding)) return e.getKey();
         }
         return null;
@@ -208,7 +208,7 @@ public final class AppHotkeys {
      * 那是界面的事。这里只保证一个组合不会同时挂在两个 App 上——真出现了以
      * 后来的为准，因为玩家刚按的那一下是他现在的意思。
      */
-    public static void bind(ResourceLocation appId, Binding binding) {
+    public static void bind(Identifier appId, Binding binding) {
         if (binding == null || binding.key().equals(InputConstants.UNKNOWN)) return;
         BOUND.entrySet().removeIf(e -> e.getValue().equals(binding));
         BOUND.put(appId, binding);
@@ -219,7 +219,7 @@ public final class AppHotkeys {
     }
 
     /** 解绑并存盘。本来就没绑就什么都不做，省一次无谓的写盘 */
-    public static void clear(ResourceLocation appId) {
+    public static void clear(Identifier appId) {
         if (BOUND.remove(appId) == null) return;
         MCphone.LOGGER.info("[MCphone] 快捷键：{} 解绑", appId);
         ClientConfig.saveAppHotkeys(serialize());
@@ -245,7 +245,7 @@ public final class AppHotkeys {
                 continue;
             }
 
-            ResourceLocation appId = ResourceLocation.tryParse(entry.substring(0, sep).trim());
+            Identifier appId = Identifier.tryParse(entry.substring(0, sep).trim());
             if (appId == null) {
                 MCphone.LOGGER.warn("[MCphone] 快捷键配置里的 App id 不合法，已忽略: {}", entry);
                 continue;
@@ -267,7 +267,7 @@ public final class AppHotkeys {
     /** 写回配置用的那一串。顺序跟着 BOUND，稳定 */
     static List<String> serialize() {
         List<String> out = new ArrayList<>(BOUND.size());
-        for (Map.Entry<ResourceLocation, Binding> e : BOUND.entrySet()) {
+        for (Map.Entry<Identifier, Binding> e : BOUND.entrySet()) {
             out.add(e.getKey() + String.valueOf(SEP) + e.getValue().serialize());
         }
         return out;
