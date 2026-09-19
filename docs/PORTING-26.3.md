@@ -1582,3 +1582,92 @@ case MOUSE  -> (SDLMouse.SDL_GetMouseState(null, null) & (1 << (value - 1))) != 
 因为往 `new MouseButtonInfo(button, 0)` 里塞的是原生编号，边界没钉死之前先改会把编号搞反。
 `modifiers` 传 0 是有据的：`AbstractWidget`/`AbstractTextAreaWidget` 里没有任何地方读
 `buttonInfo().modifiers()`，`isValidClickButton` 只看 `button()`。
+
+
+## 廿七、1d 第 13 步：把鼠标键编号与硬编码键码这两件【不会编译失败】的事钉掉，顺手清掉输入转发 11 条。290 → 279
+
+### 这一轮的低版本口径
+
+用户定的第 2 档：`shared/` 不再要求在 1.20.1 / 1.21.1 上也编得过，26.x 的 API 断裂可以原地改共用代码，
+低版本留在 `main`、要新东西从 `main` 单向并进这个分支。**但**给附属模组用的对外 API 与行为必须保持一致。
+
+实际做法仍然是"四支同签名的接缝"——不是因为被要求，而是因为这次改的东西**跨着对外 API 的边界**，
+不这么写就会把编号搞反。代价没变高：老三支本轮全部 `BUILD SUCCESSFUL`，回归网白捡。
+
+### 一、鼠标键编号在 26.3 换了基数
+
+`AbstractWidget.isValidClickButton` 在 26.3 判的是 `buttonInfo().button() == 1`（`AbstractWidget.java:140-142`），
+而 GLFW 的左键是 0；`InputConstants.MOUSE_BUTTON_LEFT` 也跟着从 0 变 1。
+`shared/` 里有 **23 处**直接拿字面量 `0` 判左键，26.3 上全部不匹配左键，而编译、八道闸、断言测试**一声不响**。
+
+这 23 处**不能一把梭换成 `InputConstants.MOUSE_BUTTON_LEFT`**，因为同一个 `int button` 同时服务两种语义，
+而其中一种就是对外 API：
+
+| 去处 | 要的编号 | 为什么 |
+|---|---|---|
+| `api/client/ui/IPhonePage.mouseClicked(double,double,int)` | 与今天一致：左 = 0 | 对外 API，附属模组照今天写的 `button == 0` 在任何版本都得是左键 |
+| `captureMouse(int)` → `InputConstants.Type.MOUSE.getOrCreate(button)` | 本版本**原生**值 | 存进 `KeyMapping`，之后要跟原版比 |
+
+而 `PhoneScreen.captureHotkeyMouse(button)` 与 `PhoneScreen.mouseClicked(..., button)` 收的是**同一个**参数
+（`:1131` 与 `:1137`）。老两支原生 == GLFW 所以一个值两用，26.3 上这两个语义**分叉**了。
+
+处理：
+1. `IPhonePage` 上加 `BUTTON_LEFT=0 / BUTTON_RIGHT=1 / BUTTON_MIDDLE=2 / BUTTON_SIDE_1=3 / BUTTON_SIDE_2=4`
+   —— 把既有编号**钉成契约**，纯新增，不改任何既有签名与取值，附属模组照旧写 `0` 也对。
+2. `platform/client/PhoneScreenBase` 四份各加 `pageButton(原生)` 与 `nativeButton(对外)` 一对换算。
+   老三支两者都是恒等（GLFW 本来就是 0/1/2）；26.3 那一份按 SDL↔GLFW 的严格 `n-1` 关系平移
+   （LEFT 1/0、RIGHT 2/1、MIDDLE 3/2、BUTTON4 4/3、BUTTON5 5/4，所以 1..5 整体移一位）。
+3. `PhoneScreen.mouseClicked` / `mouseDragged` 各在**原生侧**判左键（改判 `InputConstants.MOUSE_BUTTON_LEFT`），
+   派发进页面之前过一次 `pageButton`，新增局部量 `pb` 承接（两个方法各一份，别跨方法用 ——
+   第一遍就是这么写错、`PhoneScreen` 当场多冒一条 `找不到符号 变量 pb`）。
+
+那 23 处页面层里的 `button == 0` 一个字没动：它们收到的已经是对外编号，本来就还是 0。
+
+### 二、硬编码键码 12 处
+
+同类问题的另一半：`keyCode == 257 || keyCode == 335`（Enter / 小键盘 Enter）这种字面量散在 6 个文件里，
+26.3 上 `KEY_RETURN` 是 40 不是 257 —— 一样是**不报错的静默失灵**。全部换成命名常量：
+
+```java
+keyCode == InputConstants.KEY_RETURN / KEY_NUMPADENTER / KEY_BACKSPACE / KEY_TAB / KEY_ESCAPE
+```
+
+在两支上都是**纯等价替换**：1.21.1 上 `KEY_RETURN = 257`、`KEY_NUMPADENTER = 335`、`KEY_BACKSPACE = 259`、
+`KEY_TAB = 258`、`KEY_ESCAPE = 256`，与原字面量逐一对得上；26.3 上它们换成各自的 SDL scancode，
+而 `SDLEventHandler` 传进 `KeyEvent.key` 的正是 scancode（§廿五取证过），所以两边都拿得到本版本正确的那个值。
+换完 `rg "keyCode [!=]==? [0-9]{3}"` 在 `shared/`、`layers/`、`platforms/26.3-neoforge/` 上**零命中**。
+
+### 三、输入转发 11 条：走 `EditBoxes` 接缝
+
+`DeviceNameEditor` / `ChatConversation` / `NoteEditor` / `BookList` 四处把事件转给页面里嵌的原版控件，
+26.3 那边被调方换成了事件记录（`mouseClicked(MouseButtonEvent,boolean)`、`keyPressed(KeyEvent)`、
+`charTyped(CharacterEvent)`、`mouseDragged(MouseButtonEvent,double,double)`）。
+四支的 `platform/client/EditBoxes` 各加 `click / drag / key / character` 四个口：老三支原样调旧签名，
+26.3 那一份就地构造事件对象，**进去的是对外编号、出来前过 `nativeButton` 换成原生**——顺序反了就把编号搞反，
+这也是为什么这一步必须排在第一节那套换算之后。
+
+两处写下来的取舍：
+
+- `modifiers` 传 `0` 有据：`AbstractWidget` 与 `AbstractTextAreaWidget` 里没有任何一处读
+  `buttonInfo().modifiers()`，`isValidClickButton` 只看 `button()`。
+- `doubleClick` 只能传 `false`：对外页面接口 `IPhonePage.mouseClicked` 本来就不带这个信息，
+  老三支同样传不进去，所以「双击选词」这一条在**四支上都没有**，这里不比老三支少什么。
+  （不是"26.3 少了功能"，写清楚免得后来人以为能补。）
+
+### 四、实测
+
+| | 第 12 步之后 | 现在 |
+|---|---:|---:|
+| 26.3 javac 错误 | 290 | **279** |
+
+按（文件, 错误信息）多重集比对的进出账：11 条转发错**全部消失**
+（`DeviceNameEditor` 3、`ChatConversation` 3、`NoteEditor` 4、`BookList` 1），新增 **0** 条。
+老三支重编全 `BUILD SUCCESSFUL`（45s / 13s / 14s）。
+`verifyPlatformTwins` 通过：113 对、6,028 → **6,044 行**。两处涨幅都是有意的接缝分歧 ——
+`EditBoxes` 6 → 20（+14，26.3 那一份要多构造事件对象）、`PhoneScreenBase` 122 → 124（+2，那一对换算）。
+
+### 五、还欠着的（别当成做完了）
+
+**本轮全部改动只有编译期与静态取证，没有一次真实点击验证。** 尤其这两条要在 26.3 里进游戏复核：
+左键能不能点开手机上的页面（靠 `pageButton` 那一步平移，写反了就是"点什么都没反应"），
+以及绑键界面对侧键的原生编号是否仍然对得上。

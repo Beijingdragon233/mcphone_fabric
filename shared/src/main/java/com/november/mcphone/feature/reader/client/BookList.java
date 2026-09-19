@@ -11,6 +11,7 @@ import com.november.mcphone.feature.reader.ShelfOrder;
 import com.november.mcphone.feature.reader.client.compat.BookQuirks;
 import com.november.mcphone.feature.reader.client.source.BookSources;
 import com.november.mcphone.feature.reader.client.source.TxtBookSource;
+import com.november.mcphone.platform.client.EditBoxes;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -570,7 +571,7 @@ public final class BookList {
         }
 
         // 再给搜索框：点栏里是移光标，不该被下面的行判定吃掉
-        if (search != null && search.mouseClicked(mx, my, button)) return true;
+        if (search != null && EditBoxes.click(search, mx, my, button)) return true;
 
         if (hoveredTab != null) {
             switchTo(hoveredTab);

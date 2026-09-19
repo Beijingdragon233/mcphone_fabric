@@ -7,6 +7,7 @@ import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.platform.client.EditBoxes;
 import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.feature.settings.net.SetDeviceNamePacket;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -182,7 +183,7 @@ public final class DeviceNameEditor {
             if (hovered == Btn.CANCEL) { return true; }
         }
         // 其余点击交给输入框，用来挪光标 / 选中
-        if (box != null) box.mouseClicked(mx, my, button);
+        if (box != null) EditBoxes.click(box, mx, my, button);
         return false;
     }
 
@@ -191,16 +192,16 @@ public final class DeviceNameEditor {
      */
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // 回车＝保存。ESC 不在这里处理，交给 PhoneScreen 当作"取消并关机"
-        if (keyCode == 257 || keyCode == 335) {   // Enter / 小键盘 Enter
+        if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER) {   // Enter / 小键盘 Enter
             save();
             backRequested = true;
             return true;
         }
-        return box != null && box.keyPressed(keyCode, scanCode, modifiers);
+        return box != null && EditBoxes.key(box, keyCode, scanCode, modifiers);
     }
 
     public boolean charTyped(char c, int modifiers) {
-        return box != null && box.charTyped(c, modifiers);
+        return box != null && EditBoxes.character(box, c, modifiers);
     }
 
     /** 回车保存后置位，PhoneScreen 取走后清零 */

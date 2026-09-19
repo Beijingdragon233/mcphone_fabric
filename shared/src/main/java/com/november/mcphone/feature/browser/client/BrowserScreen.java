@@ -15,6 +15,7 @@ import com.november.mcphone.feature.browser.client.BrowserBackends;
 import com.november.mcphone.feature.browser.client.IBrowser;
 import com.november.mcphone.feature.browser.client.IBrowserBackend;
 import com.november.mcphone.core.client.GuiUtil;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -402,7 +403,7 @@ public final class BrowserScreen extends PhoneScreenBase {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (urlBox.isFocused()) {
-            if (keyCode == 257 || keyCode == 335) {   // GLFW_KEY_ENTER / KP_ENTER
+            if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER) {   // GLFW_KEY_ENTER / KP_ENTER
                 navigateToTypedUrl();
                 return true;
             }
@@ -410,7 +411,7 @@ public final class BrowserScreen extends PhoneScreenBase {
         }
 
         // ESC 关界面，不转发给网页
-        if (keyCode == 256) {
+        if (keyCode == InputConstants.KEY_ESCAPE) {
             onClose();
             return true;
         }

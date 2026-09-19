@@ -1,5 +1,6 @@
 package com.november.mcphone.platform.client;
 
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 
 /**
@@ -25,4 +26,29 @@ public final class EditBoxes {
     public static void moveCursorToEnd(EditBox box) {
         box.moveCursorToEnd(false);
     }
+
+    /**
+     * 把一次点击转给页面里嵌的原版控件。{@code pageButton} 是本模组编号（左 = 0，
+     * 见 {@code api/client/ui/IPhonePage}），这一支上它与原生编号是同一套，直接用。
+     */
+    public static boolean click(AbstractWidget w, double mx, double my, int pageButton) {
+        return w.mouseClicked(mx, my, pageButton);
+    }
+
+    /** 同上，拖动。 */
+    public static boolean drag(AbstractWidget w, double mx, double my, int pageButton,
+                               double dx, double dy) {
+        return w.mouseDragged(mx, my, pageButton, dx, dy);
+    }
+
+    /** 把一次按键转给页面里嵌的原版控件。三个参数都是原生值，原样传。 */
+    public static boolean key(AbstractWidget w, int keyCode, int scanCode, int modifiers) {
+        return w.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    /** 把一个字符转给页面里嵌的原版控件。 */
+    public static boolean character(AbstractWidget w, char c, int modifiers) {
+        return w.charTyped(c, modifiers);
+    }
+
 }

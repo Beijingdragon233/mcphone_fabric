@@ -222,4 +222,16 @@ public abstract class PhoneScreenBase extends Screen {
         return nativeButton >= 1 && nativeButton <= 5 ? nativeButton - 1 : nativeButton;
     }
 
+
+    /**
+     * 本模组编号 -> 原生编号，{@link #pageButton} 的反向。
+     *
+     * <p>页面要把点击转给<b>原版控件</b>时用它：{@code MouseButtonInfo} 里的编号是要拿去
+     * 跟 {@code AbstractWidget.isValidClickButton} 比的，而 26.3 那边判的是原生值 1，
+     * 所以这里要加回去，不能直接把对外编号塞进去。
+     */
+    public static int nativeButton(int pageButton) {
+        return pageButton >= 0 && pageButton <= 4 ? pageButton + 1 : pageButton;
+    }
+
 }

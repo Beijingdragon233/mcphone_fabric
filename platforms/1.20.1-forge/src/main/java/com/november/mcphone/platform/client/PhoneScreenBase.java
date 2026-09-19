@@ -57,5 +57,16 @@ public abstract class PhoneScreenBase extends Screen {
         return nativeButton;
     }
 
+
+    /**
+     * 本模组编号 -> 原生编号，{@link #pageButton} 的反向。
+     *
+     * <p>页面要把点击转给<b>原版控件</b>时用它（那条路交给原版的是原生编号）。
+     * 这一支上两者本来就是同一套，原样交回。
+     */
+    public static int nativeButton(int pageButton) {
+        return pageButton;
+    }
+
 }
 
