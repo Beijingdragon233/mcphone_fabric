@@ -21,7 +21,7 @@
     "一个都编不过。也就是说这个字段决定 shared/ 在一个新目标上是全活还是全灭。",
     "",
     "这件事原先只记在 README 的一句散文里，不在模型里、没有闸。现在 guard-version 会查：",
-    "每个目标都要写，而且六个必须一模一样。",
+    "每个目标都要写，而且所有目标必须一模一样。",
     "",
     "Parchment 不在此列：它只补参数名，不改类型名与方法名，加不加都不影响能不能编过。",
     "",
@@ -160,6 +160,67 @@
     "project": "platforms/1.21.1-fabric",
     "buildable": true,
     "note": "社区 PR #2 的移植实现，已按本仓结构收进 platforms/1.21.1-fabric/。loader_version 0.19.5 由构建本身验着（Fabric Loader 就装在这个版本上编过）。gradle 9.7.1 是实测出来的：fabric-loom 1.17.20 要求 Gradle >= 9.5，往上第一个能用的发行版是 9.7.1 —— 这个目标不能跟着仓库根的 wrapper（那个是给 1.20.1-forge 的 8.8 与 neoforge 的共用档），平台自带 wrapper。",
+      "layers": [
+        "1.20.3+",
+        "1.20.5+",
+        "1.21+",
+        "fabric"
+      ]
+    },
+  "26.3-forge": {
+    "minecraft": "26.3",
+    "loader": "Forge",
+    "loader_version": null,
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "8.8",
+    "project": "platforms/26.3-forge",
+    "buildable": false,
+    "unverified": [
+      "gradle"
+    ],
+    "note": "不打算做。本仓约定是 1.21 及以后走 NeoForge，Forge 只留在 1.20.1 那一档；这一行为的是把「26.x 上没有 Forge」写成看得见的一条，而不是让谁哪天想起来再补。取证：maven.neoforged.net 的 neoforge 目录下 26.3 有 26.3.0.0-beta、26.3.0.1、26.3.0.2、26.3.0.3-beta 四个构建，而 26.x 的线上稳定版是 26.1.2.109 与 26.2.0.88；Forge 侧没有 26.3 的构建。loader_version 的这个 null 是决定、不是待查项，所以没列进 unverified。gradle 8.8 是照抄 1.20.1-forge 那行的占位值。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "forge"
+    ]
+  },
+  "26.3-neoforge": {
+    "minecraft": "26.3",
+    "loader": "NeoForge",
+    "loader_version": "26.3.0.3-beta",
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "9.2.1",
+    "project": "platforms/26.3-neoforge",
+    "buildable": false,
+    "note": "26.x 的主路径。工程目录已经建出来了，所以 CI 从下一次推送起就会真编这一支。骨架在 2026-09-19 本地编过：platforms/26.3-neoforge 下 ./gradlew build 用 8m43s 编到 BUILD SUCCESSFUL，ModDevGradle 2.0.147 + neo_version 26.3.0.3-beta + Java 25 工具链，neoform-runtime 那条 26.3 的流水线全程走通（decompile 43.36s、recompile 37.49s），产物 build/libs/mcphone-1.10.2.jar 里 META-INF/jarjar/ 嵌着 rhino-1.9.1 与 javamp3-1.0.1 —— 嵌库那条路在 26.3 上也通。原先那个最大的未知数答掉了：26.3 的 client jar 确实不混淆（那个 jar 里 11266 个 net/minecraft/** 条目、0 个 class_N，piston-meta 里 26.3 的 downloads 也只剩 client 与 server、没有 client_mappings），而构建插件吃得下这个已经命名好的输入 jar —— 骨架里那一个探针类 import 的就是 26.x 的新名字（Identifier、GuiGraphicsExtractor），javac 解析得到。java 25 来自 piston-meta 里 26.3 的 java_version，现在也被这次构建验着。【1c：共用代码已挂上】build.gradle 里 mountSharedSources 与这里的 layers 同时翻成完整四层，gradle/mcphone-checks.gradle 也一并 apply —— 挂上来的 :compileJava 是【预期红】：422 个源文件编出 1523 条错误、214 个文件，其中约 690 条是本平台文件没补导致的级联，真断 245 条 / 69 个文件，另有 208 个文件一个字没改就编过了。逐条归因、26.3 官方源对照、以及【fill 不用改】这条翻案，全部在 docs/PORTING-26.3.md；本条 note 只留结论，别把那份表抄第二遍。【1d 第 1 步】探针换成了真入口，:compileJava 掉到 1,244 条 / 193 个文件，少的 279 条全在「本平台文件没补」那一桶；逐轮实测记在 docs/PORTING-26.3.md §十三。【1d 第 2 步】共用代码在这一支改成「按目标改名挂载」（声明 versions/name-renames.json，机制 gradle/mcphone-renames.gradle，五条不变量当场验），:compileJava 掉到 756 条 / 118 个文件，422 个挂载源里 303 个一字未改就编过；为什么走这条路而不是门面，见 §十四。【1d 第 3 步】补 platform/client/PhoneScreenBase（把 26.x 换掉的八个派发入口收在这一层）与六个逐字相同的门面，:compileJava 掉到 526 条 / 109 个文件；E 级联 186 → 27 印证了 §二 那条判断。逐个取证与剩下的形状见 §十五。【1d 第 4 步】从 1.21.1 逐字拷来 26 个本平台文件（NeoForge 那一面的注册 API 21.1 → 26.3 一处没动，26 个里 9 个拷完即零错误），另新写 platform/client/SystemFiles 与 PlayerSkins 两个门面，收掉 Util 整类换包与 PlayerFaceRenderer 改名那两族，:compileJava 掉到 452 条 / 105 个文件，457 个挂载源里 352 个一字未改就编过。「补平台文件」这条台阶到这一步吃完：剩下 452 条里真断占 349，见 §十六。【1d 第 5 步】改名表加第三档 packageRenames（整条限定名一起换），治的是「标识符没变、包名变了」这一类，net.minecraft.Util 那 23 条与 setScreen 那 10 条一并吃掉，:compileJava 掉到 418 条 / 97 个文件。【1d 第 6 步】本平台自己的文件不过改名挂载，把里面残留的老名字直接换成 26.x 真名，本平台文件的改名族清零，掉到 452 步之后的 392 条 / 95 个文件 —— 而剩下 27 条改名族逐个查过26.3 的源，全是整类不存在，【改名这条路到此为止】。逐轮实测记在 §十七、§十八。【1d 第 7 步】ServerPlayer.server 在 26.3 变 private，换成 level().getServer() —— 那条式子四个目标上都在（1.21.1 对着源验、1.20.1 本地真编过），所以不新建接缝，直接改共用代码 23 处，掉到 369 条 / 93 个文件，另三支重编仍 BUILD SUCCESSFUL。见 §十九。【1d 第 8 步】pose 那一族收进新的每平台接缝 platform/client/Transforms（三支老平台共用一份 PoseStack 版、26.3 一份 Matrix3x2fStack 版，七个静态方法）：共用代码 41 处 + PhoneMultiLineEditBox 四支各 3 处按括号深度切参数改掉，GuiUtil.enableScissor 的投影走 mapX/mapY，BrowserScreen 喂 texturedQuad 那句 last().pose() 不动。45 条逐条对上：找不到符号 pushPose 11 + popPose 11 + last 1，类型转换 22 条（translate 12 / scale 10）全部落在含 .pose(). 的行上。:compileJava 掉到 324 条 / 91 个文件，其余六桶一条没动，另三支重编仍 BUILD SUCCESSFUL，五道闸全绿。途中 verifyPlatformTwins 拦下一次「只给 26.3 打补丁」（13 行涨到 20 行），把另三支同一块也收进接缝才降回 13。见 §二十。【接回 CI】这一段 26.3 的「自动化构建不成功」其实混着两件事：run 12 及以前是真的红，那之后一条 run 都没创建过 —— main 在 2026-09-19 15:10Z 同步进上游 economy 那 23 个提交之后PR 变成 mergeable=false / dirty，GitHub 对脏 PR 不建 pull_request run。merge-tree 读过才动：真冲突只有 versions/platform-twins.json 一个生成物，重算即可；合并后本地重编另三支仍 BUILD SUCCESSFUL，26.3 从 324 涨到 369（多的 45 条全在 G 桶，42 条在上游新文件里）。推上去 mergeable=true、run 14 起来，CI 侧 26.3 报 369 errors 与本地一字不差。见 §廿一。【1d 第 9 步】CompoundTag 在 26.x 把取值口换成 Optional，判型却【不能】改用 isPresent()——26.3 的 getLong 走 Tag::asLong 会把 IntTag 换算成非空，getString 连打印串都给，而 1.21.1 的 contains(k, Tag.TAG_LONG) 是 getTagType(k)==4 精确相等；这一族读的是余额和托管，松一档等于把坏存档当好的收进来。所以收进新的每平台接缝 platform/Nbt（十四个静态方法，判型那六个两支同写，取值那八个才是真两样：26.3 上 LongTag/IntTag/StringTag/ByteTag 已是 record、访问器叫 value()，1.21.1 上 NumericTag 还是抽象类、方法叫 getAsLong()）。EconomyData.java 一处文件改了 41 个调用点，:compileJava 掉到 331 条 / 93 个文件——少 38 正好等于该文件的错误数，本平台那 65 条一条没动。另三支重编仍 BUILD SUCCESSFUL，八道闸全绿；EconomyDataTest 本地红在第 12 个用例的 setPosixFilePermissions（Windows 无 POSIX），改前后同一行，前 11 个含 strictLoad 那批全过，剩下 38 个用例的裁判交给 CI 的 check。见 §廿二。【1d 第 10 步】displayClientMessage 在 26.3 整个不存在（Entity/Player/LocalPlayer/ServerPlayer/ChatListener 五个文件都搜不到），收进每平台接缝 platform/client/ClientMessages。这一族差点写错：Player 上那是空方法体，但 ServerPlayer 覆写成 sendSystemMessage 发 clientbound 包、LocalPlayer 覆写成走 chatListener()，本仓 14 处里 10 处是 ServerPlayer 接收者——只写 instanceof LocalPlayer 会让这 10 处提示在 26.3 上静默消失，而编译、dist 闸、断言测试全都不会响。服务端那半在 26.3 原样还在（ServerPlayer.sendSystemMessage(Component, boolean overlay)），两条分支都接上才对。本地那半要处理第二参数换意思：26.x 的 handleSystemMessage 第二参数是 remote 不是 isOverlay，true 多落一条日志、false 走 addClientSystemMessage 且不记日志，老那句非动作栏那支是 addMessage 加一条 logSystemMessage，所以传 true。调用点 40 处分两遍才改齐四支：第一遍只扫了 26.3 一路，六个 net 文件的双胞胎差异被整体推高（NetworkHandler 205→212 等），补齐另三支 26 处后全部回到基线；这是同一形状的坑第二次（上一次是 PhoneMultiLineEditBox 13→20）。:compileJava 掉到 318 条 / 87 个文件（G 168→155，本平台 65→58），另三支重编仍 BUILD SUCCESSFUL、assertTests --continue 摊平 48 个任务 46 绿、红的仍是改动前那两个 Windows 环境问题，八道闸全绿 113 对 / 5,995 行。见 §廿三。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "neoforge"
+    ]
+  },
+  "26.3-fabric": {
+    "minecraft": "26.3",
+    "loader": "Fabric",
+    "loader_version": "0.19.5",
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "9.7.1",
+    "project": "platforms/26.3-fabric",
+    "buildable": false,
+    "unverified": [
+      "loader_version",
+      "gradle"
+    ],
+    "note": "排在 26.3-neoforge 之后做，按本仓约定 NeoForge 是 26.x 的主路径。Fabric 侧的工件已经在：piston-meta 有 26.3 的 intermediary，Fabric API 有 0.160.6+26.3。loader_version 0.19.5 沿用 1.21.1-fabric 那行 —— Fabric Loader 与 Minecraft 版本无关，但它没在 26.3 上编过，所以标着。gradle 9.7.1 同理：那个数是给 fabric-loom 1.17.20 测出来的，26.3 要用哪一版 Loom、那一版对 Gradle 的要求是多少，都得查过再填。server_config_sync 这里写 true 沿用的是仓库里已记着的那个已知问题（Fabric 没有把 SERVER 档配置推给客户端的机制，那三处按钮显隐是错的且不报错），不是 26.3 上新查的事实。",
     "layers": [
       "1.20.3+",
       "1.20.5+",

@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.reader.client;
 
 import com.november.mcphone.core.client.FontPalette;
+import com.november.mcphone.core.client.ImageFolder;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.client.PhoneTheme;
@@ -13,7 +14,6 @@ import com.november.mcphone.feature.reader.client.source.TxtBookSource;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.Util;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -560,10 +560,12 @@ public final class BookList {
         // 「文件夹」画在搜索行右端，必须先判它——那一块也在搜索框的命中区里
         if (folderHovered) {
             // 交给系统自己的文件管理器开，不弹任何 Java 的窗口：AWT 的选择器在 macOS 上
-            // 要与游戏抢主线程。目录不存在时 directory() 会先建出来
-            // 走收 File 的那个重载：openPath(Path) 是 1.20.2 才加的，最老的目标上没有
-            // （见 docs/PORTING.md 的差异表）。openFile 两档版本都在，语义相同
-            Util.getPlatform().openFile(TxtLibrary.directory().toFile());
+            // 要与游戏抢主线程。目录不存在时 directory() 会先建出来。
+            // 「这一版怎么开目录」三支三种写法，收在 ImageFolder → SystemFiles 那道接缝上 ——
+            // 原先这里直接写 Util.getPlatform().openFile(...)，是因为 openPath(Path) 要
+            // 1.20.2 才有；那件事本来就是 SystemFiles 的职责，26.x 上 Util.OS 连 openFile
+            // 都没了，直写这一句再兜不住。（见 docs/PORTING-26.3.md §十六）
+            ImageFolder.openInFileManager(TxtLibrary.directory());
             return true;
         }
 

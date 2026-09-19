@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
 import com.november.mcphone.core.ServerConfig;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.client.PhoneTheme;
@@ -385,7 +386,7 @@ public final class ChatConversation {
     /** 与服务端拒收时同一个位置：动作栏。玩家的眼睛正看着手机屏幕，聊天框那一行他看不见 */
     private static void tell(String key, Object... args) {
         var player = Minecraft.getInstance().player;
-        if (player != null) player.displayClientMessage(Component.translatable(key, args), true);
+        if (player != null) ClientMessages.show(player, Component.translatable(key, args), true);
     }
 
     /** 关掉放大图。返回 false 表示本来就没在放大——那时返回键该照常退出会话 */

@@ -1,5 +1,6 @@
 package com.november.mcphone.core.client;
 
+import com.november.mcphone.platform.client.Transforms;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -7,8 +8,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -204,17 +203,20 @@ public final class GuiUtil {
      * 滚动控件，先看 {@link com.november.mcphone.api.client.ui.PhoneMultiLineEditBox}。
      */
     public static void enableScissor(GuiGraphics g, int x1, int y1, int x2, int y2) {
-        Matrix4f matrix = g.pose().last().pose();
-        Vector3f a = matrix.transformPosition(x1, y1, 0, new Vector3f());
-        Vector3f b = matrix.transformPosition(x2, y2, 0, new Vector3f());
+        // 「这个点变换之后落在哪」收在 Transforms 里 —— 1.21.1 那边是 PoseStack 顶上的
+        // Matrix4f，26.x 那边栈本身就是 Matrix3x2f，两句写不到一起去。
+        float ax = Transforms.mapX(g, x1, y1);
+        float ay = Transforms.mapY(g, x1, y1);
+        float bx = Transforms.mapX(g, x2, y2);
+        float by = Transforms.mapY(g, x2, y2);
 
         // 【两头取整的方向不一样】：小的那头往下取、大的那头往上取。
         // 倍数不是整数时（125%，或者被窗口 fit() 夹出来的小数），四个角各自四舍五入
         // 会让框比内容实际盖住的像素窄半格，最外面一行字被切掉一个像素——正是这次要修的
         // 症状的微缩版。这么取最多多画 1 像素：多画看不出来，少画看得出来。
         g.enableScissor(
-                (int) Math.floor(Math.min(a.x, b.x)), (int) Math.floor(Math.min(a.y, b.y)),
-                (int) Math.ceil(Math.max(a.x, b.x)), (int) Math.ceil(Math.max(a.y, b.y)));
+                (int) Math.floor(Math.min(ax, bx)), (int) Math.floor(Math.min(ay, by)),
+                (int) Math.ceil(Math.max(ax, bx)), (int) Math.ceil(Math.max(ay, by)));
     }
 
     /**
@@ -340,11 +342,11 @@ public final class GuiUtil {
     public static boolean drawItemIcon(GuiGraphics g, ItemStack stack, int x, int y, int size) {
         if (!canDrawItemIcon(stack)) return false;
 
-        g.pose().pushPose();
-        g.pose().translate(x, y, 0);
-        if (size != 16) g.pose().scale(size / 16f, size / 16f, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, x, y);
+        if (size != 16) Transforms.scale(g, size / 16f, size / 16f);
         g.renderItem(stack, 0, 0);
-        g.pose().popPose();
+        Transforms.pop(g);
         return true;
     }
 
@@ -438,11 +440,11 @@ public final class GuiUtil {
         String shown = truncate(font, name, Math.round(cellWidth / scale));
         float shownW = font.width(shown) * scale;
 
-        g.pose().pushPose();
-        g.pose().translate(iconX + (iconSize - shownW) / 2f, iconY + iconSize + 2, 0);
-        g.pose().scale(scale, scale, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, iconX + (iconSize - shownW) / 2f, iconY + iconSize + 2);
+        Transforms.scale(g, scale, scale);
         g.drawString(font, shown, 0, 0, color, false);
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     //  时间
