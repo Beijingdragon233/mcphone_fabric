@@ -671,6 +671,61 @@ G 那一桶里新冒出来的两族值得单记：`ServerPlayer.server` 变 priv
 26.3 叫 `handle()`，但句柄本身是不是还发得出一个 GLFW 窗口 id，本轮没验 —— 它跟 GLFW→SDL
 那 20 条是同一个问题，一起解。
 
+## 十七、1d 第 5 步：改名表加第三档「限定名搬家」。452 → 418
+
+§十六 末尾说的【单位收益最大那块】这一步就做掉了，而且它顺带把改名机制的适用面补全了一块。
+
+### 为什么必须加一档，而不是塞进现有的两张表
+
+`net.minecraft.Util` 在 26.3 是【搬进 `net.minecraft.util` 子包】—— 标识符一个字没变，
+变的是它前面的包名。而 `typeRenames` 那一档是按【标识符】换名的（`ResourceLocation` →
+`Identifier`），对这种改名它【完全看不见】：把 `Util` 改成 `Util` 等于没改。
+反过来把 `Util` 当标识符写进表也不行 —— 那正是这张表的 `_comment` 当初把它排除出去的理由：
+`Util` 太短太通用，词边界锚不住（本仓自己就有 `GuiUtil` 这一族）。
+
+新档叫 `packageRenames`：【整条限定名一起换】。锚点跟类型档差在两处 ——
+前面除了标识符字符还禁一个点（`com.foo.net.minecraft.Util` 不算命中），
+后面【只禁标识符字符、点要放过】，因为 `net.minecraft.Util.backgroundExecutor()`
+这种全限定调用后面跟的就是点。大小写敏感，所以换完得到的 `net.minecraft.util.Util`
+不会被同一条规则再咬一遍。这条规则本身够具体，不存在「Util 太通用」那个问题。
+
+五条不变量一条没少，另外【新加了一条】：限定名这一族也判「新名不许已在原文」——
+包里带点，锚得住，而「同一个文件里两种写法共存」正是这东西该拦的样子。
+原先那条只判类型名，是因为方法名那边 `.text(` 本仓已有 29 处在用，拿同一条判会把好规则拦死。
+
+### 两条规则的命中数（构建当场打的）
+
+```
+net.minecraft.Util→net.minecraft.util.Util 改 9 处/9 文件（字面量里留 0 处）
+setScreen→setScreenAndShow 改 9 处/7 文件（字面量里留 0 处）
+```
+
+`setScreen` 是顺手补的第二条方法改名：26.3 的 `Minecraft` 上【只剩 `setScreenAndShow(Screen)`
+一个】public 的开界面方法（那份源里另几处 `setScreen` 全在 `Gui` 上，不是本仓调的那个）。
+本仓挂载源里 9 处调用的接收者一律是 `mc` / `minecraft` / `Minecraft.getInstance()`，
+全是 `Minecraft`；而自家那个 `setScreenOn(ItemStack)`（`PhoneItemData:105`）名字不同、
+方法档的锚点又要求 `(` 紧跟其后，不会被牵连 —— 这两条都取证过，写在表的 `_comment` 里。
+
+### 一个机制边界，是这一步才撞出来的
+
+9 处而不是 10 处、7 个文件而不是 8 个 —— 差的那些在【本平台自己的文件】里。
+改名挂载只重写 `shared/` 与四个层的副本，`platforms/26.3-neoforge/src/` 下那 36 个文件
+是这一支自己的，不经那道任务。所以本平台的文件得【直接写 26.x 的真名】，
+这一步顺手把 `PhoneHud` 那 4 处 `setScreen` 与 `ChatNetworking` 那 1 处 `Util` 改了。
+
+顺着这条量了一条【以前没量过的维度】：418 条按「谁的」分 ——
+
+| | 条 |
+|---|---:|
+| 挂载副本（改名表管得到） | 328 |
+| 本平台自己的文件（改名表管不到） | **90** |
+
+而 90 条里【有 33 条纯粹是 A 桶】（`ResourceLocation` 25 + `GuiGraphics` 8），
+落在 7 个文件上（`AppHotkeys` 10、`PhoneHud` 6、`CameraFlash` 6、`NetworkHandler` 5、
+`PhoneMultiLineEditBox` 2、`ModSounds` 2、`StoreNetworking` 2）。
+意思是：那 26 个文件是从 1.21.1【逐字拷】过来的，拷进来还带着老名字，
+而它们不过改名那道任务 —— 这 33 条是【下一级的低垂果实】，机械换名即可。
+
 ### 数字
 
 | | 526（上一步末） | 452（这一步末） |

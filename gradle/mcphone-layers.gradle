@@ -83,10 +83,10 @@ def nameRenamesJson = readTrackedJson('versions/name-renames.json')
 if (nameRenamesJson.since == null) {
     throw new GradleException("versions/name-renames.json 缺 since：没有它判不了这个目标该不该改名。")
 }
-// 两张表【可以都空】（那表示这张机制还没启用），但结构必须对 ——
+// 三张表【可以都空】（那表示这张机制还没启用），但结构必须对 ——
 // 结构错了会静默变成「一条规则都没有」，而那是这张表最坏的失效方式。
 def nameRules = [:]
-['typeRenames', 'methodRenames'].each { axis ->
+['typeRenames', 'methodRenames', 'packageRenames'].each { axis ->
     def part = nameRenamesJson[axis]
     if (part == null) { nameRules[axis] = [:]; return }
     if (!(part instanceof Map)) {
@@ -154,12 +154,14 @@ ext.mcphoneRepoRoot = layersRepoRoot
 // 别的 apply 脚本看不见它 —— 版本比较只此一处，结果靠 ext 传出去。
 ext.mcphoneTargetDatapackSingular = McphoneVersions.datapackSingular(myEntry.value.minecraft, renamesJson.since)
 
-// 这一支挂共用代码时按哪几条改名。【两张表都空 = 原样挂载】，那是常态而不是缺失：
+// 这一支挂共用代码时按哪几条改名。【三张表都空 = 原样挂载】，那是常态而不是缺失：
 // 1.20.1 与 1.21.1 都在 since 之下，它们照旧直接把共用源挂上去，一行不多做。
 boolean nameRenamable = McphoneVersions.cmp(myEntry.value.minecraft, nameRenamesJson.since) >= 0
 ext.mcphoneNameRenames = nameRenamable
-        ? [typeRenames: nameRules.typeRenames, methodRenames: nameRules.methodRenames]
-        : [typeRenames: [:], methodRenames: [:]]
+        ? [typeRenames   : nameRules.typeRenames,
+           methodRenames : nameRules.methodRenames,
+           packageRenames: nameRules.packageRenames]
+        : [typeRenames: [:], methodRenames: [:], packageRenames: [:]]
 
 // 【全部目标的信息，供接缝清单用】
 //

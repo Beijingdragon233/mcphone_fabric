@@ -20,6 +20,15 @@ abstract class NameRenamedMountTask extends DefaultTask {
     @Input abstract MapProperty<String, String> getTypePairs()
     /** 方法名规则：旧名 → 新名，只在「. 之后、( 之前」命中。 */
     @Input abstract MapProperty<String, String> getMethodPairs()
+    /**
+     * 限定名规则：旧的整条限定名 → 新的，命中「整条点名 + 后面不是标识符字符」。
+     *
+     * <p>这一档治的是【标识符没变、包名变了】那一类（{@code net.minecraft.Util} →
+     * {@code net.minecraft.util.Util}）：typeRenames 是按标识符换名的，对这种改名
+     * 完全看不见；而按整词锚又锚不住（{@code Util} 太短太通用）。整条点名本身够具体，
+     * 所以这一档能安全地按整条换。
+     */
+    @Input abstract MapProperty<String, String> getPackagePairs()
     @InputFiles @PathSensitive(PathSensitivity.RELATIVE)
     abstract ConfigurableFileCollection getJavaFiles()
     @OutputDirectory abstract DirectoryProperty getGeneratedDir()
@@ -58,18 +67,32 @@ abstract class NameRenamedMountTask extends DefaultTask {
     }
 
     /**
-     * 对【一段不是字面量的】文本做改名：先类型名那一族，再方法名那一族。
+     * 限定名：前面不许粘标识符字符或点（{@code com.foo.net.minecraft.Util} 不算命中），
+     * 后面只禁标识符字符 —— 【点要放过】，因为 {@code net.minecraft.Util.backgroundExecutor()}
+     * 这种全限定调用后面跟的就是点。大小写敏感，所以换完之后的 {@code net.minecraft.util.Util}
+     * 不会被同一条规则再咬一遍。
+     */
+    static Pattern packageAlt(Collection names) {
+        if (!names) return null
+        return Pattern.compile('(?<![A-Za-z0-9_$.])(' +
+                names.collect { Pattern.quote(it) }.join('|') + ')(?![A-Za-z0-9_$])')
+    }
+
+    /**
+     * 对【一段不是字面量的】文本做改名：先限定名那一族，再类型名，再方法名。
      *
-     * <p>两族分两遍走，不是走一遍合并起来的正则：它们的 token 空间不相交
-     * （类型名是专有名词，方法名前面必带点），而分开写能各自用各自最紧的锚。
-     * 顺序也不能反：方法名那一族的接收者变量在被改过名的文本上才算得准。
+     * <p>三族分三遍走，不是走一遍合并起来的正则：它们的 token 空间不相交
+     * （限定名前面必带包、类型名是专有名词、方法名前面必带点），而分开写能各自用各自最紧的锚。
+     * 顺序也不能反：限定名先走，类型名才认得改过包的那一处；而方法名那一族的接收者变量
+     * 在被改过名的文本上才算得准。
      *
      * @param counter 单元素数组，回来时 counter[0] 多了这一段的命中数
      */
-    static String renameCode(Pattern tAlt, Map tPairs, Pattern mAlt, Map mPairs, String code,
+    static String renameCode(Pattern pAlt, Map pPairs, Pattern tAlt, Map tPairs,
+                             Pattern mAlt, Map mPairs, String code,
                              Map hits, Map touched, String where, int[] counter) {
         def out = code
-        [[tAlt, tPairs], [mAlt, mPairs]].each { alt, pairs ->
+        [[pAlt, pPairs], [tAlt, tPairs], [mAlt, mPairs]].each { alt, pairs ->
             if (alt == null) { return }
             def m = alt.matcher(out)
             def sb = new StringBuffer()
@@ -90,9 +113,10 @@ abstract class NameRenamedMountTask extends DefaultTask {
     void generateMount() {
         def tPairs = typePairs.get()
         def mPairs = methodPairs.get()
-        if (tPairs.isEmpty() && mPairs.isEmpty()) {
+        def pPairs = packagePairs.get()
+        if (tPairs.isEmpty() && mPairs.isEmpty() && pPairs.isEmpty()) {
             throw new GradleException(
-                    "两张改名表都是空的，可这个任务还是被挂进了构建 —— 挂载条件与表对不上，" +
+                    "三张改名表都是空的，可这个任务还是被挂进了构建 —— 挂载条件与表对不上，" +
                     "这时候挂进来的会是【一份没改名也没东西的副本】，编得过但全是错的。")
         }
         def outRoot = generatedDir.get().asFile
@@ -101,7 +125,13 @@ abstract class NameRenamedMountTask extends DefaultTask {
 
         def tAlt = NameRenamedMountTask.typeAlt(tPairs.keySet())
         def mAlt = NameRenamedMountTask.methodAlt(mPairs.keySet())
-        def allOld = (tPairs.keySet() + mPairs.keySet()).asList()
+        def pAlt = NameRenamedMountTask.packageAlt(pPairs.keySet())
+        def allOld = (pPairs.keySet() + tPairs.keySet() + mPairs.keySet()).asList()
+        // 不变量 4 要按【旧名属于哪一族】挑锚点，所以留一张索引。
+        def family = [:]
+        pPairs.keySet().each { family[it] = 'p' }
+        tPairs.keySet().each { family[it] = 't' }
+        mPairs.keySet().each { family[it] = 'm' }
         def hits = allOld.collectEntries { k -> [(k): 0] }
         def touched = allOld.collectEntries { k -> [(k): new LinkedHashSet()] }
         def inLiterals = allOld.collectEntries { k -> [(k): 0] }
@@ -131,6 +161,13 @@ abstract class NameRenamedMountTask extends DefaultTask {
                     alreadyNew << [where, oldName, newName]
                 }
             }
+            // 限定名这一族【要判】：包里带点，锚得住，而「新名已在原文」意味着
+            // 同一个文件里两种写法共存，那正是要拦的东西。
+            pPairs.each { oldName, newName ->
+                if (NameRenamedMountTask.packageAlt([newName]).matcher(src).find()) {
+                    alreadyNew << [where, oldName, newName]
+                }
+            }
 
             // 不变量 3：按「字面量 / 非字面量」交替切，只有非字面量那段过改名。
             def rebuilt = new StringBuffer()
@@ -140,7 +177,7 @@ abstract class NameRenamedMountTask extends DefaultTask {
             int before = counter[0]
             while (lm.find()) {
                 if (lm.start() > cursor) {
-                    def seg = NameRenamedMountTask.renameCode(tAlt, tPairs, mAlt, mPairs,
+                    def seg = NameRenamedMountTask.renameCode(pAlt, pPairs, tAlt, tPairs, mAlt, mPairs,
                             src.substring(cursor, lm.start()), hits, touched, where, counter)
                     rebuilt.append(seg); codeOnly.append(seg)
                 }
@@ -148,7 +185,7 @@ abstract class NameRenamedMountTask extends DefaultTask {
                 cursor = lm.end()
             }
             if (cursor < src.length()) {
-                def seg = NameRenamedMountTask.renameCode(tAlt, tPairs, mAlt, mPairs,
+                def seg = NameRenamedMountTask.renameCode(pAlt, pPairs, tAlt, tPairs, mAlt, mPairs,
                         src.substring(cursor), hits, touched, where, counter)
                 rebuilt.append(seg); codeOnly.append(seg)
             }
@@ -164,9 +201,11 @@ abstract class NameRenamedMountTask extends DefaultTask {
                 }
                 allOld.each { oldName ->
                     // 不变量 4：代码段里不许还剩旧名。
-                    def w = tPairs.containsKey(oldName)
-                            ? NameRenamedMountTask.typeAlt([oldName])
-                            : NameRenamedMountTask.methodAlt([oldName])
+                    def w = family[oldName] == 'p'
+                            ? NameRenamedMountTask.packageAlt([oldName])
+                            : family[oldName] == 't'
+                                    ? NameRenamedMountTask.typeAlt([oldName])
+                                    : NameRenamedMountTask.methodAlt([oldName])
                     if (w.matcher(codeOnly.toString()).find()) {
                         throw new GradleException("改完代码里还剩旧名：${where} 里仍有 ${oldName}。替换逻辑漏了。")
                     }
@@ -204,7 +243,7 @@ abstract class NameRenamedMountTask extends DefaultTask {
                     "挂载源应该有 ${expected} 个 java 文件，实际复制了 ${copied} 个" +
                     (expected == 0 ? '。一个都没有 —— 挂载目录空了或者路径不对。' : '。'))
         }
-        def allPairs = tPairs + mPairs
+        def allPairs = pPairs + tPairs + mPairs
         logger.lifecycle("按目标改名挂载共用代码：${expected} 个文件；" +
                 hits.collect { e ->
                     "${e.key}→${allPairs[e.key]} 改 ${e.value} 处/${touched[e.key].size()} 文件" +
@@ -226,7 +265,8 @@ ext.mcphoneMountSharedJava = { SourceDirectorySet javaSrc, Map<String, File> mou
     def table = ext.mcphoneNameRenames
     def tPairs = (table?.typeRenames ?: [:]) as LinkedHashMap
     def mPairs = (table?.methodRenames ?: [:]) as LinkedHashMap
-    if (tPairs.isEmpty() && mPairs.isEmpty()) {
+    def pPairs = (table?.packageRenames ?: [:]) as LinkedHashMap
+    if (tPairs.isEmpty() && mPairs.isEmpty() && pPairs.isEmpty()) {
         mounts.each { name, dir -> javaSrc.srcDir dir }
         logger.lifecycle("共用代码原样挂载：${mounts.size()} 个目录（改名表对这支的 Minecraft 不生效）")
         return
@@ -248,6 +288,7 @@ ext.mcphoneMountSharedJava = { SourceDirectorySet javaSrc, Map<String, File> mou
         }
         tPairs.each { o, nw -> task.typePairs.put(o, nw) }
         mPairs.each { o, nw -> task.methodPairs.put(o, nw) }
+        pPairs.each { o, nw -> task.packagePairs.put(o, nw) }
         task.generatedDir.set(layout.buildDirectory.dir('generated/name-renames'))
     }
     javaSrc.srcDir(t.map { it.generatedDir })

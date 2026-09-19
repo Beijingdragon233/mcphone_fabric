@@ -12,7 +12,7 @@ import com.november.mcphone.feature.chat.ChatOutcome;
 import com.november.mcphone.feature.chat.ImageOutcome;
 import com.november.mcphone.feature.chat.TeleportService;
 import com.november.mcphone.core.net.RequestThrottle;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;

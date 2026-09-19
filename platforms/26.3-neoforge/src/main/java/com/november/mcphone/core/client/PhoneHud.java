@@ -313,7 +313,9 @@ public final class PhoneHud {
         if (closing == null) return;
 
         // removed() 认得 hudOwned，不会重复拆，见 PhoneScreen.removed()
-        if (mc.screen == closing) mc.setScreen(null);
+        // 26.x 上 Minecraft 只剩 setScreenAndShow（shared/ 那一份由改名表负责，
+        // 而挂载只重写 shared 与四个层的副本，本平台自己的文件得直接写真名）
+        if (mc.screen == closing) mc.setScreenAndShow(null);
         closing.shutdown();
     }
 
@@ -348,7 +350,7 @@ public final class PhoneHud {
 
         interacting = false;
         phone.setHudMode(false);
-        Minecraft.getInstance().setScreen(phone);
+        Minecraft.getInstance().setScreenAndShow(phone);
         return true;
     }
 
@@ -356,14 +358,14 @@ public final class PhoneHud {
 
     private static void startInteracting(Minecraft mc) {
         interacting = true;
-        mc.setScreen(phone);
+        mc.setScreenAndShow(phone);
         putCursorOnPhone(mc);
     }
 
     private static void stopInteracting(Minecraft mc) {
         interacting = false;
-        // setScreen(null) 会把鼠标重新抓回去，视角控制随之恢复
-        if (mc.screen == phone) mc.setScreen(null);
+        // setScreenAndShow(null) 会把鼠标重新抓回去，视角控制随之恢复
+        if (mc.screen == phone) mc.setScreenAndShow(null);
     }
 
     /**
