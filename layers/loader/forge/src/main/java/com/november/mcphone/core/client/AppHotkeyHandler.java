@@ -9,7 +9,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.settings.KeyModifier;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * 按下某个 App 的快捷键 —— 直接进那个 App。键盘、鼠标键都行，支持
@@ -27,7 +26,7 @@ import org.lwjgl.glfw.GLFW;
  * 没有那口队列。改在 tick 里轮询 {@code isKeyDown} 的话，比一个 tick（50ms）
  * 更短的一下就会整个丢掉——按得快正是快捷键的常态。所以听按下事件本身。
  *
- * 只认 GLFW_PRESS：REPEAT 是按住不放时系统补发的，那会变成一直重开手机。
+ * 只认 {@code InputConstants.PRESS}：REPEAT 是按住不放时系统补发的，那会变成一直重开手机。
  *
  * 键盘与鼠标为什么不是同一套收尾
  *
@@ -52,7 +51,7 @@ public final class AppHotkeyHandler {
 
     /** 由 MCphoneClient 构造函数挂到游戏总线 */
     public static void onKeyInput(InputEvent.Key event) {
-        if (event.getAction() != GLFW.GLFW_PRESS) return;
+        if (event.getAction() != InputConstants.PRESS) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.screen != null || mc.player == null || mc.level == null) return;
@@ -80,7 +79,7 @@ public final class AppHotkeyHandler {
      * 打开时不会顺带挥一次手、放一次方块。键盘那条没有这个待遇。
      */
     public static void onMouseInput(InputEvent.MouseButton.Pre event) {
-        if (event.getAction() != GLFW.GLFW_PRESS) return;
+        if (event.getAction() != InputConstants.PRESS) return;
 
         Minecraft mc = Minecraft.getInstance();
 

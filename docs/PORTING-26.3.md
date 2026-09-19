@@ -1427,3 +1427,73 @@ public static Optional<CurioSlotRef> findEquipped(LivingEntity entity, Predicate
    单独一步做。
 3. 这条路走完，"联动以后做成附属模组"是顺手的：这套"签名只说原版类型"的接缝
    本来就是挂载点，26.3 那份将来换成真实现或换成附属发现都行。
+
+
+## 廿五、1d 第 12 步（上半）：GLFW 键码里有 16 条可以【一字不改四支共用】。313 → 297
+
+### 先取证：26.3 的键码有几套
+
+`InputConstants` 在 26.3 里同时发布两套码：
+
+```
+KEY_A = 4      KEY_ESCAPE = 41     <-- SDL 【scancode】
+KEYCODE_A = 97 KEYCODE_RETURN = 13 <-- SDL 【keycode】
+```
+
+用错一套不会编译失败，只会热键静默失灵。决定性证据在 `SDLEventHandler.handleKeyEvent`：
+
+```java
+int action = event.type() == 769 ? 0 : (keyEvent.repeat() ? -1 : 1);
+KeyEvent key = new KeyEvent(keyEvent.scancode(), keyEvent.key(), keyEvent.mod());
+```
+
+`KeyEvent` 是 `record KeyEvent(int key, int keycode, int modifiers)` —— 第一位也就是
+`Screen.keyPressed` 那个 `keyCode`，装的是 **scancode**；而 `InputConstants.KEY_*` 正是 scancode。
+动作也一样：`PRESS = 1`、`RELEASE = 0`、`REPEAT = -1`，和 GLFW 的 `GLFW_PRESS = 1` 同值。
+
+### 于是这一族根本不用建接缝
+
+老三支的 `InputConstants.KEY_ESCAPE` 是 GLFW 值（256），26.3 的是 SDL scancode（41），
+**各自都恰好是本版本 `KeyMapping` 与 `keyPressed` 认的那一个数**。所以把
+`GLFW.GLFW_KEY_ESCAPE` 写成 `InputConstants.KEY_ESCAPE`，四支拿到的是各自正确的码 ——
+共用代码照旧四支逐字相同，双胞胎基线一个字没动（113 对 / 6,013 行，`verifyPlatformTwins` 通过）。
+
+这一步不需要任何产品决策，先把这半边清掉。改了六个文件：
+
+| 文件 | 处数 | 换成 |
+|---|---:|---|
+| `shared/core/client/PhoneKeys.java` | 8 | `KEY_V`/`KEY_X`/`KEY_H`/`KEY_PAGEUP`/`KEY_PAGEDOWN`/`KEY_LALT`/`KEY_G` + 一句注释 |
+| `layers/loader/neoforge/core/client/AppHotkeyHandler.java` | 3 | `InputConstants.PRESS` |
+| `layers/loader/forge/core/client/AppHotkeyHandler.java` | 3 | 同上（孪生，必须一字不差一起改） |
+| `platforms/1.21.1-fabric/core/client/AppHotkeyHandler.java` | 3 | 同上 |
+| `shared/feature/settings/client/AppManagerDetail.java` | 2 | `KEY_ESCAPE`、`MOUSE_BUTTON_LEFT` |
+| `shared/feature/settings/client/PhoneHudEditor.java` | 1 | `KEY_R` |
+
+六份文件里的 `import org.lwjgl.glfw.GLFW;` 全部删掉，现在**整个仓库的 java 源码里 GLFW 只剩注释**
+（`KeyModifier` 是 fabric 专有文件、`PhoneHud` 各支自己那份、`BrowserScreen` 那几行是 MCEF 的掩码常量，都不在这 16 条里）。
+
+### 实测
+
+| | 改动前 | 改动后 |
+|---|---:|---:|
+| 26.3 javac 错误 | 313 | **297** |
+| F 桶 GLFW 一族 | 21 | **5** |
+
+`1.20.1-forge`（45s）/ `1.21.1-neoforge`（12s）/ `1.21.1-fabric`（13s）三支重编全
+`BUILD SUCCESSFUL` —— 这一支是最老的，它绿了就说名 `InputConstants` 那批名字在 1.20.1 上也全存在。
+
+### 剩下那 5 条：只有它们真要碰 SDL
+
+都在 `platforms/26.3-neoforge/core/client/PhoneHud.java`，是"直接问底层窗口"那两件事：
+
+```java
+GLFW.glfwSetCursorPos(window.getWindow(), x, y);                        // 396（2 条）
+case MOUSE -> GLFW.glfwGetMouseButton(handle, value) == GLFW.GLFW_PRESS; // 415（2 条）+ import 1 条
+```
+
+26.3 这边：`Window` 上取句柄的方法改叫 `handle()`（`Window.java:649` 有 `public long handle()`），
+原版自己对外的口是 `InputConstants.setCursorPos(...)`，里面是
+`SDLMouse.SDL_WarpMouseInWindow(window.handle(), (float)x, (float)y)`。
+**"此刻某个鼠标键按着没有"在 26.3 的原版源码里搜不到现成口**（`getMouseState`/`SDL_BUTTON` 零命中），
+原版是靠事件自己记状态。所以这 5 条要单独一步：建一个每平台接缝，
+26.3 那一份自己调 `SDLMouse.SDL_GetMouseState` 或改成自己记，另外三支仍走 GLFW。

@@ -5,13 +5,13 @@ import com.november.mcphone.core.client.PhoneChassis;
 import com.november.mcphone.core.client.PhoneHud;
 import com.november.mcphone.core.client.PhoneHudPlacement;
 import com.november.mcphone.core.client.PhoneTheme;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import com.november.mcphone.platform.client.PhoneScreenBase;
 import com.november.mcphone.platform.client.Transforms;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * 摆放副手 HUD 上那部手机 —— 拖到哪儿就是哪儿。
@@ -226,7 +226,7 @@ public final class PhoneHudEditor extends PhoneScreenBase {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == GLFW.GLFW_KEY_R) {
+        if (keyCode == InputConstants.KEY_R) {
             PhoneHudPlacement.reset();
             return true;
         }

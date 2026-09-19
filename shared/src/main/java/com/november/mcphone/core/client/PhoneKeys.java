@@ -1,8 +1,8 @@
 package com.november.mcphone.core.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -61,7 +61,7 @@ public final class PhoneKeys {
             return id;
         }
 
-        /** 默认键位（GLFW 键码） */
+        /** 默认键位（本版本 {@code InputConstants} 的键码） */
         public int defaultCode() {
             return defaultCode;
         }
@@ -99,16 +99,16 @@ public final class PhoneKeys {
     }
 
     /** 拍照 */
-    public static final Key CAMERA_SHUTTER = new Key("key.mcphone.camera_shutter", GLFW.GLFW_KEY_V);
+    public static final Key CAMERA_SHUTTER = new Key("key.mcphone.camera_shutter", InputConstants.KEY_V);
 
     /** 退出相机 */
-    public static final Key CAMERA_EXIT = new Key("key.mcphone.camera_exit", GLFW.GLFW_KEY_X);
+    public static final Key CAMERA_EXIT = new Key("key.mcphone.camera_exit", InputConstants.KEY_X);
 
     /**
      * 开机。手机放在背包或饰品槽里也能直接打开，不必先切到手上。
      * 这个键与 Curios 无关：没装任何附属模组时照样从背包里把手机翻出来。
      */
-    public static final Key OPEN_PHONE = new Key("key.mcphone.open_phone", GLFW.GLFW_KEY_H);
+    public static final Key OPEN_PHONE = new Key("key.mcphone.open_phone", InputConstants.KEY_H);
 
     /**
      * 挂在 HUD 上看书时往前翻一页。
@@ -127,10 +127,10 @@ public final class PhoneKeys {
      * 为此单造一套"这个键在这个目标上有没有用"的机制不值：那个信息既不在版本轴也不在
      * 加载器轴上，没有层装得下它，而漏声明的代价比死键更重。
      */
-    public static final Key READER_PREV = new Key("key.mcphone.reader_prev", GLFW.GLFW_KEY_PAGE_UP);
+    public static final Key READER_PREV = new Key("key.mcphone.reader_prev", InputConstants.KEY_PAGEUP);
 
     /** 挂在 HUD 上看书时往后翻一页，理由同 {@link #READER_PREV} */
-    public static final Key READER_NEXT = new Key("key.mcphone.reader_next", GLFW.GLFW_KEY_PAGE_DOWN);
+    public static final Key READER_NEXT = new Key("key.mcphone.reader_next", InputConstants.KEY_PAGEDOWN);
 
     /**
      * 按一下唤出鼠标操作副手 HUD 上那部手机，再按一下收起。
@@ -143,7 +143,7 @@ public final class PhoneKeys {
      * 所以 {@code PhoneHud} 直接查物理按键（{@code InputConstants.isKeyDown}）。留着
      * KeyMapping 是为了让玩家能在原版按键设置里改键，并让冲突提示照常工作。
      */
-    public static final Key HUD_INTERACT = new Key("key.mcphone.hud_interact", GLFW.GLFW_KEY_LEFT_ALT);
+    public static final Key HUD_INTERACT = new Key("key.mcphone.hud_interact", InputConstants.KEY_LALT);
 
     /**
      * 唤出 / 收起副手 HUD 上那部手机。
@@ -155,7 +155,7 @@ public final class PhoneKeys {
      * 它<b>顶掉</b>自动那条规矩，而不是与之并列——手机在副手上时按它也要能收起来，
      * 否则会出现"按了没反应"。
      */
-    public static final Key HUD_TOGGLE = new Key("key.mcphone.hud_toggle", GLFW.GLFW_KEY_G);
+    public static final Key HUD_TOGGLE = new Key("key.mcphone.hud_toggle", InputConstants.KEY_G);
 
     /**
      * 全部的键，加载器层照这个列表建与注册。
