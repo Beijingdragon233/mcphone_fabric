@@ -128,13 +128,24 @@ public final class MCphone {
         // 世界，而那些求值回调到主线程时拿到的是一个已经死掉的 MinecraftServer。
         // setDaemon(true) 是"万一这里漏了别挂住 JVM"的兜底，不是关闭方案本身
         MinecraftForge.EVENT_BUS.addListener(
-                (net.minecraftforge.event.server.ServerStartedEvent e) ->
-                        com.november.mcphone.core.script.server.ScriptWorkers.start());
+                (net.minecraftforge.event.server.ServerStartedEvent e) -> {
+                    com.november.mcphone.core.script.server.economy.EconomyRuntime.start(e.getServer());
+                    com.november.mcphone.core.script.server.ScriptWorkers.start();
+                });
+        // 货币网关先关、再停 worker：worker 可能正等着主线程替它执行一笔货币调用，
+        // 反过来主线程就要白等到 worker 超时（见 CurrencyGateway.close）
         MinecraftForge.EVENT_BUS.addListener(
                 (net.minecraftforge.event.server.ServerStoppingEvent e) -> {
+                    com.november.mcphone.core.script.server.economy.EconomyRuntime.stop();
                     com.november.mcphone.core.script.server.ScriptWorkers.stop();
                     com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
                 });
+        // 超时托管每 5 分钟扫一次（见 EconomyRuntime.tick），只在 tick 结束那一相位调一次
+        MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.TickEvent.ServerTickEvent e) -> {
+            if (e.phase == net.minecraftforge.event.TickEvent.Phase.END) com.november.mcphone.core.script.server.economy.EconomyRuntime.tick();
+        });
+        MinecraftForge.EVENT_BUS.addListener(
+                (net.minecraftforge.event.RegisterCommandsEvent e) -> com.november.mcphone.core.script.server.economy.EconomyCommand.register(e.getDispatcher()));
 
         // 放在自家注册之后：兼容模块可能要看我们已经注册了什么
         com.november.mcphone.compat.CompatModules.init(modBus);

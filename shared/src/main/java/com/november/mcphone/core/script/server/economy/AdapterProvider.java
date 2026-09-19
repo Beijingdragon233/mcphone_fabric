@@ -27,7 +27,12 @@ import java.util.UUID;
  */
 public final class AdapterProvider implements ICurrencyProvider {
 
-    /** 外部经济模组要实现的那一面。<b>只有三件事</b>，多了就桥不动大多数模组。 */
+    /**
+     * 外部经济模组要实现的那一面。<b>只有四件事</b>，多了就桥不动大多数模组。
+     *
+     * <p><b>每个方法都在服务端主线程上被调用</b>（{@link CurrencyGateway}），必须快：不许走网络、不许等锁。
+     * 慢了卡住的是整个服务器的 tick，以及在等它的脚本 worker。
+     */
     public interface ExternalWallet {
 
         /** 现在能不能用（模组在不在场、有没有初始化完）。 */
@@ -45,6 +50,8 @@ public final class AdapterProvider implements ICurrencyProvider {
     private final Currency currency;
     private final ExternalWallet wallet;
     private final EscrowLedger escrow;
+    /** 正在往外部钱包存款的托管号。只在主线程上碰（网关） */
+    private final java.util.Set<EscrowId> settling = new java.util.HashSet<>();
     private final long maxBalance;
 
     public AdapterProvider(Currency currency, ExternalWallet wallet, EscrowLedger escrow, long maxBalance) {
@@ -75,6 +82,8 @@ public final class AdapterProvider implements ICurrencyProvider {
 
     @Override
     public long balance(UUID player) {
+        // 钱包不在时抛，不去问它：问出来的 0 会被当成"没钱"
+        if (!wallet.available()) throw new CurrencyUnavailableException(unavailableReasonKey());
         return wallet.balance(player);
     }
 
@@ -130,6 +139,8 @@ public final class AdapterProvider implements ICurrencyProvider {
         if (from == null || beneficiary == null) return HoldResult.fail(TxnResult.INVALID);
         TxnResult bad = com.november.mcphone.api.economy.Balances.checkAmount(amount);
         if (bad != TxnResult.OK) return HoldResult.fail(bad);
+        // 托管记在世界存档里；存档锁住时记不进去，就别先从外部钱包扣
+        if (escrow.unavailableReasonKey(id()) != null) return HoldResult.fail(TxnResult.UNAVAILABLE);
         if (!wallet.withdraw(from, amount)) return HoldResult.fail(TxnResult.INSUFFICIENT);
         return HoldResult.ok(escrow.create(from, beneficiary, id(), amount));
     }
@@ -145,6 +156,8 @@ public final class AdapterProvider implements ICurrencyProvider {
     }
 
     private TxnResult settle(EscrowId id, boolean toBeneficiary) {
+        // 锁住的货币，它的托管条目根本没读进来 —— 先判锁，否则会答成 UNKNOWN_ESCROW
+        if (escrow.unavailableReasonKey(id()) != null) return TxnResult.UNAVAILABLE;
         EscrowLedger.Entry e = escrow.get(id);
         if (e == null) return TxnResult.UNKNOWN_ESCROW;
         // 托管号要认货币（E25）
@@ -154,7 +167,16 @@ public final class AdapterProvider implements ICurrencyProvider {
         if (e.settled()) return TxnResult.ALREADY_SETTLED;
         if (!wallet.available()) return TxnResult.UNAVAILABLE;
         UUID target = toBeneficiary ? e.beneficiary() : e.owner();
-        if (!escrow.settle(id)) return TxnResult.ALREADY_SETTLED;
-        return wallet.deposit(target, e.amount()) ? TxnResult.OK : TxnResult.FAILED;
+        // 外部钱包在 deposit 里同步再来结算这一笔：它既没结清也还没付成，答"现在用不了"，不许再付一次，
+        // 也不许答 ALREADY_SETTLED —— 外层存款可能还会失败
+        if (!settling.add(id)) return TxnResult.UNAVAILABLE;
+        try {
+            // 先存款、后标结清：存款失败或抛异常时托管不动，钱仍押着
+            if (!wallet.deposit(target, e.amount())) return TxnResult.FAILED;
+            escrow.settle(id);
+            return TxnResult.OK;
+        } finally {
+            settling.remove(id);
+        }
     }
 }

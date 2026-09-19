@@ -21,10 +21,25 @@ import java.util.Map;
  */
 public final class CurrencyRegistry {
 
-    /** 货币 id → 提供者。按声明顺序，{@code list()} 的顺序就是它。 */
+    /** 货币 id → 交出去的那一个（有网关时是包过的）。按声明顺序，{@code list()} 的顺序就是它。 */
     private final Map<String, ICurrencyProvider> providers = new LinkedHashMap<>();
 
     private String defaultId;
+
+    private final CurrencyGateway gateway;
+
+    /** 断言测试用：不经网关，直接交出 provider。 */
+    public CurrencyRegistry() {
+        this(null);
+    }
+
+    /**
+     * 生产环境用：登记进来的 provider 一律包一层 {@link GatedCurrencyProvider} 再交出去 ——
+     * 拿到注册表的人（{@code ctx.currency}）碰不到没包过的那一个。
+     */
+    public CurrencyRegistry(CurrencyGateway gateway) {
+        this.gateway = gateway;
+    }
 
     /**
      * 注册一种。{@code isDefault} 只许有一个为真，后来的覆盖前面的并记一条警告。
@@ -40,13 +55,16 @@ public final class CurrencyRegistry {
     public boolean register(ICurrencyProvider provider, boolean isDefault) {
         String id = provider.currency().id().toString();
         ICurrencyProvider existing = providers.get(id);
-        if (existing != null && existing != provider) {
+        if (existing != null && unwrap(existing) != unwrap(provider)) {
             com.november.mcphone.MCphone.LOGGER.error(
                     "[MCphone] 货币 {} 已经有一个提供者了，拒绝第二个 —— "
                             + "两个实例各拿各的锁写同一份账，守恒就不成立了", id);
             return false;
         }
-        providers.put(id, provider);
+        if (existing == null) {
+            // 已经包过的也拆开重包：别的网关（比如 onMainThread 恒为真的那种）包过的等于没包，线程模型只认这一个
+            providers.put(id, gateway == null ? provider : new GatedCurrencyProvider(unwrap(provider), gateway));
+        }
         if (isDefault) {
             if (defaultId != null && !defaultId.equals(id)) {
                 com.november.mcphone.MCphone.LOGGER.warn(
@@ -55,6 +73,11 @@ public final class CurrencyRegistry {
             defaultId = id;
         }
         return true;
+    }
+
+    private static ICurrencyProvider unwrap(ICurrencyProvider p) {
+        while (p instanceof GatedCurrencyProvider g) p = g.inner();
+        return p;
     }
 
     public ICurrencyProvider get(String currencyId) {

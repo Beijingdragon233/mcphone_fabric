@@ -13,7 +13,7 @@ import java.util.UUID;
 import java.util.function.LongSupplier;
 
 /**
- * 自带的货币提供者（施工方案 §22.7 的 builtin 一行）。余额存在玩家身上，服主什么都不用装。
+ * 自带的货币提供者（施工方案 §22.7 的 builtin 一行）。余额在世界级存档里（{@link EconomyData}），服主什么都不用装。
  *
  * <h2>五条不变量都在这里落地（§22.9）</h2>
  *
@@ -30,9 +30,9 @@ import java.util.function.LongSupplier;
  *
  * <h2>原子性</h2>
  *
- * 余额的"读 → 判断 → 写"要原子。<b>不是靠"主线程天然串行"</b> ——
- * 要的不变量是原子性，不是线程归属。这里用一把锁把一次转账的两端框住；
- * 真正的并发权威在 {@link BalanceStore} 的实现里。
+ * 余额的"读 → 判断 → 写"要原子，靠的是<b>只在服务端主线程上执行</b>（{@link CurrencyGateway}）。
+ * 这把锁只在断言测试多线程直调时起作用，<b>不是跨线程保证</b>：两个实例各拿各的锁写同一份账，
+ * 实测照样丢钱（E25 ③）。
  */
 public final class BuiltinProvider implements ICurrencyProvider {
 
@@ -43,9 +43,6 @@ public final class BuiltinProvider implements ICurrencyProvider {
     private final LongSupplier clock;
     private final boolean allowNegative;
     private final long maxBalance;
-
-    /** 这一次调用是哪个 App 发起的。<b>由宿主盖章，不采信调用方</b>（§22.10）。 */
-    private final ThreadLocal<String> callingApp = ThreadLocal.withInitial(() -> "-");
 
     private final Object lock = new Object();
 
@@ -62,11 +59,11 @@ public final class BuiltinProvider implements ICurrencyProvider {
 
     /** 宿主在进入脚本调用前盖章。 */
     public void enterApp(String appId) {
-        callingApp.set(appId == null ? "-" : appId);
+        CallingApp.enter(appId);
     }
 
     public void leaveApp() {
-        callingApp.remove();
+        CallingApp.leave();
     }
 
     private String id() {
@@ -80,17 +77,27 @@ public final class BuiltinProvider implements ICurrencyProvider {
 
     @Override
     public boolean isAvailable() {
-        return true;
+        return lockedKey() == null;
     }
 
     @Override
     public String unavailableReasonKey() {
-        return "";
+        String k = lockedKey();
+        return k == null ? "" : k;
     }
 
+    /** 读不到就抛：返回 0 是静默给错数，调用方会以为这个人没钱。 */
     @Override
     public long balance(UUID player) {
+        String k = lockedKey();
+        if (k != null) throw new CurrencyUnavailableException(k);
         return balances.get(player, id());
+    }
+
+    /** 存档读坏了的货币是锁住的（见 {@link EconomyData}）。null = 动得了。 */
+    private String lockedKey() {
+        String k = balances.unavailableReasonKey(id());
+        return k != null ? k : escrow.unavailableReasonKey(id());
     }
 
     @Override
@@ -111,6 +118,9 @@ public final class BuiltinProvider implements ICurrencyProvider {
         if (parties != TxnResult.OK) {
             return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, parties);
         }
+        TxnResult bad = Balances.checkAmount(amount);
+        if (bad != TxnResult.OK) return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, bad);
+        if (lockedKey() != null) return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, TxnResult.UNAVAILABLE);
         synchronized (lock) {
             long a = balances.get(from, id());
             long b = balances.get(to, id());
@@ -128,6 +138,9 @@ public final class BuiltinProvider implements ICurrencyProvider {
     @Override
     public TxnResult mint(UUID to, long amount, TxnReason reason) {
         if (to == null) return record(TxnLog.Kind.MINT, null, to, amount, reason, TxnResult.INVALID);
+        TxnResult bad = Balances.checkAmount(amount);
+        if (bad != TxnResult.OK) return record(TxnLog.Kind.MINT, null, to, amount, reason, bad);
+        if (lockedKey() != null) return record(TxnLog.Kind.MINT, null, to, amount, reason, TxnResult.UNAVAILABLE);
         synchronized (lock) {
             long b = balances.get(to, id());
             TxnResult r = Balances.checkCredit(b, amount, maxBalance);
@@ -140,6 +153,9 @@ public final class BuiltinProvider implements ICurrencyProvider {
     @Override
     public TxnResult burn(UUID from, long amount, TxnReason reason) {
         if (from == null) return record(TxnLog.Kind.BURN, from, null, amount, reason, TxnResult.INVALID);
+        TxnResult bad = Balances.checkAmount(amount);
+        if (bad != TxnResult.OK) return record(TxnLog.Kind.BURN, from, null, amount, reason, bad);
+        if (lockedKey() != null) return record(TxnLog.Kind.BURN, from, null, amount, reason, TxnResult.UNAVAILABLE);
         synchronized (lock) {
             long a = balances.get(from, id());
             TxnResult r = Balances.checkDebit(a, amount, allowNegative);
@@ -154,6 +170,15 @@ public final class BuiltinProvider implements ICurrencyProvider {
         if (from == null || beneficiary == null) {
             record(TxnLog.Kind.HOLD, from, beneficiary, amount, reason, TxnResult.INVALID);
             return HoldResult.fail(TxnResult.INVALID);
+        }
+        TxnResult bad = Balances.checkAmount(amount);
+        if (bad != TxnResult.OK) {
+            record(TxnLog.Kind.HOLD, from, beneficiary, amount, reason, bad);
+            return HoldResult.fail(bad);
+        }
+        if (lockedKey() != null) {
+            record(TxnLog.Kind.HOLD, from, beneficiary, amount, reason, TxnResult.UNAVAILABLE);
+            return HoldResult.fail(TxnResult.UNAVAILABLE);
         }
         EscrowId id;
         synchronized (lock) {
@@ -184,6 +209,8 @@ public final class BuiltinProvider implements ICurrencyProvider {
     /** 放款给受益人、或者退给原主。<b>方向是创建时定死的，这里只能二选一，不能指定第三方。</b> */
     private TxnResult settle(EscrowId id, TxnReason reason, boolean toBeneficiary) {
         TxnLog.Kind kind = toBeneficiary ? TxnLog.Kind.RELEASE : TxnLog.Kind.REFUND;
+        // 锁住的货币，它的托管条目根本没读进来 —— 先判锁，否则会答成 UNKNOWN_ESCROW，调用方以为号是假的
+        if (lockedKey() != null) return record(kind, null, null, 0, reason, TxnResult.UNAVAILABLE);
         EscrowLedger.Entry e = escrow.get(id);
         if (e == null) return record(kind, null, null, 0, reason, TxnResult.UNKNOWN_ESCROW);
         // 托管号要认货币，否则就是拿 A 币的号在 B 币上放款（E25）
@@ -211,7 +238,7 @@ public final class BuiltinProvider implements ICurrencyProvider {
                              TxnReason reason, TxnResult result) {
         if (log != null) {
             log.append(Instant.ofEpochMilli(clock.getAsLong()), id(), kind, from, to,
-                    amount, callingApp.get(), reason, result);
+                    amount, CallingApp.current(), reason, result);
         }
         return result;
     }
