@@ -92,13 +92,19 @@ group = mod_group_id
 // apply 它，因为它顺手把「targets.json 里有没有 project == 本目录这一条」也验了。
 apply from: "${projectDir}/../../gradle/mcphone-layers.gradle"
 
+// 按目标改名挂载。表在 versions/name-renames.json，机制在 gradle/mcphone-renames.gradle。
+// 与另三支的【唯一】差别：这一支挂进来的共用代码是 build/generated/name-renames/ 下
+// 一份按目标改过名的副本，而 git 里那一份原文一个字没动、仍旧全平台共用。
+// 为什么只能这么办（类型名出现在正文里，层的「逐字相同」准入条件表达不了它）
+// 与那五条不变量，都记在改名表自己的 _comment 里。
+apply from: "${projectDir}/../../gradle/mcphone-renames.gradle"
+
 if (mountSharedSources) {
-    sourceSets.main.java.srcDir '../../shared/src/main/java'
-    mcphoneLayers.each { layer ->
-        if (layer.javaDir.isDirectory()) {
-            sourceSets.main.java.srcDir layer.javaDir
-        }
-    }
+    mcphoneMountSharedJava(sourceSets.main.java,
+            (['shared/src/main/java': new File(repoRoot, 'shared/src/main/java')] +
+             mcphoneLayers.collectEntries { layer ->
+                 [("${layer.relDir}/src/main/java"): layer.javaDir]
+             }))
 
     sourceSets.main.resources {
         srcDir('../../shared/src/main/resources')
