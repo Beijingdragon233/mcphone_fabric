@@ -44,5 +44,18 @@ public abstract class PhoneScreenBase extends Screen {
     protected boolean onScroll(double mouseX, double mouseY, double scrollX, double scrollY) {
         return false;
     }
+
+    /**
+     * 原生鼠标键编号 -> 本模组对外编号。这一支上两者【本来就是同一套】：
+     * GLFW 的左/右/中是 0/1/2，而 {@code IPhonePage.BUTTON_LEFT/RIGHT/MIDDLE} 就是照它定的，
+     * 所以这里原样交回。
+     *
+     * <p>26.x 那一支不同：那边换成了 SDL，左键是 1，所以它要减一。差别的来龙去脉写在
+     * {@code api/client/ui/IPhonePage} 的常量那段里。
+     */
+    public static int pageButton(int nativeButton) {
+        return nativeButton;
+    }
+
 }
 

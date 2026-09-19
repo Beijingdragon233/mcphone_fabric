@@ -1529,3 +1529,56 @@ case MOUSE  -> (SDLMouse.SDL_GetMouseState(null, null) & (1 << (value - 1))) != 
 `verifyPlatformTwins`：113 对、6,013 → **6,026 行**，涨的 13 行全在 `PhoneHud.java`（93 → 106）,
 就是 GLFW 与 SDL 两套不可能共用的实现，理由写在那个方法的注释里。
 另外三支没动（改的是 26.3 自己那份平台文件）。
+
+
+## 廿六、审计（未改代码）：鼠标键编号在 26.3 换了基数，而它【跨着对外 API 的边界】
+
+低版本口径定成"选 2"之后，第一件事不是清错误数，而是查清一件**不会编译失败**的事。
+
+### 事实
+
+1. 26.3 的 `AbstractWidget.isValidClickButton` 是 `buttonInfo().button() == 1`
+   （`AbstractWidget.java:140-142`），而 1.20.1/1.21.1 上 GLFW 的左键是 0。
+   `InputConstants.MOUSE_BUTTON_LEFT` 也跟着从 0 变成 1。
+2. 26.3 没有任何旧重载：`Screen` 只剩 `keyPressed(KeyEvent)`，`AbstractWidget` 只剩
+   `mouseClicked(MouseButtonEvent, boolean)` / `mouseDragged(MouseButtonEvent, double, double)`，
+   `EditBox` 只剩 `keyPressed(KeyEvent)` / `charTyped(CharacterEvent)`。
+   `MouseButtonEvent(double x, double y, MouseButtonInfo buttonInfo)`、
+   `MouseButtonInfo(int button, int modifiers)`、`KeyEvent(int key, int keycode, int modifiers)`、
+   `CharacterEvent(int codepoint)`。
+3. 本模组 `shared/` 里有 **23 处**直接拿字面量 `0` 判左键（`rg "button\s*[!=]==?\s*0"` 实测，
+   分布在 `PhoneScreen`、`ChatConversation`、`Gallery`、`MusicPage`、`NotesList`、`BookList`、
+   `AppManagerPage/Detail`、`WallpaperPicker`、`FontColorPicker`、`PhoneHudEditor`、
+   `DeviceNameEditor`、`NoteEditor`、`ChatList`、`ChatMediaPicker`、`ChatAddContact`）。
+   26.3 上它们**全部不匹配左键**，而且编译、八道闸、断言测试一声不响。
+
+### 为什么不能一把梭全换成 `InputConstants.MOUSE_BUTTON_LEFT`
+
+因为这一个 `int button` 同时服务两种语义，而其中一种**跨着给附属模组用的对外 API**：
+
+| 去处 | 要的编号 | 依据 |
+|---|---|---|
+| `api/client/ui/IPhonePage.mouseClicked(double,double,int)`（对外） | 与今天一致：左=0 | 玩家要求「对外 API 与原本行为一样」 |
+| `captureMouse(int)` → `InputConstants.Type.MOUSE.getOrCreate(button)` | 本版本原生编号 | 存进 `KeyMapping`，之后要跟原版比 |
+
+`PhoneScreen.captureHotkeyMouse` 与 `PhoneScreen.mouseClicked` 收的是**同一个** `button` 参数
+（`PhoneScreen.java:1131` 与 `:1137`），而里面既有喂原生的 `captureMouse`、又有
+`if (button != 0)`（`:1144`）。老两支上原生==GLFW 所以一个值两用；26.3 上这两个语义**分叉了**。
+
+### 下一步该做的（顺序固定）
+
+1. 对外 API 侧加公开常量把既有编号**钉死**：`IPhonePage.BUTTON_LEFT = 0` / `BUTTON_RIGHT = 1` /
+   `BUTTON_MIDDLE = 2`。纯新增，不改任何既有签名与取值，附属模组照旧写 `0` 也对。
+2. 在 `platform/client/PhoneScreenBase` 上加一个 `pageButton(int 原生编号)`：老三支原样返回；
+   26.3 那一份把 SDL 的 1..5 映成 0..4（`SDL_BUTTON_LEFT=1`、`GLFW_MOUSE_BUTTON_LEFT=0`，
+   两边是 `n-1` 的关系，中键/侧键同理）。
+3. `PhoneScreen` 派发进页面之前过这道换算；`PhoneScreen` 自己那几处判左键改判
+   `InputConstants.MOUSE_BUTTON_LEFT`（那是原生侧）；`captureMouse` 保持原生，
+   `AppManagerDetail:424` 那句已经在上一步换成了 `InputConstants.MOUSE_BUTTON_LEFT`，是对的。
+4. 那 23 处里属于**页面层**的，保持字面量 0 不动（它们的入参已经是对外编号），
+   可顺手改用第 1 步的常量拼写；属于**屏幕/原生层**的才需要动。
+
+顺带说一句：`EditBoxes` 那一族转发（11 条编译错）必须排在第 2 步之后做——
+因为往 `new MouseButtonInfo(button, 0)` 里塞的是原生编号，边界没钉死之前先改会把编号搞反。
+`modifiers` 传 0 是有据的：`AbstractWidget`/`AbstractTextAreaWidget` 里没有任何地方读
+`buttonInfo().modifiers()`，`isValidClickButton` 只看 `button()`。

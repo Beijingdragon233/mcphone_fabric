@@ -203,4 +203,23 @@ public abstract class PhoneScreenBase extends Screen {
     public void resize(Minecraft mc, int width, int height) {
         super.resize(width, height);
     }
+
+    /**
+     * 原生鼠标键编号 -> 本模组对外编号。
+     *
+     * <p>26.3 起原版底层从 GLFW 换成 SDL，左键编号从 0 变成 1
+     * （{@code AbstractWidget.isValidClickButton} 判的是 {@code button() == 1}）。
+     * 而 {@code IPhonePage} 是【对外】接口，附属模组照今天写的 {@code button == 0}
+     * 在哪个版本上都得是左键 —— 所以在派发给页面之前在这里减一。
+     *
+     * <p>SDL 与 GLFW 的鼠标键是严格的 {@code n-1} 关系：
+     * LEFT 1/0、RIGHT 2/1、MIDDLE 3/2、BUTTON4 4/3、BUTTON5 5/4，所以 1..5 整体平移。
+     *
+     * <p>【反过来用要小心】：往 {@code InputConstants.Type.MOUSE.getOrCreate(...)} 里存键、
+     * 或构造 {@code MouseButtonInfo} 那类要交给原版的场合，必须用<b>原生</b>编号，别过这个函数。
+     */
+    public static int pageButton(int nativeButton) {
+        return nativeButton >= 1 && nativeButton <= 5 ? nativeButton - 1 : nativeButton;
+    }
+
 }
