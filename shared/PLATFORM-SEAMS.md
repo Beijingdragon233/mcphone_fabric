@@ -491,22 +491,50 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
 
-#### 共用代码引用了的（7）
+#### 共用代码引用了的（26）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
 - `MCphone`　—— 加载器导入
+- `api.client.ui.PhoneMultiLineEditBox`
+- `core.ModDataComponents`　—— 1.20.5+ 原版、加载器导入
+- `core.ModItems`　—— 加载器导入
+- `core.ModSounds`　—— 加载器导入
+- `core.PhonePlayerData`　—— 注入的方法
+- `core.PhoneSavedData`
+- `core.ServerConfig`　—— 加载器导入
+- `core.client.AppHotkeys`　—— 加载器导入
+- `core.client.ClientConfig`　—— 加载器导入
+- `core.client.PhoneHud`　—— 加载器导入
+- `core.menu.ModMenus`　—— 加载器导入
+- `core.net.MCphoneNetwork`　—— 1.20.5+ 原版、加载器导入
+- `core.net.NetworkHandler`　—— 加载器导入
+- `feature.camera.client.CameraFlash`
+- `feature.music.DiscService`　—— 1.20.5+ 原版、加载器导入
+- `feature.music.net.MusicNetworking`　—— 加载器导入
+- `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.EditBoxes`
 - `platform.client.KeyModifiers`　—— 加载器导入
 - `platform.client.PhoneScreenBase`
+- `platform.client.PlayerSkins`
+- `platform.client.SystemFiles`
 
-#### 平台内部的（1）
+#### 平台内部的（10）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
+- `MCphoneClient`　—— 加载器导入
+- `core.ModAttachments`　—— 加载器导入
+- `core.ModCreativeTabs`　—— 加载器导入
+- `core.script.net.ScriptNetworking`　—— 加载器导入
+- `feature.camera.client.CameraHandler`　—— 加载器导入
+- `feature.chat.net.ChatNetworking`　—— 加载器导入
+- `feature.notes.net.NotesNetworking`　—— 加载器导入
+- `feature.store.net.StoreNetworking`　—— 加载器导入
+- `feature.terminal.net.TerminalNetworking`　—— 加载器导入
 - `platform.client.ClientTicks`　—— 加载器导入
 
 <!-- 26.3-neoforge 结束 -->

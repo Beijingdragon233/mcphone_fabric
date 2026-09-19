@@ -613,3 +613,123 @@ G 那一桶里新冒出来的两族值得单记：`ServerPlayer.server` 变 priv
 `Util`（21 条，§十一 说的那次换包）。这两族都得靠门面，而 `Util` 那族没法用改名表 ——
 它是整类换包【且成员有增减】，`openFile` / `openPath` 的去处是 `Blaze3D.openPath(Path)`
 （已验在 `Blaze3D.java:39`），要收进 `SystemFiles`。
+
+## 十六、1d 第 4 步：把 1.21.1 的本平台文件搬过来。526 → 452
+
+§八 那张「还缺 47 个文件」的清单，这一步按【直接引用数】从大头往下补，一次补了 28 个：
+26 个从 1.21.1 逐字拷，2 个是新写的门面（`SystemFiles`、`PlayerSkins`）。
+本平台目录从 8 个 java 文件长到 36 个，挂载源 429 → **457**。
+
+### 拷完就零错误的那 9 个，是一条值得记下来的好消息
+
+`ModItems`、`ModDataComponents`、`ModCreativeTabs`、`ModMenus`、`ServerConfig`、
+`PhonePlayerData`、`ClientConfig`、`ScriptNetworking`、`TerminalNetworking`
+—— 从 1.21.1 拷过来【一个字符没改】就编过了。合起来说：
+**NeoForge 那一面的注册 API 从 21.1 到 26.3 没动**（`DeferredRegister` /
+`DataComponentType` / `CreativeModeTab` / `AttachmentType` 的注册骨架、配置同步、
+网络 payload 注册、玩家数据）。这一支后面再补 26.x 的其它目标时，这批文件不用重看第二遍。
+
+剩下 17 个文件合计 97 条，每一条都是【本平台自己的文件】要改，不是共用代码的锅。
+最贵的几个：
+
+| 文件 | 条 | 卡在哪 |
+|---|---:|---|
+| `core/client/PhoneHud.java` | 29 | §六 那族渲染形变（`GuiGraphics` → `GuiGraphicsExtractor`、`pose`、`hideGui` 全中） |
+| `core/client/AppHotkeys.java` | 10 | GLFW → SDL |
+| `feature/camera/client/CameraFlash.java` | 10 | `getMainRenderTarget` / `getWindow` 那族换到了 renderpearl |
+| `core/ModAttachments.java` | 9 | `Builder.serialize(Codec<T>)` 这个重载没了（见下） |
+| `core/net/NetworkHandler.java` | 8 | `ServerPlayer.server` private 与 `displayClientMessage` |
+
+三条这次顺手量准了根因，都不用再猜：
+
+- `ModAttachments` 那 9 条：`javap` 打 `neoforge-26.3.0.3-beta-universal.jar` 里的
+  `AttachmentType$Builder`，`serialize` 还在，但重载只剩 `serialize(IAttachmentSerializer<T>)`
+  与 `serialize(MapCodec<T>)`（外加带 `Predicate` 的那个）—— 【裸 `Codec<T>` 那一档不收】。
+  所以这不是「注册面变了」，是传进去的 codec 得收窄成 `MapCodec`。9 处各自看给的是哪个。
+- `MCphoneClient` 只剩 2 条，但方向变了：`RegisterClientReloadListenersEvent` 这个类在 26.3
+  的 universal jar 里【查无此类】，同目录下取而代之的是 `AddClientReloadListenersEvent`
+  （服务端那面还有 `AddServerReloadListenersEvent`）。名字换了、语义八成也换了，
+  得先看它给的是「往里 add」还是「往事件对象上 register」。
+- `MCphoneNetwork` 也只剩 1 条：`PacketDistributor.sendToServer(packet)` 没了，
+  那个类现在只剩七个 `sendTo*Players*` / `sendToPlayersTracking*`，全是【服务端往客户端】的方向。
+  客户端往服务端在 26.3 走的是 `connection.send(...)`（`IPayloadContext` 那面是 `reply`）。
+  这一条只差这一个调用，补完 `MCphoneNetwork` 就整份绿。
+
+`CameraHandler` / `CameraFlash` 那 3 条 `getMainRenderTarget()` 也量准了：
+`Minecraft` 上那个 getter 没了，26.3 的 `Minecraft.java` 自己改用
+`this.gameRenderer.mainRenderTarget()`（同一份源里出现 4 次），`RenderTarget` 这个类本身还在
+`com/mojang/blaze3d/pipeline/` —— 那 3 条是换个取法。
+但 `CameraFlash` 不止这一档：`RenderTarget` 上【`bindWrite(boolean)` 没了】（那个类现在只剩
+`resize` / `destroyBuffers` / `getColorTexture` / `getColorTextureView` / `getDepthTexture(View)`，
+取到的都是 renderpearl 的 `GpuTexture(View)`），后处理那条链 `PostChain` 也从
+`com/mojang/blaze3d/postprocessing/`【搬到了】`net/minecraft/client/renderer/`，
+`process(float)` 的参数形状同时变了（报的是「应用到给定类型」）。
+所以【相机闪光这一处是真要重写的】，不是改名 —— 它得从「绑 FBO 直接画」换成 renderpearl 的
+纹理/RenderPass 说法。归到 §六 那族里，别当成低垂果实。
+
+`PhoneHud` 里那 2 条 `window.getWindow()` 属于 F 桶那条链：`Window` 上取 GLFW 句柄的方法在
+26.3 叫 `handle()`，但句柄本身是不是还发得出一个 GLFW 窗口 id，本轮没验 —— 它跟 GLFW→SDL
+那 20 条是同一个问题，一起解。
+
+### 数字
+
+| | 526（上一步末） | 452（这一步末） |
+|---|---:|---:|
+| javac 错误 | 526 | **452** |
+| 报错文件 | 109 | **105** |
+| 挂载源 | 429 | **457** |
+| 一字未改就编过 | 320（74.6%） | **352（77.0%）** |
+| B 平台文件没补 | 175 | **13** |
+| G 真断·形变 | 208 | **256** |
+| E 级联 | 27 | **30** |
+| A 改名 | 60 | 60 |
+| D 附属模组 | 56 | 56 |
+| F GLFW | 20 | 20 |
+| C 覆写 | 17 | 17 |
+
+B 从 175 掉到 **13**：这条台阶【到此吃完】。往后没有「补一个文件掉一百条」了。
+真断小计（C+D+F+G）349 条 / 452，也就是剩下 77% 全是得逐处重写的。
+G 与 E 这两步里升（+48、+3）跟 §十五 同理 —— 父类与兄弟文件一修好，原先被 error type
+挡住的真断就露出来，量尺变准不是回退。
+
+接缝清单 26.3 那一段 8 → **36** 个（共用代码引用到 26 个），双胞胎基线 4,838 → **5,904** 行 /
+110 对。`updateSeamsDoc` 与 `updateTwinBaseline` 都重新生成过，五道闸全绿。
+
+### 剩下 452 条里最大那几块（按聚合计数，取自本轮 `hist`）
+
+| 族 | 条 | 去处 |
+|---|---:|---|
+| `Util` 换包 | 24 | 【这一族不用门面，一次改名就吃完，见下】 |
+| `ServerPlayer.server` private | 23 | 一个小门面 |
+| GLFW 一族 | 20 | `com.mojang.blaze3d.platform` 下换成了 SDL（`SDLEventHandler`） |
+| `pose()` → `Matrix3x2fStack` | 49（`pushPose` 10 / `popPose` 10 / `int→Matrix3x2f` 12 / `float→` 9 / 其余 8 条 `setColor`） | `Draw` 里的 2D 变换门面；**`Renderer.java:264` 那处 `translate(x,y,200)` 的 z 在 26.x 的 2D 栈里没有对应物，得单独定** |
+| `displayClientMessage` | 13 | 消息组件参数变了形状 |
+| `setScreen` | 10 | 26.3 叫 `setScreenAndShow(Screen)`（已验在）；改名表的【方法】那半本来就吃这个，加上 `setScreen → setScreenAndShow` 一条就是 10 条 |
+| `AbstractContainerScreen`（`renderBg` 没了、`imageWidth/imageHeight` 变 final） | 9 | 一个 `PhoneContainerScreenBase`，跟 §十五 同一个思路 |
+| 附属模组（D） | 56 | 【产品决策，等一句话】首发要不要带那几个联动 |
+
+`hideGui`（4 条）单记：`Options.hideGui` 这个字段在 26.3 全 jar 查不到，F3 那套现在叫
+`Hud.isHidden()` + `toggle()`，是【状态搬了家且只有一个开关】，所以 `CameraGui` 那个
+返回 boolean 的门面形状撑不住，得重新设计。
+
+### `Util` 那 24 条：§十一 那句「成员有增减」说重了
+
+本轮把 24 条逐条拆开数：【10 条是 import 行、13 条是调用点、1 条是写全限定名的调用点】。
+涉及的成员只有四个 —— `backgroundExecutor()` 10 处、`getFilenameFormattedDateTime()` 2 处、
+`ioPool()` 1 处、`getPlatform()` 1 处，分布在 10 个文件里。
+对着 26.3 的源逐个看，【四个全在】`net/minecraft/util/Util.java` 里（那个文件确实存在，
+而 `net/minecraft/Util.java` 不存在 —— 搬家这条是真的，成员没少这条也是真的）。
+真正少掉的是 `Util.OS.openFile` / `openPath`，那两处已经被 `SystemFiles` 接住了。
+
+所以这 24 条的根因只有一句话：【包路径从 `net.minecraft` 挪到了 `net.minecraft.util`】。
+改名表现在只按【标识符】换名，而这里标识符没变、变的是它前面的包名，所以吃不下 ——
+这不是要加门面，是要给改名表加【整行精确替换】这一档（`import net.minecraft.Util;` →
+`import net.minecraft.util.Util;`，另外那 1 处全限定名同理）。
+加完这一档，24 条一次清，是 452 之后单位收益最大的一块；`setScreen` 那 10 条也顺手一起。
+
+`setScreen → setScreenAndShow` 这条加之前先记两个坑（本轮量的）：
+仓库里另有一个【自己声明的】`setScreenOn(ItemStack)`（`core/PhoneItemData.java:105`），
+改名要是按【前缀】匹配就会把它一起带走 —— 现在这套机制是按标识符整词换的，验一条即可；
+另外有 3 处 `setScreen` 出现在【注释与 javadoc】里（`PhoneScreenOpener.java:23`、
+`IPhonePage.java:10`、`ImmersiveEngineeringManual.java:25`，都是写给模组作者看的说明文字），
+按标识符换会连注释一起换 —— 换完读起来别扭但不算错，先记下，别到时就忘了它为什么变了。
