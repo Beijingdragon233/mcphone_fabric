@@ -379,7 +379,7 @@ public final class CtxBuilder {
 
     /**
      * 会动钱的 provider 调用。provider 抛了、或者没给结果 = 结果不明（可能已经动了一半）：打一条带来龙去脉与 provider 堆栈的 ERROR
-     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 INTERNAL、不记过失。虚拟机级别的错误也一样换：
+     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 UNKNOWN、不记过失。虚拟机级别的错误也一样换：
      * 它可能是第三方的子类、getMessage 会炸，原样抛出去日志渲染时照样出事。
      * 不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
      */

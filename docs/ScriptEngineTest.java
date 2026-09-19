@@ -776,10 +776,101 @@ public class ScriptEngineTest {
                 "pay(default()) 在没有默认货币时：UNAVAILABLE，不中断");
     }
 
+    /**
+     * 端到端（真 RhinoEvaluator、worker、跨线程网关）：provider 动钱时抛了，客户端拿到 UNKNOWN（绝不自动重试）、不记过失，
+     * 脚本 catch / finally { return } 都改不了。回 INTERNAL 的话玩家再点一次就可能多付。
+     */
+    static void currencyOutcomeUnknownIsUnknown() {
+        var data = com.november.mcphone.core.script.server.economy.EconomyData.empty(() -> 1);
+        var coin = new com.november.mcphone.api.economy.Currency(
+                net.minecraft.resources.ResourceLocation.tryParse("myserver:coin"),
+                net.minecraft.network.chat.Component.literal("coin"), "G", 0, null);
+        var real = new com.november.mcphone.core.script.server.economy.BuiltinProvider(
+                coin, data, data.escrow(), null, () -> 1, false, 1_000_000L);
+        real.mint(player().uuid(), 1_000, new com.november.mcphone.api.economy.TxnReason("t", "r"));
+        var mode = new java.util.concurrent.atomic.AtomicReference<>("ok");
+        var moved = new java.util.concurrent.atomic.AtomicInteger();
+        var provider = (com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                (proxy, m, args) -> {
+                    if (m.getName().equals("transfer")) {
+                        moved.incrementAndGet();
+                        if (mode.get().equals("pay")) throw new IllegalStateException("钱包写了一半");
+                    }
+                    if (m.getName().equals("balance") && mode.get().equals("bal")) throw new NoSuchMethodError("换了版本");
+                    return m.invoke(real, args);
+                });
+
+        java.util.concurrent.atomic.AtomicReference<Thread> mainT = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.ExecutorService mainEx = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread th = new Thread(r, "fake-main");
+            th.setDaemon(true);
+            mainT.set(th);
+            return th;
+        });
+        com.november.mcphone.core.script.server.ScriptWorkers.start();
+        try {
+            mainEx.submit(() -> { }).get();
+            var gw = new com.november.mcphone.core.script.server.economy.CurrencyGateway(mainEx::execute,
+                    () -> Thread.currentThread() == mainT.get());
+            gw.open();
+            var reg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(gw);
+            reg.register(provider, true);
+            var b = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                    new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, reg);
+            AppScope app = new AppScope("t:app", ScriptBudget.server(), Map.of());
+            String pay = "ctx.currency.pay('myserver:coin', '00000000-0000-0000-0000-000000000002', 5n)";
+            Context cx = app.budget().enterContext();
+            try {
+                cx.evaluateString(app.scope(cx), "var actions = {"
+                        + " buy: function (ctx) { " + pay + "; ctx.ok({}) },"
+                        + " buyfin: function (ctx) { try { " + pay + " } finally { ctx.ok({}); return } },"
+                        + " buycatch: function (ctx) { try { " + pay + " } catch (e) { } ctx.ok({}) },"
+                        + " bal: function (ctx) { try { ctx.currency.balance('myserver:coin') } finally { ctx.ok({}); return } } }",
+                        "app", 1, null);
+            } finally {
+                Context.exit();
+            }
+            StrikeTracker strikes = new StrikeTracker(System::currentTimeMillis);
+            RhinoEvaluator ev = new RhinoEvaluator(Map.of("t:app", app), strikes, b, Runnable::run);
+            java.util.function.Function<String, Object> call = action -> {
+                var f = new java.util.concurrent.CompletableFuture<com.november.mcphone.core.script.server.ActionEvaluator.Outcome>();
+                ev.submit(new com.november.mcphone.core.script.server.ActionEvaluator.Request(
+                        "t:app", action, new byte[0], player(), "r", 1), f::complete);
+                try {
+                    return f.get(10, java.util.concurrent.TimeUnit.SECONDS).code();
+                } catch (Exception e) {
+                    return e.getClass().getSimpleName();
+                }
+            };
+
+            eq(call.apply("buy"), com.november.mcphone.core.script.net.ScriptErrorCode.OK, "对照：provider 正常时 OK");
+            mode.set("pay");
+            for (int i = 0; i < 2; i++) {
+                for (String action : new String[]{"buy", "buyfin", "buycatch"}) {
+                    moved.set(0);
+                    eq(call.apply(action), com.november.mcphone.core.script.net.ScriptErrorCode.UNKNOWN,
+                            action + "：provider 动钱时抛了 → UNKNOWN（catch / finally { return } 改不了）");
+                    eq(moved.get(), 1, action + "：provider 只被调了一次");
+                }
+            }
+            check(strikes.allowed("t:app", player().uuid()), "结果不明六次也不记过失：不是脚本的错");
+            mode.set("bal");
+            eq(call.apply("bal"), com.november.mcphone.core.script.net.ScriptErrorCode.INTERNAL,
+                    "对照：查余额抛了不动钱，照旧 INTERNAL，不是 UNKNOWN");
+        } catch (Exception e) {
+            check(false, "端到端装置没搭起来：" + e);
+        } finally {
+            com.november.mcphone.core.script.server.ScriptWorkers.stop();
+            mainEx.shutdownNow();
+        }
+    }
+
     public static void main(String[] args) {
         escapes();
         currencyBalanceUnavailable();
         currencyRejectionsAreReturnValues();
+        currencyOutcomeUnknownIsUnknown();
         globalsExactly();
         sealed();
         normalStillWorks();

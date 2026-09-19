@@ -99,6 +99,11 @@ public final class RhinoEvaluator implements ActionEvaluator {
                     banned ? "（该玩家的后端已禁用 5 分钟）" : "");
             return Outcome.fail(ScriptErrorCode.INTERNAL);
 
+        } catch (OutcomeUnknown unknown) {
+            // 钱可能动了一半：回 INTERNAL 玩家会再点一次、可能多付，所以回 UNKNOWN（客户端绝不自动重试）。不是脚本的错，不记过失；来龙去脉 moneyCall 已打过 ERROR
+            MCphone.LOGGER.warn("[MCphone] 货币调用结果不明 app={} action={}，已回 UNKNOWN", request.appId(), request.actionId());
+            return Outcome.fail(ScriptErrorCode.UNKNOWN);
+
         } catch (org.mozilla.javascript.RhinoException e) {
             // 脚本自己抛的。审计里带行号，客户端只拿到 INTERNAL（§16.6）
             MCphone.LOGGER.warn("[MCphone] 脚本出错 app={} action={} 第 {} 行: {}",
