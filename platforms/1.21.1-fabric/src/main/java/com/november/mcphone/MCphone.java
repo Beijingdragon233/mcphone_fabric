@@ -62,6 +62,7 @@ public class MCphone implements ModInitializer {
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             com.november.mcphone.feature.chat.ChatImageStore.onServerStarted(server);
             com.november.mcphone.core.ServerConfig.load(server);
+            com.november.mcphone.core.script.server.economy.EconomyRuntime.start(server);
             com.november.mcphone.core.script.server.ScriptWorkers.start();
         });
 
@@ -69,14 +70,22 @@ public class MCphone implements ModInitializer {
         // JVM 里停掉再起来，不关的话线程池连同排队中的求值会带着上一个世界的引用活到下一个
         // 世界，而那些求值回调到主线程时拿到的是一个已经死掉的 MinecraftServer。
         // setDaemon(true) 是"万一这里漏了别挂住 JVM"的兜底，不是关闭方案本身
+        // 货币网关先关、再停 worker：worker 可能正等着主线程替它执行一笔货币调用，
+        // 反过来主线程就要白等到 worker 超时（见 CurrencyGateway.close）
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            com.november.mcphone.core.script.server.economy.EconomyRuntime.stop();
             com.november.mcphone.core.script.server.ScriptWorkers.stop();
             com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
         });
 
+        net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback.EVENT.register(
+                (dispatcher, registryAccess, environment) -> com.november.mcphone.core.script.server.economy.EconomyCommand.register(dispatcher));
+
         // 手机替卡槽里的终端供电。漏了它的症状是"终端在手机里会没电"，见 TerminalCharger。
         // Fabric 没有 NeoForge 的按玩家 tick 事件，用服务端 tick 自己发
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            // 超时托管每 5 分钟扫一次（见 EconomyRuntime.tick）
+            com.november.mcphone.core.script.server.economy.EconomyRuntime.tick();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 com.november.mcphone.feature.terminal.TerminalCharger.onPlayerTick(player);
             }

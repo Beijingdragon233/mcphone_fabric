@@ -52,13 +52,23 @@ public class MCphone {
         // 世界，而那些求值回调到主线程时拿到的是一个已经死掉的 MinecraftServer。
         // setDaemon(true) 是"万一这里漏了别挂住 JVM"的兜底，不是关闭方案本身
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
-                (net.neoforged.neoforge.event.server.ServerStartedEvent e) ->
-                        com.november.mcphone.core.script.server.ScriptWorkers.start());
+                (net.neoforged.neoforge.event.server.ServerStartedEvent e) -> {
+                    com.november.mcphone.core.script.server.economy.EconomyRuntime.start(e.getServer());
+                    com.november.mcphone.core.script.server.ScriptWorkers.start();
+                });
+        // 货币网关先关、再停 worker：worker 可能正等着主线程替它执行一笔货币调用，
+        // 反过来主线程就要白等到 worker 超时（见 CurrencyGateway.close）
         net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
                 (net.neoforged.neoforge.event.server.ServerStoppingEvent e) -> {
+                    com.november.mcphone.core.script.server.economy.EconomyRuntime.stop();
                     com.november.mcphone.core.script.server.ScriptWorkers.stop();
                     com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
                 });
+        // 超时托管每 5 分钟扫一次（见 EconomyRuntime.tick）
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.event.tick.ServerTickEvent.Post e) -> com.november.mcphone.core.script.server.economy.EconomyRuntime.tick());
+        net.neoforged.neoforge.common.NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.event.RegisterCommandsEvent e) -> com.november.mcphone.core.script.server.economy.EconomyCommand.register(e.getDispatcher()));
 
         // SERVER 而非 COMMON：必须由服主一份说了算，且 NeoForge 会同步给客户端供界面藏按钮
         modContainer.registerConfig(net.neoforged.fml.config.ModConfig.Type.SERVER,

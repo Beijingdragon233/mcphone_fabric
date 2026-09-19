@@ -269,7 +269,7 @@ public class CurrencyTest {
 
     // ================================================================ 真 provider（§22.7 builtin）
 
-    /** 内存里的余额表。真正的落在 PhonePlayerData.economy()，那要服务器。 */
+    /** 内存里的余额表。真正的是世界级存档 EconomyData，见 EconomyDataTest。 */
     static final class MemBalances implements BalanceStore {
         final java.util.Map<String, Long> m = new ConcurrentHashMap<>();
 
@@ -802,7 +802,28 @@ public class CurrencyTest {
         check(!key.contains(" "), "本地化键里不该有空格：" + key);
         check(p.objective().startsWith("mcphone_eco_myserver_coin_"), "objective 在构造时就定死");
         eq(p.maxBalance(), (long) Integer.MAX_VALUE, "上限压到了 int");
-        eq(p.balance(UUID.randomUUID()), 0L, "服务器不在时余额读成 0，不抛");
+        // isAvailable()==false 时整档不可用：余额读不到，抛；其余操作一律 UNAVAILABLE。
+        // 取代原先的「服务器不在时余额读成 0，不抛」—— 0 与「真的没钱」分不出来，调用方会据此做错决定（产品经理 2026-09-18 定）
+        String thrown = null;
+        try {
+            p.balance(UUID.randomUUID());
+        } catch (com.november.mcphone.core.script.server.economy.CurrencyUnavailableException e) {
+            thrown = e.reasonKey();
+        }
+        eq(thrown, key, "服务器不在时读余额抛 UNAVAILABLE，原因与 unavailableReasonKey 一致，不返回 0");
+        TxnReason r = new TxnReason("t", "r");
+        UUID a = UUID.randomUUID(), b = UUID.randomUUID();
+        eq(p.transfer(a, b, 1, r), TxnResult.UNAVAILABLE, "用不了时转账 UNAVAILABLE");
+        eq(p.mint(a, 1, r), TxnResult.UNAVAILABLE, "用不了时铸造 UNAVAILABLE");
+        eq(p.burn(a, 1, r), TxnResult.UNAVAILABLE, "用不了时销毁 UNAVAILABLE");
+        eq(p.hold(a, b, 1, r).result(), TxnResult.UNAVAILABLE, "用不了时托管 UNAVAILABLE");
+        boolean npe = false;
+        try {
+            p.balance(null);
+        } catch (IllegalArgumentException e) {
+            npe = true;
+        }
+        check(npe, "balance(null) 是调用方的错，抛 IllegalArgumentException，不返回 0");
     }
 
 

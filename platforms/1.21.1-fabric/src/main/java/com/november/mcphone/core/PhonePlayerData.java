@@ -6,7 +6,6 @@ import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.music.DiscState;
 import com.november.mcphone.feature.notes.NoteList;
 import com.november.mcphone.feature.settings.WallpaperData;
-import com.november.mcphone.core.script.server.store.ScriptEconomy;
 import com.november.mcphone.core.script.server.store.ScriptGuards;
 import com.november.mcphone.core.script.server.store.ScriptKv;
 import com.november.mcphone.feature.store.PurchasedApps;
@@ -15,7 +14,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * 跟着玩家走的手机数据 —— 六样东西的读写口；跟着物品走的见 {@link PhoneItemData}。
+ * 跟着玩家走的手机数据的读写口；跟着物品走的见 {@link PhoneItemData}。
  *
  * <h2>为什么要这么一层，明明只是转调</h2>
  *
@@ -37,7 +36,7 @@ import net.minecraft.world.item.ItemStack;
  * 这边的 {@code of} 返回的是个<b>临时视图</b>（只裹着 player 一个字段），不持有状态，
  * 拿了就用、用完就丢，别存起来。那边返回的才是真的存储对象。
  *
- * <h2>死亡与换维度：六样里有一样不一样，这是最容易漏的地方</h2>
+ * <h2>死亡与换维度：有一样不一样，这是最容易漏的地方</h2>
  *
  * <table border="1">
  *   <caption>各字段的保留策略</caption>
@@ -48,7 +47,11 @@ import net.minecraft.world.item.ItemStack;
  *   <tr><td>笔记 notes</td><td>标了</td><td>不然死一次就清空</td></tr>
  *   <tr><td>终端卡槽 terminal</td><td>标了</td><td>同唱片仓，手机里的东西不该因为死一次就没</td></tr>
  *   <tr><td>已购 App purchasedApps</td><td>标了</td><td>花过的代价不能白花</td></tr>
+ *   <tr><td>脚本数据 scriptKv</td><td>标了</td><td>App 的进度不该因为死一次就没</td></tr>
+ *   <tr><td>守卫计数 scriptGuards</td><td>标了</td><td><b>必须</b>：不带的话死一次就能重领，而死亡是随时可以自己安排的事</td></tr>
  * </table>
+ *
+ * 货币余额不在这里：它在世界级存档（{@code EconomyData}），不挂玩家，死亡与它无关。
  *
  * ⚠ <b>这张表在 1.20.1 那一支上不能照抄</b>，两边的默认行为不对称：
  *
@@ -173,17 +176,6 @@ public final class PhonePlayerData {
 
     public void setScriptGuards(ScriptGuards value) {
         player.setAttached(ModAttachments.SCRIPT_GUARDS, value);
-    }
-    /**
-     * builtin 货币提供者的余额（§22.7）。<b>与 scriptKv() 分开</b> ——
-     * 脚本写得到 scriptKv，余额塞进去等于让脚本改自己的钱。
-     */
-    public ScriptEconomy economy() {
-        return player.getAttachedOrCreate(ModAttachments.SCRIPT_ECONOMY);
-    }
-
-    public void setEconomy(ScriptEconomy value) {
-        player.setAttached(ModAttachments.SCRIPT_ECONOMY, value);
     }
 
 

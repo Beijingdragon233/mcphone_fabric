@@ -55,7 +55,20 @@ public final class EconomyAudit {
         }
     }
 
-    /** 算一次。 */
+    /**
+     * 算一次，铸造与销毁取存档里的累计（{@link EconomyData}）。生产环境用这一个。
+     *
+     * <p>不从流水现算：流水 {@link TxnLog#RETENTION_DAYS} 天后会被清掉，强杀之后又会比存档超前一截 ——
+     * 拿它对账，要么早晚不平，要么重启之后不平。累计与余额是同一份存档、同一次落盘。
+     */
+    public static Result run(String currencyId, EconomyData data) {
+        long sum = 0;
+        for (long v : data.all(currencyId).values()) sum += v;
+        long[] s = data.supply(currencyId);
+        return new Result(currencyId, sum, data.escrow().held(currencyId), s[0], s[1]);
+    }
+
+    /** 算一次，铸造与销毁从流水现算。只给没有存档的场合（断言测试）用，理由见上一个。 */
     public static Result run(String currencyId, BalanceStore balances, EscrowLedger escrow, TxnLog log) {
         long sum = 0;
         for (long v : balances.all(currencyId).values()) sum += v;

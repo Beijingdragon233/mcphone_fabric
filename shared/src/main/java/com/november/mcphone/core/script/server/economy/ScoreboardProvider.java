@@ -80,9 +80,6 @@ public final class ScoreboardProvider implements ICurrencyProvider {
     private final long maxBalance;
     private final String objective;
 
-    /** 这一次调用是哪个 App 发起的。<b>由宿主盖章，不采信调用方</b>（§22.10）。 */
-    private final ThreadLocal<String> callingApp = ThreadLocal.withInitial(() -> "-");
-
     private final Object lock = new Object();
 
     public ScoreboardProvider(Currency currency, Supplier<MinecraftServer> server,
@@ -189,11 +186,11 @@ public final class ScoreboardProvider implements ICurrencyProvider {
 
     /** 宿主在进入脚本调用前盖章。 */
     public void enterApp(String appId) {
-        callingApp.set(appId == null ? "-" : appId);
+        CallingApp.enter(appId);
     }
 
     public void leaveApp() {
-        callingApp.remove();
+        CallingApp.leave();
     }
 
     private String id() {
@@ -212,6 +209,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
      */
     @Override
     public boolean isAvailable() {
+        // 这种货币的存档锁住了（见 EconomyData），整档都不可用 —— 计分板上的分虽然读得到，铸造、托管的账却记不进去
+        if (escrow.unavailableReasonKey(id()) != null) return false;
         MinecraftServer s = server == null ? null : server.get();
         if (s == null || !onServerThread(s)) return false;
         return Scores.ensureObjective(s, objective, currency.symbol().isEmpty()
@@ -220,10 +219,14 @@ public final class ScoreboardProvider implements ICurrencyProvider {
 
     @Override
     public String unavailableReasonKey() {
+        String locked = escrow.unavailableReasonKey(id());
+        if (locked != null) return locked;
         MinecraftServer s = server == null ? null : server.get();
         if (s == null) return "mcphone.economy.scoreboard.no_server";
         if (!onServerThread(s)) return "mcphone.economy.scoreboard.off_thread";
         if (!Scores.hasObjective(s, objective)) return "mcphone.economy.scoreboard.no_objective";
+        // 目标在，却用不了（只读）：isAvailable() 是 false，这里也得说得出原因，不许给空串
+        if (!isAvailable()) return "mcphone.economy.scoreboard.no_objective";
         return "";
     }
 
@@ -233,19 +236,24 @@ public final class ScoreboardProvider implements ICurrencyProvider {
         return Thread.currentThread() == s.getRunningThread();
     }
 
+    /** 从没上过线、查不到名字的玩家：计分板按名字记账，读不到他的分。 */
+    public static final String KEY_UNKNOWN_PLAYER = "mcphone.economy.scoreboard.unknown_player";
+
     /**
-     * 余额。
-     *
-     * <p><b>用不了的时候返回 0，与「真的有 0 块」分不出来</b> —— 接口这个方法只有一个 long，
-     * 没有报错的通道（{@link ICurrencyProvider#balance}）。调用方要先问 {@link #isAvailable()}；
-     * 那才是这一档说得出「差哪一条」的地方。
+     * 余额。{@link #isAvailable()} 为 false 时这一档整个不可用：所有操作 {@code UNAVAILABLE}，余额读不到 ——
+     * 抛 {@link CurrencyUnavailableException}，<b>不返回 0</b>：0 与「真的没钱」分不出来，调用方会据此做错决定。
+     * 可用时返回的是计分板上的真实分值；查不到名字的玩家同样读不到，抛。
      */
     @Override
     public long balance(UUID player) {
+        if (player == null) throw new IllegalArgumentException("player 不能为 null");
+        // 存档锁住时计分板上的分虽然读得到，这一档照样整个不可用（isAvailable() 是 false）
+        String locked = escrow.unavailableReasonKey(id());
+        if (locked != null) throw new CurrencyUnavailableException(locked);
         MinecraftServer s = ready();
-        if (s == null || player == null) return 0;
+        if (s == null) throw new CurrencyUnavailableException(unavailableReasonKey());
         String holder = Scores.nameOf(s, player);
-        if (holder == null) return 0;
+        if (holder == null) throw new CurrencyUnavailableException(KEY_UNKNOWN_PLAYER);
         return Scores.get(s, objective, holder);
     }
 
@@ -275,6 +283,10 @@ public final class ScoreboardProvider implements ICurrencyProvider {
         if (Balances.checkAmount(amount) != TxnResult.OK
                 || Balances.checkParties(from, to) != TxnResult.OK) {
             return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, TxnResult.INVALID);
+        }
+        // 存档锁住时转账也不许：锁住的存档不写存档点，这期间成功的转账解锁后会被报成"没进存档"
+        if (escrow.unavailableReasonKey(id()) != null) {
+            return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, TxnResult.UNAVAILABLE);
         }
         MinecraftServer s = ready();
         if (s == null) return record(TxnLog.Kind.TRANSFER, from, to, amount, reason, TxnResult.UNAVAILABLE);
@@ -314,6 +326,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
         if (to == null || Balances.checkAmount(amount) != TxnResult.OK) {
             return record(TxnLog.Kind.MINT, null, to, amount, reason, TxnResult.INVALID);
         }
+        // 铸造要记进世界存档的累计（对账用）；存档锁住时记不进去，就不许铸
+        if (escrow.unavailableReasonKey(id()) != null) return record(TxnLog.Kind.MINT, null, to, amount, reason, TxnResult.UNAVAILABLE);
         MinecraftServer s = ready();
         if (s == null) return record(TxnLog.Kind.MINT, null, to, amount, reason, TxnResult.UNAVAILABLE);
         synchronized (lock) {
@@ -334,6 +348,7 @@ public final class ScoreboardProvider implements ICurrencyProvider {
         if (from == null || Balances.checkAmount(amount) != TxnResult.OK) {
             return record(TxnLog.Kind.BURN, from, null, amount, reason, TxnResult.INVALID);
         }
+        if (escrow.unavailableReasonKey(id()) != null) return record(TxnLog.Kind.BURN, from, null, amount, reason, TxnResult.UNAVAILABLE);
         MinecraftServer s = ready();
         if (s == null) return record(TxnLog.Kind.BURN, from, null, amount, reason, TxnResult.UNAVAILABLE);
         synchronized (lock) {
@@ -355,7 +370,7 @@ public final class ScoreboardProvider implements ICurrencyProvider {
             record(TxnLog.Kind.HOLD, from, beneficiary, amount, reason, TxnResult.INVALID);
             return HoldResult.fail(TxnResult.INVALID);
         }
-        MinecraftServer s = ready();
+        MinecraftServer s = escrow.unavailableReasonKey(id()) != null ? null : ready();
         if (s == null) {
             record(TxnLog.Kind.HOLD, from, beneficiary, amount, reason, TxnResult.UNAVAILABLE);
             return HoldResult.fail(TxnResult.UNAVAILABLE);
@@ -410,6 +425,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
      */
     private TxnResult settle(EscrowId eid, TxnReason reason, boolean toBeneficiary) {
         TxnLog.Kind kind = toBeneficiary ? TxnLog.Kind.RELEASE : TxnLog.Kind.REFUND;
+        // 锁住的货币，它的托管条目根本没读进来 —— 先判锁，否则会答成 UNKNOWN_ESCROW
+        if (escrow.unavailableReasonKey(id()) != null) return record(kind, null, null, 0, reason, TxnResult.UNAVAILABLE);
         synchronized (lock) {
             EscrowLedger.Entry e = escrow.get(eid);
             if (e == null) return record(kind, null, null, 0, reason, TxnResult.UNKNOWN_ESCROW);
@@ -420,6 +437,8 @@ public final class ScoreboardProvider implements ICurrencyProvider {
             if (e.settled()) {
                 return record(kind, e.owner(), e.beneficiary(), e.amount(), reason, TxnResult.ALREADY_SETTLED);
             }
+            // 号认不认得、属不属于这种货币、结没结过，排在"用不了"之前判（S15b / E25）：
+            // 排在后面的话，一笔永远过不了的调用会被答成 UNAVAILABLE，调用方以为重试一下就能过
             MinecraftServer s = ready();
             UUID target = toBeneficiary ? e.beneficiary() : e.owner();
             if (s == null) {
@@ -462,7 +481,7 @@ public final class ScoreboardProvider implements ICurrencyProvider {
                              TxnReason reason, TxnResult result) {
         if (log != null) {
             log.append(Instant.ofEpochMilli(clock.getAsLong()), id(), kind, from, to,
-                    amount, callingApp.get(), reason, result);
+                    amount, CallingApp.current(), reason, result);
         }
         return result;
     }

@@ -27,6 +27,13 @@ import org.mozilla.javascript.ContextFactory;
  * {@code JSON.stringify(16M 串)} 419 毫秒，回调都是 0 次。<b>那一类靠 {@link SizeGate} 与
  * {@link ScriptSandbox} 的白名单挡</b>，不是靠这里。
  *
+ * <h2>等宿主的时间不算墙钟</h2>
+ *
+ * 货币调用要回主线程执行（{@code CurrencyGateway}），碰上主线程正在跑 tick 就要等几十毫秒 ——
+ * 算进 20 ms 的话，用到货币的脚本几乎都会被当成超时掐掉，而钱已经转出去了。所以等的那段
+ * 把截止往后推（{@link #hostWaited}），另记一笔累计，封顶 {@link #SERVER_HOST_WAIT_NANOS}：
+ * 墙钟防的是脚本自己算太久，等宿主的上限防的是一次求值把 worker 占住太久。
+ *
  * <h2>ClassShutter 在这里设，不在每次求值时设</h2>
  *
  * {@code Context} 是线程绑定的：同一线程第二次 {@code enterContext} 拿到的是同一个 Context，
@@ -54,27 +61,39 @@ public final class ScriptBudget extends ContextFactory {
     /** 客户端每次调用的墙钟（§16.4）。 */
     public static final long CLIENT_WALL_NANOS = 50_000_000L;
 
+    /**
+     * 服务端一次调用里，累计最多等宿主（主线程）多久。worker 只有两条，一次求值占着它等太久，
+     * 别的 App 就排不上。工程常值，实测后再调。
+     */
+    public static final long SERVER_HOST_WAIT_NANOS = 1_000_000_000L;
+
     /** 调用栈深度（§16.4）。 */
     public static final int MAX_STACK_DEPTH = 64;
 
     /** 这一次调用的账。每次求值前 {@link #begin} 一次。 */
     private static final ThreadLocal<long[]> BUDGET = new ThreadLocal<>();
-    // [0]=已用指令 [1]=指令上限 [2]=截止纳秒
+    // [0]=已用指令 [1]=指令上限 [2]=截止纳秒 [3]=已等宿主纳秒 [4]=等宿主上限
 
     private final long instructions;
     private final long wallNanos;
+    private final long hostWaitNanos;
 
     public ScriptBudget(long instructions, long wallNanos) {
+        this(instructions, wallNanos, 0);
+    }
+
+    public ScriptBudget(long instructions, long wallNanos, long hostWaitNanos) {
         this.instructions = instructions;
         this.wallNanos = wallNanos;
+        this.hostWaitNanos = hostWaitNanos;
     }
 
     /** 服务端档。 */
     public static ScriptBudget server() {
-        return new ScriptBudget(SERVER_INSTRUCTIONS, SERVER_WALL_NANOS);
+        return new ScriptBudget(SERVER_INSTRUCTIONS, SERVER_WALL_NANOS, SERVER_HOST_WAIT_NANOS);
     }
 
-    /** 客户端档。 */
+    /** 客户端档。客户端没有要回主线程等的宿主调用，等宿主的上限是 0。 */
     public static ScriptBudget client() {
         return new ScriptBudget(CLIENT_INSTRUCTIONS, CLIENT_WALL_NANOS);
     }
@@ -117,12 +136,32 @@ public final class ScriptBudget extends ContextFactory {
             throw new IllegalStateException(
                     "脚本求值不许嵌套：Context 是线程绑定的，内层会静默继承外层的指令预算与 ClassShutter");
         }
-        BUDGET.set(new long[]{0, instructions, System.nanoTime() + wallNanos});
+        BUDGET.set(new long[]{0, instructions, System.nanoTime() + wallNanos, 0, hostWaitNanos});
     }
 
     /** 平账。{@code finally} 里调。 */
     public void end() {
         BUDGET.remove();
+    }
+
+    /** 这一次求值还能等宿主多久（纳秒）。不在求值里（主线程直调、测试）就是不限。 */
+    public static long hostWaitLeftNanos() {
+        long[] b = BUDGET.get();
+        return b == null ? Long.MAX_VALUE : b[4] - b[3];
+    }
+
+    /** 等了宿主这么久：记进累计，并把墙钟截止往后推同样的时长 —— 这段时间脚本没在算。 */
+    public static void hostWaited(long nanos) {
+        long[] b = BUDGET.get();
+        if (b == null || nanos <= 0) return;
+        b[3] += nanos;
+        b[2] += nanos;
+    }
+
+    /** 这一次求值离墙钟截止还有多久（纳秒）。只给测试用。 */
+    public static long wallLeftNanos() {
+        long[] b = BUDGET.get();
+        return b == null ? Long.MAX_VALUE : b[2] - System.nanoTime();
     }
 
     /** 这一次用了多少指令单位。只给审计与测试用。 */

@@ -15,6 +15,7 @@ import com.november.mcphone.api.economy.TxnReason;
 import com.november.mcphone.api.economy.TxnResult;
 import com.november.mcphone.core.script.server.economy.Amounts;
 import com.november.mcphone.core.script.server.economy.CurrencyRegistry;
+import com.november.mcphone.core.script.server.economy.ProviderFailure;
 import com.november.mcphone.core.script.server.PlayerSnapshot;
 import org.mozilla.javascript.Context;
 import org.mozilla.javascript.Scriptable;
@@ -219,6 +220,8 @@ public final class CtxBuilder {
         }
 
         // ---- ctx.currency（§22.5）。金额进出都是 BigInt（勘误 E18），宿主在边界切 BigInt ↔ long
+        // 【被拒的调用、玩家输错的数据是返回值，不中断】（S15h）：中断记过失，连着几次禁玩家、熔断整个 App ——
+        // 那是在罚玩家。只有脚本自己写错（类型不对）才中断（记过失）；provider 在动钱时抛了或没给结果是结果不明，见 moneyCall
         if (backends.currencies() != null) {
             CurrencyRegistry reg = backends.currencies();
             ScriptableObject cur = HostFn.obj(cx, scope);
@@ -240,55 +243,94 @@ public final class CtxBuilder {
 
             // balance 只能读自己（§22.5）。读别人是 currency.read.other，granted 档，本步不给
             HostFn.put(cur, scope, "balance", 1, (c, s, a) -> {
-                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.balance"));
-                return Amounts.toScript(prov.balance(player.uuid()));
+                ICurrencyProvider prov = requireOrError(reg, strOrNull(a, 0, "currency.balance"));
+                try {
+                    return Amounts.toScript(prov.balance(player.uuid()));
+                } catch (com.november.mcphone.core.script.server.economy.CurrencyUnavailableException e) {
+                    // 抛脚本接得住的 Error，App 在 catch 里 ctx.fail('UNAVAILABLE')。
+                    // 不返回 0 或 null：比大小时 null 也当 0，App 会告诉玩家他没钱。
+                    // 不抛 ScriptAbort：那个接不住、还记过失，连着几次就把整个 App 熔断
+                    throw org.mozilla.javascript.ScriptRuntime.constructError("Error", "UNAVAILABLE: " + e.reasonKey());
+                } catch (ScriptAbort e) {
+                    throw e;
+                } catch (RuntimeException e) {
+                    // provider 抛的别的：换成替身再往外抛，原来那个的 getMessage 可能自己会炸（见 ProviderFailure）
+                    throw ProviderFailure.of(e);
+                } catch (Error e) {
+                    // Error 要保持 Error：换成 RuntimeException 的替身，脚本 finally { return } 就吞得掉了
+                    throw new ProviderError(ProviderFailure.of(e));
+                }
             });
 
             // format 必须用宿主（§22.5）：自己拼小数点，负数与不足位就各错各的
             HostFn.put(cur, scope, "format", 2, (c, s, a) -> {
-                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.format"));
-                long v = Amounts.toLong(a.length > 1 ? a[1] : null, "currency.format");
+                ICurrencyProvider prov = requireOrError(reg, strOrNull(a, 0, "currency.format"));
+                // 金额缺了（常见是 parse 给的 null）或超出 long：和 pay 一样算"数不对"，抛接得住的 Error，不中断
+                Long v = amountOrNull(a, 1, "currency.format");
+                if (v == null) throw org.mozilla.javascript.ScriptRuntime.constructError("Error", "INVALID: " + INVALID_AMOUNT);
                 return Balances.format(v, prov.currency().decimals()) + " " + prov.currency().symbol();
             });
 
             // parse 收字符串，回 BigInt
             HostFn.put(cur, scope, "parse", 2, (c, s, a) -> {
-                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.parse"));
+                ICurrencyProvider prov = requireOrError(reg, strOrNull(a, 0, "currency.parse"));
                 try {
-                    return Amounts.toScript(Balances.parse(HostFn.str(a, 1, "currency.parse"),
-                            prov.currency().decimals()));
+                    // 没给文本（null）Balances.parse 同样抛 NumberFormatException
+                    return Amounts.toScript(Balances.parse(strOrNull(a, 1, "currency.parse"), prov.currency().decimals()));
                 } catch (NumberFormatException e) {
-                    throw new ScriptAbort(ScriptAbort.Reason.HOST, "currency.parse: " + e.getMessage());
+                    // 解析的多半是玩家输入：解析不了给 null，App 该 ctx.fail('INVALID')
+                    return null;
                 }
             });
 
             // pay 的 from 恒为调用者（§22.6：这样它才是 plain 档）
             HostFn.put(cur, scope, "pay", 4, (c, s, a) -> {
-                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.pay"));
-                java.util.UUID to = java.util.UUID.fromString(HostFn.str(a, 1, "currency.pay"));
-                long amt = Amounts.toLong(a.length > 2 ? a[2] : null, "currency.pay");
-                TxnResult r = prov.transfer(player.uuid(), to, amt, reason(a, 3, "pay"));
-                return r.name();
+                String cid = strOrNull(a, 0, "currency.pay");
+                ICurrencyProvider prov = reg.get(cid);
+                if (prov == null) return TxnResult.UNAVAILABLE.name();
+                java.util.UUID to = uuidOrNull(strOrNull(a, 1, "currency.pay"));
+                Long amt = amountOrNull(a, 2, "currency.pay");
+                TxnReason why = reasonOrNull(a, 3, "pay");
+                if (to == null || amt == null || why == null) return TxnResult.INVALID.name();
+                return moneyCall("pay", appId, player.uuid(), cid, to, amt,
+                        () -> prov.transfer(player.uuid(), to, amt, why)).name();
             });
 
             HostFn.put(cur, scope, "hold", 4, (c, s, a) -> {
-                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.hold"));
-                java.util.UUID to = java.util.UUID.fromString(HostFn.str(a, 1, "currency.hold"));
-                long amt = Amounts.toLong(a.length > 2 ? a[2] : null, "currency.hold");
-                HoldResult h = prov.hold(player.uuid(), to, amt, reason(a, 3, "hold"));
+                String cid = strOrNull(a, 0, "currency.hold");
+                ICurrencyProvider prov = reg.get(cid);
+                if (prov == null) return TxnResult.UNAVAILABLE.name();
+                java.util.UUID to = uuidOrNull(strOrNull(a, 1, "currency.hold"));
+                Long amt = amountOrNull(a, 2, "currency.hold");
+                TxnReason why = reasonOrNull(a, 3, "hold");
+                if (to == null || amt == null || why == null) return TxnResult.INVALID.name();
+                HoldResult h = moneyCall("hold", appId, player.uuid(), cid, to, amt,
+                        () -> prov.hold(player.uuid(), to, amt, why));
                 return h.result() == TxnResult.OK ? h.id().value().toString() : h.result().name();
             });
 
             HostFn.put(cur, scope, "release", 3, (c, s, a) -> {
-                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.release"));
-                EscrowId id = new EscrowId(java.util.UUID.fromString(HostFn.str(a, 1, "currency.release")));
-                return prov.release(id, reason(a, 2, "release")).name();
+                String cid = strOrNull(a, 0, "currency.release");
+                ICurrencyProvider prov = reg.get(cid);
+                if (prov == null) return TxnResult.UNAVAILABLE.name();
+                java.util.UUID id = uuidOrNull(strOrNull(a, 1, "currency.release"));
+                if (id == null) return TxnResult.UNKNOWN_ESCROW.name();
+                TxnReason why = reasonOrNull(a, 2, "release");
+                if (why == null) return TxnResult.INVALID.name();
+                return moneyCall("release", appId, player.uuid(), cid, id, null,
+                        () -> prov.release(new EscrowId(id), why)).name();
             });
 
             HostFn.put(cur, scope, "refund", 3, (c, s, a) -> {
-                ICurrencyProvider prov = require(reg, HostFn.str(a, 0, "currency.refund"));
-                EscrowId id = new EscrowId(java.util.UUID.fromString(HostFn.str(a, 1, "currency.refund")));
-                return prov.refund(id, reason(a, 2, "refund")).name();
+                String cid = strOrNull(a, 0, "currency.refund");
+                ICurrencyProvider prov = reg.get(cid);
+                if (prov == null) return TxnResult.UNAVAILABLE.name();
+                java.util.UUID id = uuidOrNull(strOrNull(a, 1, "currency.refund"));
+                if (id == null) return TxnResult.UNKNOWN_ESCROW.name();
+                TxnReason why = reasonOrNull(a, 2, "refund");
+                if (why == null) return TxnResult.INVALID.name();
+                return moneyCall("refund", appId, player.uuid(), cid, id, null,
+                        () -> prov.refund(new EscrowId(id), why)).name();
             });
 
             // mint / burn 是 granted 档（§22.6）。本步没有能力表，一律 NOT_AUTHORIZED ——
@@ -324,11 +366,94 @@ public final class CtxBuilder {
         return ctx;
     }
 
-    /** 认不出的货币 id 当场中断，不返回一个"看着像成功"的东西。 */
-    private static ICurrencyProvider require(CurrencyRegistry reg, String id) {
+    /** 服务器上没有这种货币（多半是服主改了配置）：抛脚本接得住的 Error，不中断。 */
+    private static ICurrencyProvider requireOrError(CurrencyRegistry reg, String id) {
         ICurrencyProvider p = reg.get(id);
-        if (p == null) throw new ScriptAbort(ScriptAbort.Reason.HOST, "没有这种货币: " + id);
+        if (p == null) {
+            throw org.mozilla.javascript.ScriptRuntime.constructError("Error", "UNAVAILABLE: " + NO_SUCH_CURRENCY);
+        }
         return p;
+    }
+
+    static final String NO_SUCH_CURRENCY = "mcphone.economy.no_such_currency";
+
+    /**
+     * 会动钱的 provider 调用。provider 抛了、或者没给结果 = 结果不明（可能已经动了一半）：打一条带来龙去脉与 provider 堆栈的 ERROR
+     * 给服主核对，再抛 {@link OutcomeUnknown} —— 脚本接不住也吞不掉、拿到 UNKNOWN、不记过失。虚拟机级别的错误也一样换：
+     * 它可能是第三方的子类、getMessage 会炸，原样抛出去日志渲染时照样出事。
+     * 不改写成返回码：UNAVAILABLE 会让 App 当"没动"去重试。
+     */
+    private static <T> T moneyCall(String what, String appId, java.util.UUID player, String currencyId,
+                                   java.util.UUID other, Long amount, java.util.function.Supplier<T> op) {
+        Throwable failure;
+        try {
+            T r = op.get();
+            if (r != null) return r;
+            failure = null;
+        } catch (ScriptAbort e) {
+            throw e;
+        } catch (Throwable e) {
+            failure = e;
+        }
+        // provider 抛来的那个不可信（getMessage / getStackTrace 自己可能会炸）：日志与 cause 都只用替身
+        Throwable standIn = null;
+        String detail = "货币调用结果不明";
+        try {
+            standIn = failure == null ? null : ProviderFailure.of(failure);
+            detail = "货币调用结果不明：app=" + appId + " 玩家=" + player + " " + what + " " + currencyId
+                    + " 对方或托管号=" + other + " 金额=" + (amount == null ? "-" : amount + "（最小单位）")
+                    + " —— " + (failure == null ? "provider 没给结果（返回了 null）" : "provider 抛了 " + standIn.getMessage())
+                    + "，钱可能已经动了一半，请核对";
+            com.november.mcphone.MCphone.LOGGER.error("[MCphone] ⚠ {}", detail, standIn);
+        } catch (Throwable ignored) {
+            // 栈溢出、内存不够时打不出来也别换掉原来那个错，更别变成脚本 finally 吞得掉的 RuntimeException
+        }
+        throw new OutcomeUnknown(detail, standIn);
+    }
+
+    /**
+     * 字符串参数缺了（null / undefined）→ null，由调用方给返回码：常见是 {@code default()} 在没有默认货币时给的 null、
+     * 或者玩家没填。别的类型照旧中断（脚本写错了）。
+     */
+    private static String strOrNull(Object[] args, int i, String where) {
+        return HostFn.present(args, i) ? HostFn.str(args, i, where) : null;
+    }
+
+    static final String INVALID_AMOUNT = "mcphone.economy.invalid_amount";
+
+    /**
+     * 玩家、托管号是字符串，多半从别处传来：写歪了是返回码，不是脚本的错。
+     * <b>只认规范写法</b>（读回来与原串一致，大小写不论）：{@code UUID.fromString} 很宽松，{@code "1-1-1-1-1"}、全角数字、
+     * 超长的段都会被收成<b>另一个</b> UUID —— 钱就付进一个没有主人的账户里了。
+     */
+    private static java.util.UUID uuidOrNull(String s) {
+        if (s == null) return null;
+        try {
+            java.util.UUID u = java.util.UUID.fromString(s);
+            return u.toString().equalsIgnoreCase(s) ? u : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * 金额。缺了（null / undefined，常见是 parse 给的 null）或是 BigInt 但超出 long（多半是玩家给的数）→ null，调用方给 INVALID；
+     * 不是 BigInt 的别的类型是脚本写错了，照旧中断。
+     */
+    private static Long amountOrNull(Object[] args, int i, String where) {
+        Object v = args.length > i ? args[i] : null;
+        if (v == null || v instanceof org.mozilla.javascript.Undefined) return null;
+        if (v instanceof java.math.BigInteger b && b.bitLength() > 63) return null;
+        return Amounts.toLong(v, where);
+    }
+
+    /** ref 里有竖线、控制字符或太长（多半是把玩家输入当单号）：返回 null → INVALID。 */
+    private static TxnReason reasonOrNull(Object[] args, int i, String kind) {
+        try {
+            return reason(args, i, kind);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     /** {@code reason} 里没有 appId 这一格 —— 由宿主盖章（§22.10）。 */
