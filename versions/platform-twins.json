@@ -104,6 +104,7 @@
     "com/november/mcphone/feature/waystone/net/OpenWaystoneSelectionPacket.java": 15,
     "com/november/mcphone/platform/CuriosInventories.java": 4,
     "com/november/mcphone/platform/ModPresence.java": 12,
+    "com/november/mcphone/platform/Nbt.java": 18,
     "com/november/mcphone/platform/Slots.java": 6,
     "com/november/mcphone/platform/StackCodecs.java": 15,
     "com/november/mcphone/platform/client/CameraGui.java": 4,

@@ -1045,3 +1045,155 @@ G 一次掉 23 且【没有新的冒出来】—— 这是这几轮里少见的�
 | `hideGui` | 4 | `Options.hideGui` 整字段没了，`CameraGui` 那个返回 boolean 的门面形状撑不住，得重设计 |
 | renderpearl 顶点上传 | 一坨 | `Draw.texturedQuad` 那条链（含 `BrowserScreen:224` 那个 `last()`），`Tesselator` / `BufferUploader` / `VertexFormat` 在 26.x 查无此类 |
 | 附属模组（D） | 56 | 【还是那句话，等一个产品决策】首发要不要带那几个联动：Curios / Patchouli / MCEF / RefinedStorage 在 26.3 一个构件都没有 |
+
+## 廿一、这一段 CI【一条都没跑】：PR 脏了，不是 26.3 编不过
+
+这一步不是编译问题，值得单独记，因为它长得非常像编译问题。
+
+`port/26.3` 推到 `39adf00` 之后，本地编出来 452 → 418 → 392 → 369 一路在降，
+但 GitHub 上看着始终"构建不成功"。真实情况是：**从 run 12 之后一条 workflow run 都没创建过**。
+
+### 症状 → 根因
+
+| | |
+|---|---|
+| 症状 | 推了两个提交，`commits/<sha>/check-runs` 回来 `total_count: 0`；`actions/runs` 最新一条还是上一天的 run 12 |
+| 排除"没启用" | `actions/permissions` 是 `enabled: true` / `allowed_actions: all`；`actions/workflows` 三个都是 `active` |
+| 排除触发条件 | `build.yml` 是 `pull_request: branches: [main]`，PR #1 的 base 就是 `main`，run 6~12 都是这么来的 |
+| 根因 | `pulls/1` 是 `mergeable=false` / `mergeable_state=dirty` —— PR 与 base 冲突了，GitHub 对脏 PR 不建 `pull_request` run |
+
+冲突的来路量清楚了：`main` 在 2026-09-19 15:10:07Z（本地 23:10）同步进上游 23 个提交，
+那是一次 `push` 事件的 run 13，结论 `success`。而 run 12 是 14:58:17Z 建的 ——
+**只差 12 分钟**，之后这个分支上的每次推送都不会再有 CI。所以"自动化构建不成功"这个观感
+其实混着两件事：run 12 及以前是【真的红】（26.3 编不过），那之后是【压根没跑】。
+
+### 顺带记一条：这类"静默不跑"只能靠数 run 的创建时间发现
+
+`check-runs` 返回空数组的时候，看不出是"排队中"还是"不会跑"。判据只有两条：
+`.total_count` 是不是 0，以及 `pulls/1` 的 `mergeable_state` 是不是 `dirty`。
+下次再看到"推了没反应"，先看这两样，别看编译日志。
+
+### 合并这一刀的实际形状
+
+`git merge-tree` 读过再动的：23 个提交带进 4,973 行共用代码（economy 那一整套：
+`EconomyData` 603 行、`CurrencyGateway` 228 行、`TxnLog`、`GatedCurrencyProvider` 等），
+**真冲突只有 `versions/platform-twins.json` 一个文件**，而它是 `updateTwinBaseline` 的生成物 ——
+取一份当底、按合并后的树重算就完了，不用手工调解任何一行代码。
+
+重算出来：110 → **111 对**，差异合计 5,972（main 侧）/ 6,004（我们侧）→ **5,960**，
+比两边都低。三格值得说的是 `MCphone.java` 257 → **279**（+22）：上游给另三支接上了
+`EconomyRuntime.start/stop/tick` 与 `EconomyCommand.register`，而 26.3 那一份
+`MCphone.java` 本来就是【登记清单全空的骨架】（它自己的 javadoc 里记着那六条要还的账），
+不是漏改一处。这一格涨的是既有欠账的口径，不是这次引入的漂移。
+
+合并后本地重编四支：`1.20.1-forge` / `1.21.1-neoforge` / `1.21.1-fabric` 仍
+`BUILD SUCCESSFUL`；26.3 从 324 涨到 **369**（+45，全在 G 桶：161 → 206），
+其中 42 条在上游新增的 economy 文件里。推上去之后 `mergeable=true`，run 14 起来了，
+另三支在 CI 上 `success`，26.3 那条 job（id 105932515594）红，日志最后一行是
+**`369 errors`** —— 与本地对同一提交量到的 369【一字不差】，这条线上第一次两边对得上。
+顺手记一句取日志的姿势：`gh run view --job <checkRunId> --log-failed`，
+`checkRunId` 从 `commits/<sha>/check-runs` 里拿，别用 `--run`（这个 flag 不存在）。
+
+## 廿二、1d 第 9 步：`CompoundTag` 一族收进 `Nbt` 接缝。369（合并后） → 331
+
+先把两个 369 分清：§十九 末的 369 是【合并前】的，§廿一 末的 369 是【合并后】的，
+数字撞上了但内容不一样（合并后那 45 条新增全在 G 桶：161 → 206）。这一节往后走的是合并后那条线。
+
+合并带进来的 45 条里 42 条在上游新写的 economy 文件里，其中 `EconomyData.java` 一个文件 38 条，
+根子全是一句话：**26.x 把 `CompoundTag` 的取值口换成了 `Optional`**。
+
+### 看着最顺的那个改法是错的
+
+`getLong(k)` 返 `Optional<Long>`，那把 `contains(k, Tag.TAG_LONG)` 换成
+`getLong(k).isPresent()` 不就完了？——不行，两支的严格程度不是一回事：
+
+| | 判"这个键上是 long" | 取值 |
+|---|---|---|
+| 1.21.1 | `contains(k, 4)` 就是 `getTagType(k) == 4`，**精确相等**（`99` 那个"任意数值"是另一档，代码里没人用） | `getLong(k)` 反而**会换算**：它内部是 `contains(k, 99)` 再 `((NumericTag) …).getAsLong()`，所以 `IntTag` 也给得出数 |
+| 26.3 | `getLong(k)` = `getOptional(k).flatMap(Tag::asLong)`，`NumericTag.asLong()` 对六种数值标签一律给得出 | `getString(k)` 更松：不是 `StringTag` 的标签会走默认那条 `asString()`，一个 `IntTag` 给出 `Optional.of("5")` |
+
+拿 `isPresent()` 当判型，意思就是【坏存档被当成好存档收进来】，而这一族读的是余额和托管。
+所以判型必须照旧走"类型正好是它"，也就是 `get(k) instanceof LongTag` 那种写法。
+
+### 接缝的底下两支其实是同一句话
+
+`CompoundTag.get(String)` 和 `net.minecraft.nbt` 下那几个 `*Tag` 类，四个目标上都在、也没改名
+（26.3 的源里 16 个 `*Tag.java` 全在；`LongTag`、`IntTag`、`StringTag`、`ByteTag`、`ListTag`
+都还是那个包那个名）。**真两样的只有取值那一步**：
+
+- 1.21.1：`NumericTag` 还是个抽象类，方法是 `getAsLong()` / `getAsInt()` / `getAsByte()`，
+  `StringTag.getAsString()`。
+- 26.3：`LongTag` 已经是 `public record LongTag(long value)`，`NumericTag` 变成 sealed 接口，
+  访问器是 `value()` 与 `longValue()` / `intValue()` —— `getAsLong()` 【没有了】。
+
+两支在取值上没有一个共同拼法，这才立的这层 `platform/Nbt`。十四个静态方法里
+六个 `isXxx` 两支写得一模一样，留在里面是为了让调用点读起来"判一句取一句"成对，
+不是为了绕一圈 —— 这条判断我写进类的 javadoc 了，不是悄悄做的。
+
+### 一句要单独代的账：`getList(key, Tag.TAG_COMPOUND)`
+
+`EconomyData.java:455` 靠这句筛"列表里混进了不是表的条目"：1.21.1 的实现是看列表
+【声明的】元素类型，非空而不合就返回新的空列表；26.3 只剩 `getList(key)`，什么也筛不掉。
+接缝在 26.3 这一支改成【逐条看】，因为 `ListTag.getElementType()` 在这支
+【不再是 public】（把 26.3 那份 `ListTag` 的公开方法整个扫过一遍，只剩
+`getId()` / `getType()` / `getCompoundOrEmpty(int)` 这一套）。正常列表上两种看法等价，
+不一样的那种正好就是要拦的那种，逐条看反而拦得准。
+
+`getAllKeys() → keySet()` 本来是可以丢进改名表里解决的（它就是"标识符没变、方法换了个字"的形状），
+没收进表里：它和同族其余三十多句是一对，一条在改名表、其余在接缝，读代码的人得两头跑。
+
+### 调用点
+
+`EconomyData.java` 里 41 处，脚本按【接收者白名单 + 括号配平】切的，`list.getCompound(i)`
+（`ListTag` 上的）排在 `X.getCompound(k)`（`CompoundTag` 上的）之前先替掉，不然两条会撞：
+
+| 老写法 | 新写法 | 处 |
+|---|---|---:|
+| `X.contains(K, Tag.TAG_LONG)` | `Nbt.isLong(X, K)` | 9 |
+| `X.contains(K, TAG_INT / STRING / COMPOUND / LIST / BYTE)` | `Nbt.isInt / isString / isCompound / isList / isBoolean` | 6 |
+| `X.getLong(K)` | `Nbt.longOf(X, K)` | 11 |
+| `X.getString(K)` | `Nbt.stringOf(X, K)` | 7 |
+| `X.getInt(K)` / `getBoolean(K)` / `getCompound(K)` | `intOf` / `booleanOf` / `compoundOf` | 1 / 1 / 2 |
+| `X.getList(K, Tag.TAG_COMPOUND)` | `Nbt.compoundListOf(X, K)` | 1 |
+| `X.getAllKeys()` | `Nbt.keys(X)` | 2 |
+| `list.getCompound(i)` | `Nbt.compoundAt(list, i)` | 1 |
+
+改完当场验三条：全文件不再出现 `Tag.TAG_`、`.getAllKeys(`、`.getList(`；
+`Nbt.isList(` 确实在（防的是"正则没命中也算改完了"那种假成功）。
+1-参数的 `contains(K)` 那四处【一处没动】—— 它在四个目标上都还在。
+
+### 数字
+
+| | 369（合并后末） | 331（这一步末） |
+|---|---:|---:|
+| javac 错误 | 369 | **331** |
+| 报错文件 | 94 | **93** |
+| G 真断·形变 | 206 | **168** |
+| 真断小计（C+D+F+G） | 299 | **261** |
+| 挂载副本 / 本平台自己的文件 | 304 / 65 | **266 / 65** |
+
+-38 与 `EconomyData.java` 那个文件的错误数【正好相等】，所以 G 从 206 掉到 168 是一整族清完、
+没有留下级联；本平台那 65 条一条没动（这一刀全在共用代码里），这也是挂载/本平台两格能对得上的原因。
+其余五桶 D 56、E 30、A 27、F 20、C 17 与合并后一样。
+
+接缝清单四段各 +1（35→36、75→76、37→38、27→28），多出来的都是 `platform.Nbt`；
+双胞胎基线 111 → **112 对**、5,960 → **5,978 行**，新记的那一对是
+`platform/Nbt.java` 差 18 行 —— 与 `Transforms` 同一形状：三支老平台逐字相同一份，26.3 一份。
+
+### 行为没变这件事是怎么验的
+
+`docs/EconomyDataTest.java` 那 49 个用例是这一族的真裁判，但它在本机跑不完：
+第 12 个 `unreadableIsNotAbsent` 用 `Files.setPosixFilePermissions`，Windows 上直接抛
+`UnsupportedOperationException`。改【之前】我先跑了一遍拿到基线：
+
+- `assertTestCurrencyTest` 绿；`assertTestEconomyDataTest` 红在 `EconomyDataTest.java:929`。
+- 改【之后】再跑：红在**同一行**，前 11 个用例照样全过 —— 而排在它前面的
+  `roundTrip` / `missingAndUnknownFields` / `strictLoad` / `snapshotAtomicity` /
+  `snapshotPreference` 正是走这条 NBT 校验路的。
+
+这只能算【一半】证据：剩下 38 个用例排在第 12 个之后，本机压根没跑到。
+补齐的办法是让 Linux 跑，也就是推上去看 CI —— `1.20.1-forge` / `1.21.1-neoforge` /
+`1.21.1-fabric` 三支的 `check` 里含这套断言测试，绿了就说明接缝在老两支上【一字未改语义】。
+另外 `1.20.1-forge` 本地 `:compileJava` 真编过（24s，不是 UP-TO-DATE），这一条把
+"老平台那份接缝的 `getAsLong` / `getAsString` / `getAsByte` / `getAllKeys` /
+`getCompound(int)` 在 1.20.1 上也都在"钉住了，不是从 1.21.1 推的。
