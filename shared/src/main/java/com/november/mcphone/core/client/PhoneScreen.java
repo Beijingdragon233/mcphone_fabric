@@ -1,6 +1,7 @@
 package com.november.mcphone.core.client;
 
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.ui.IPhonePage;
@@ -449,7 +450,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     private void tellPlayer(String translationKey, Object... args) {
         // 动作栏而不是聊天框：玩家的眼睛正看着手机屏幕
         if (minecraft != null && minecraft.player != null) {
-            minecraft.player.displayClientMessage(Component.translatable(translationKey, args), true);
+            ClientMessages.show(minecraft.player, Component.translatable(translationKey, args), true);
         }
     }
 

@@ -1209,3 +1209,103 @@ G 一次掉 23 且【没有新的冒出来】—— 这是这几轮里少见的�
 `platform/Nbt` 相关报错出现 **0 次** —— 新接缝自己在 26.3 上干净，那 38 条确实是整族清掉的。
 老三支的 49 个用例全过，也就是"接缝在老两支上一字未改语义"这件事现在是【被机器证过的】，
 不再是本机那 11 个用例的半截证据。
+
+## 廿三、1d 第 10 步：`displayClientMessage` 收进 `ClientMessages`。331 → 318
+
+这一族的形状与 §二十、§廿二 都不同：不是改名、也不是换返回类型，是【整条路拆了】。
+对着 26.3 的源搜过一圈：`Entity.java`、`Player.java`、`LocalPlayer.java`、`ChatListener.java`
+四个文件里都没有 `displayClientMessage` 这个名字。
+
+### 拆完之后新路长这样
+
+| | `Player#displayClientMessage` | 谁覆写了它 |
+|---|---|---|
+| 1.21.1 | 还在 | `ServerPlayer` → `sendSystemMessage(msg, actionBar)` 发封包；`LocalPlayer` → `chatListener().handleSystemMessage(msg, actionBar)`，第二参数是 `isOverlay` |
+| 26.3 | 【整个没了】 | `ServerPlayer.sendSystemMessage(msg, overlay)` 原样还在；`LocalPlayer` 那半得自己叫 `Gui.chatListener()` 上的两个方法 |
+
+下面讲的是 `LocalPlayer` 那一半，服务端那一半两支同写法、没什么可讲。
+
+要紧的是第二个参数换了意思：26.x 那个 `remote` 说的是「这条算服务端来的系统消息」，
+`true` 会【多落一条日志】，`false` 走 `addClientSystemMessage` 且【不记日志】。
+老那句非动作栏那一支正是 `addMessage` 加一条 `logSystemMessage`，所以要对上就得传 `true`。
+传 `false` 看着更像"本地产生的消息"，但那是少了一件事的另一条路 —— 接缝里传 `true`
+是为了行为一致，不是为了语义好听。
+
+还有一处只可能更保守、但确实对不上：26.x 的 `handleSystemMessage` 外面多套了
+`receiver.chatAbilities().canReceiveSystemMessages()` 与 `isFriendOnlyRestricted(uuid)` 两道闸。
+它们只会让消息【少显示】不会多显示，而且那正是游戏自己处理系统消息走的路，
+跟着它走比自创一条绕过社交过滤的路要老实。
+
+### 这一句本来就有两侧，而我差点把服务端那侧写丢了
+
+第一版注释里我写的是"`Player#displayClientMessage` 是空方法体，所以拿 `ServerPlayer`
+调这一句什么都不发生"。**这句是错的**，而且是会咬人的那种：空方法体只在 `Player` 上，
+两个子类各自覆写过。对着 1.21.1 的源逐个看：
+
+- `ServerPlayer` 覆写成 `sendSystemMessage(msg, actionBar)`，发一个
+  `ClientboundSystemChatPacket` 给那个玩家 —— 真会把字儿送到屏幕上。
+- `LocalPlayer` 覆写成 `chatListener().handleSystemMessage(msg, actionBar)` —— 直接往本地上画。
+
+本仓 14 个调用点里【10 处走的是服务端那侧】（`TeleportService`、`TerminalOpener` 两处、
+`NetworkHandler` 两处、`ChatNetworking`、`MusicNetworking`、`NotesNetworking`、
+`StoreNetworking` 两处，接收者都声明成 `ServerPlayer`），只有 4 处是本地玩家
+（`PhoneScreen`、`ChatConversation`、`ChatImageSender`、`CameraHandler`，都是
+`Minecraft.getInstance().player`）。我那道 `instanceof LocalPlayer` 要是照原样留下，
+26.3 上这 10 处提示会【静默消失】：编译照过、`verifyDistIsolation` 照绿、
+断言测试没有一个碰得着 —— 因为是运行时少发一个包。
+
+修法是把两条分支都接上。好消息是服务端那半在 26.3【根本没动】：
+`ServerPlayer.sendSystemMessage(Component, boolean overlay)` 还在（`ServerPlayer.java:1927`），
+第二参数还叫 `overlay`、还发同一个包。所以：
+
+| 接收者是 | 1.20.1 / 1.21.1 | 26.3 |
+|---|---|---|
+| `ServerPlayer` | `p.displayClientMessage(...)` → 覆写发封包 | `sp.sendSystemMessage(msg, actionBar)`，原样 |
+| `LocalPlayer` | 同上 → 覆写走 `chatListener()` | `handleOverlay(msg)` / `handleSystemMessage(msg, true)` |
+| 其它（`RemoteClientPlayer`） | 拿 `Player` 的空方法体，什么都不发生 | 两个分支都不落，同样什么都不发生 |
+
+真正没了的只有 `LocalPlayer` 那一侧的入口，而那一侧才需要处理
+"`isOverlay` 换成了 `remote`" 这件事（`remote=true` 会多落一条日志，
+`false` 走 `addClientSystemMessage` 且不记日志 —— 老那句非动作栏那一支是
+`addMessage` 加一条 `logSystemMessage`，所以传 `true` 才是对上行为）。
+
+### 第二次踩同一个棘轮
+
+这一族总共有 40 处调用点：共用代码 6 处，四支本平台合计 34 处。第一遍我的脚本只扫了
+`shared/`、`layers/` 与 26.3 那一路，结果 `updateTwinBaseline` 一口气把六个 `net` 文件的差异
+推高：`NetworkHandler` 205→212、`StoreNetworking` 86→93、`CameraHandler` 85→88、
+`ChatNetworking` 284→287、`MusicNetworking` 103→106、`NotesNetworking` 125→128。
+同一句玩家反馈，26.3 走接缝、另三支留着老写法 —— 四支各编各的，编译器一个字都不会说。
+把 `ROOTS` 扩到四支、补掉剩下 26 处之后，这六个文件全部回到原基线。
+
+这是【第二次】同一形状的坑（§二十 那次是 `PhoneMultiLineEditBox` 13→20），
+这次是六个文件一起涨。
+
+剩下一格降不回去，得说明白：`Ae2Integration` 68 → **70**。查过原因，不是语义漂了：
+那句"终端没电"的提示【只有 1.20.1 这一份写了】，另两份在同一个位置压根没有这句，
+于是 `import com.november.mcphone.platform.client.ClientMessages;` 这一行只出现在一份里，
+一对算一遍、两对就是 +2。我用多重集逐行数过确认了这一点（改动前那份独有 1 行，改动后独有 2 行，
+多的正是 import）。真正那条提示的不对称是【上游既有】的，这一刀没碰它，
+也没顺手替 1.21.1 补一句它今天没有的提示。
+
+### 数字
+
+| | 331（上一步末） | 318（这一步末） |
+|---|---:|---:|
+| javac 错误 | 331 | **318** |
+| 报错文件 | 93 | **87** |
+| G 真断·形变 | 168 | **155** |
+| 真断小计（C+D+F+G） | 261 | **248** |
+| 挂载副本 / 本平台自己的文件 | 266 / 65 | **260 / 58** |
+
+-13 拆成挂载 -6（共用代码那 6 处）与本平台 -7（26.3 那 8 处调用点里有 7 处此前是独立错误，
+第 8 处 `CameraHandler:33` 本来是被别处压住的级联）。文件一次少 6 个。
+其余五桶 D 56、E 30、A 27、F 20、C 17 一条没动。
+
+四支本地重编：`1.20.1-forge`（真编 23s）/ `1.21.1-neoforge` / `1.21.1-fabric` 均
+`BUILD SUCCESSFUL`；`assertTests --continue` 摊平跑全套 48 个任务，46 绿、
+红的还是改动前就红的 `EconomyDataTest`（POSIX）与 `ScriptEngineTest`（zh-CN locale）那两个，
+没有新增。八道闸全绿：112 → **113 对**、差异合计 5,978 → **5,995 行**（都在基线内），
+接缝清单四段各 +1（36→37、76→77、38→39、28→29），多的那个都是 `platform.client.ClientMessages`。
+新记的那一对差 **15 行** —— 就是上面那张表的真实形状：26.3 那一份要多三个 import
+（`Minecraft`、`ChatListener`、`LocalPlayer`）与两条分支，老那三份一个方法体就完了。

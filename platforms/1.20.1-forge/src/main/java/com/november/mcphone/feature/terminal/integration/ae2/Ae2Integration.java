@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.terminal.integration.ae2;
 
 import com.november.mcphone.platform.ModPresence;
+import com.november.mcphone.platform.client.ClientMessages;
 import appeng.core.localization.PlayerMessages;
 import appeng.items.tools.powered.WirelessTerminalItem;
 import appeng.menu.MenuOpener;
@@ -145,7 +146,7 @@ public final class Ae2Integration implements TerminalIntegration {
         if (terminal.getLinkedGrid(stack, player.level(), player) == null) return false;
 
         if (!terminal.hasPower(player, POWER_TO_OPEN, stack)) {
-            player.displayClientMessage(PlayerMessages.DeviceNotPowered.text(), true);
+            ClientMessages.show(player, PlayerMessages.DeviceNotPowered.text(), true);
             return false;
         }
         return true;

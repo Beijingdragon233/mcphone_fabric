@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.store.net;
 
 import com.november.mcphone.core.net.MCphoneNetwork;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.cost.ICost;
 import com.november.mcphone.core.ModCapabilities;
@@ -112,7 +113,7 @@ public final class StoreNetworking {
         // 先问够不够，再扣。ICost 的实现自己也会再判一次——两道都留着，
         // 因为这里要的是"没扣成时给玩家一句人话"，而 consume 只回 false
         if (!cost.canAfford(player)) {
-            player.displayClientMessage(
+            ClientMessages.show(player,
                     Component.translatable("mcphone.store.error.cannot_afford", cost.describe())
                             .withStyle(ChatFormatting.RED), true);
             return;
@@ -136,8 +137,7 @@ public final class StoreNetworking {
     }
 
     private static void fail(ServerPlayer player, String key) {
-        player.displayClientMessage(
-                Component.translatable(key).withStyle(ChatFormatting.RED), true);
+        ClientMessages.show(player, Component.translatable(key).withStyle(ChatFormatting.RED), true);
     }
 
     //  客户端侧

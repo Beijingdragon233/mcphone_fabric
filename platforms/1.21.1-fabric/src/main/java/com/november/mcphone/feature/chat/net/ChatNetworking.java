@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.chat.net;
 
 import com.november.mcphone.core.net.MCphoneNetwork;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.feature.chat.ChatImage;
 import com.november.mcphone.feature.chat.ChatImageStore;
 import com.november.mcphone.feature.chat.ConversationKey;
@@ -294,7 +295,7 @@ public final class ChatNetworking {
         Component message = outcome.message();
         if (message == null) return;
 
-        player.displayClientMessage(message, true);
+        ClientMessages.show(player, message, true);
     }
 
     private static void handleRemoveFriend(RemoveFriendPacket packet, ServerPlayer player) {

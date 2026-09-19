@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.chat;
 
 import com.november.mcphone.core.ServerConfig;
+import com.november.mcphone.platform.client.ClientMessages;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
@@ -38,8 +39,7 @@ public final class TeleportService {
                 SoundEvents.ENDERMAN_TELEPORT, SoundSource.PLAYERS, 1.0F, 1.0F);
 
         // 走动作栏不走聊天框：即时事件不该在公屏历史里留一行
-        target.displayClientMessage(
-                Component.translatable("mcphone.chat.teleport_arrived",
+        ClientMessages.show(target, Component.translatable("mcphone.chat.teleport_arrived",
                         self.getName().getString()), true);
 
         return TeleportOutcome.OK;
