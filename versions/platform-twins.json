@@ -46,7 +46,7 @@
     "com/november/mcphone/feature/chat/MessageKind.java": 32,
     "com/november/mcphone/feature/chat/TextBody.java": 15,
     "com/november/mcphone/feature/chat/net/ChatImageDataPacket.java": 31,
-    "com/november/mcphone/feature/chat/net/ChatNetworking.java": 280,
+    "com/november/mcphone/feature/chat/net/ChatNetworking.java": 284,
     "com/november/mcphone/feature/chat/net/ConversationSummary.java": 40,
     "com/november/mcphone/feature/chat/net/FriendRequestPacket.java": 26,
     "com/november/mcphone/feature/chat/net/MarkReadPacket.java": 26,

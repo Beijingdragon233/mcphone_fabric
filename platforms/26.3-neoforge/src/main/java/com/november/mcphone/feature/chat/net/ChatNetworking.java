@@ -227,7 +227,7 @@ public final class ChatNetworking {
      * 而这条路是玩家点一下就走一遍的。主线程卡一下，全服都看得见。
      */
     private static void storeAndDeliver(ServerPlayer sender, ChatImageUploads.Assembled upload) {
-        MinecraftServer server = sender.server;
+        MinecraftServer server = sender.level().getServer();
 
         Util.backgroundExecutor().execute(() -> {
             // 按内容 + 会话算 id：同一张表情反复发只存一份，见 ChatImageStore.write
@@ -273,7 +273,7 @@ public final class ChatNetworking {
         }
         if (allowed.isEmpty()) return;
 
-        MinecraftServer server = player.server;
+        MinecraftServer server = player.level().getServer();
         Util.backgroundExecutor().execute(() -> {
             for (UUID id : allowed) {
                 byte[] data = ChatImageStore.read(server, id);

@@ -22,7 +22,7 @@ public final class TeleportService {
 
         if (!FriendGuard.mayActOn(self, targetId)) return TeleportOutcome.NOTHING;
 
-        ServerPlayer target = self.server.getPlayerList().getPlayer(targetId);
+        ServerPlayer target = self.level().getServer().getPlayerList().getPlayer(targetId);
         if (target == null) return TeleportOutcome.PEER_OFFLINE;
 
         // 出发点的音效必须在传送之前响，之后 self 已经在另一头了

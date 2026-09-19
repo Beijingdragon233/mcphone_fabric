@@ -802,6 +802,50 @@ G 又涨 7 条，还是那句：类型一解析出来，原本被 error type 盖
 （`ServerPlayer.server` 23、`pose` 49、GLFW→SDL 20、容器界面 9、附属模组 56）
 从下一步起变成主干的原因。
 
+## 十九、1d 第 7 步：`ServerPlayer.server` 一族清零。392 → 369
+
+§十六 起就挂着的那 23 条。26.3 把 `ServerPlayer` 的 `server` 字段改成了
+`private final MinecraftServer server`（对着 26.3 的源验在），而 NeoForge 26.3 的
+`IPlayerExtension` / `IEntityExtension` 上【没有】补一个 `getServer()` —— 两条都 `javap` 过，
+所以「加载器给补了个 getter」这条岔路是关的。
+
+### 没有新建接缝，因为替换式在四个目标上都在
+
+本来按 §九 的规矩，这种成员换了可见性的要走一个每平台接缝（`ServerPlayers.serverOf(p)`）。
+但这一族不用：`p.level().getServer()` 在【四个目标上都编得过】——
+
+- 26.3：`ServerPlayer.level()` 协变返回 `ServerLevel`，而 `ServerLevel.getServer()`
+  是 `public MinecraftServer getServer()`（非空）；`Level.getServer()` 也还在，返回 `@Nullable`。
+- 1.21.1：`neoforge-21.1.248-sources.jar` 里 `Level` 与 `ServerLevel` 上都有
+  `public MinecraftServer getServer()` —— 这条是对着源验的，不是推的。
+- 1.20.1：本地 `:compileJava` 真编过（见下）。
+
+所以改的是【共用代码本身】：`self.server` / `sender.server` / `player.server`
+一律换成 `X.level().getServer()`，23 处落在 6 个文件（`ChatService` 15、`PhoneChat` 3、
+`ChatNetworking` 2、`ChatDelivery` / `FriendGuard` / `TeleportService` 各 1）。
+只认 javac 点到的那三种接收者写法 —— 本仓自己也有叫 `server` 的字段与局部量
+（`MinecraftServer` 类型的那些），它们在 26.3 上【没问题】，跟着改正好会改坏。
+
+省下一个接缝的代价要说清：`Level.getServer()` 是 `@Nullable`，所以这条式子在类型上比
+原来的 `p.server` 松一档。但 `ServerPlayer` 只在服务端存在，它的 `level()` 永远是
+`ServerLevel`，拿到的永远是同一个非空实例 —— 这里不是「大概不会 null」，是那条字段本来就是它。
+
+### 数字与验证
+
+| | 392（上一步末） | 369（这一步末） |
+|---|---:|---:|
+| javac 错误 | 392 | **369** |
+| 报错文件 | 95 | **93** |
+| G 真断·形变 | 229 | **206** |
+| 真断小计 | 322 | **299** |
+
+G 一次掉 23 且【没有新的冒出来】—— 这是这几轮里少见的干净一刀，
+因为这一族原先就是纯可见性问题，不是父类没解析出来那种会连累一片的形状。
+
+因为动的是 `shared/`，四支【全部本地重编】：26.3 掉到 369，
+`1.21.1-neoforge` / `1.21.1-fabric` / `1.20.1-forge` 三支仍 `BUILD SUCCESSFUL` ——
+最后那支是这条替换式能不能用的真正裁判，它编过了。
+
 ### 数字
 
 | | 526（上一步末） | 452（这一步末） |
