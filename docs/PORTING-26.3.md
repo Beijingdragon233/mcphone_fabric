@@ -488,7 +488,7 @@ verifySeamsDocCurrent        通过（26.3 那段标记早就手工加好了）
 |---|---:|---:|---:|
 | javac 错误 | 1,244 | 969 | **756** |
 | 报错文件 | 193 | 129 | **118** |
-| 一个字没改就编过 | 229 / 422 | — | **303 / 422（71.8%）** |
+| 一个字没改就编过 | 229 / 422 | 293 / 422 | **304 / 422（72.0%）** |
 
 命中：`ResourceLocation→Identifier` 333 处 / 89 文件、`GuiGraphics→GuiGraphicsExtractor`
 262 处 / 60 文件、`drawString→text` 215 处 / 38 文件、`drawCenteredString→centeredText`
@@ -514,3 +514,102 @@ verifySeamsDocCurrent        通过（26.3 那段标记早就手工加好了）
 `不兼容的类型: int/float 无法转换为 Matrix3x2f` **21 条**、`pushPose` **10**、
 `popPose` **10**、`setColor` **8**。这一族不是改名能了结的，是矩阵栈换了类型 ——
 `Draw` 门面这一族仍然要写，只是要写的东西比原先以为的多。
+
+---
+
+## 十五、1d 第 3 步：`PhoneScreenBase` 与六个门面。756 → 526
+
+### `platform/client/PhoneScreenBase` —— E 桶那 186 条级联的根源
+
+§二 说的级联就是它：共用代码里三个界面 `extends PhoneScreenBase`，而这一支还没有这个
+文件，于是父类是 error type，子类从 `Screen` 继承来的一切都报「找不到符号」。
+
+1.21.1 那一份只为 `mouseScrolled` 而立。26.x 上 `mouseScrolled(double,double,double,double)`
+【签名反而没变】（`GuiEventListener` 里还是那四个 double），换掉的是【一整族派发入口】：
+
+| 共用代码覆写的 | 26.3 原版叫什么 |
+|---|---|
+| `render(GuiGraphics,int,int,float)` | `extractRenderState(GuiGraphicsExtractor,int,int,float)` |
+| `mouseClicked(double,double,int)` | `mouseClicked(MouseButtonEvent,boolean)` |
+| `mouseReleased(double,double,int)` | `mouseReleased(MouseButtonEvent)` |
+| `mouseDragged(double,double,int,double,double)` | `mouseDragged(MouseButtonEvent,double,double)` |
+| `keyPressed(int,int,int)` | `keyPressed(KeyEvent)` |
+| `keyReleased(int,int,int)` | `keyReleased(KeyEvent)` |
+| `charTyped(char,int)` | `charTyped(CharacterEvent)` |
+| `resize(Minecraft,int,int)` | `resize(int,int)` |
+
+按 §九 定的那条：这些是【覆写】，门面改不了「一个方法被谁覆写」，所以全部收在这一层 ——
+基类替子类覆写 26.x 那八个，再转调八个中立的旧形状方法。子类不必知道外面换了什么。
+
+中立方法的默认实现不是 `return false`：那 25 处 `super.mouseClicked(...)` /
+`super.keyPressed(...)` 是要真的把事件交回原版走一遍的，原版靠它做控件命中测试与焦点。
+所以每次覆写进来先把事件记在字段里，默认实现拿它去调 `super.<26.x 形状>`，
+`finally` 立刻擦回去 —— 派发在渲染线程上、一次点击只进一次，不会重入。
+顺序也与 1.21.1 对齐：先子类逻辑，再原版派发。
+
+`charTyped` 的修饰位是个已知的让步：26.x 的 `CharacterEvent` 只带 `codepoint` 一个字段，
+所以那一支的中立形状第二个参数【恒传 0】。本仓没有一处读它，行为不变；
+真要用到修饰位的那天，中立形状得换成正经的修饰位类型，而不是继续骗 0。
+
+### 六个门面是逐字相同的副本
+
+`ModPresence`、`Slots`、`StackCodecs`、`EditBoxes`、`KeyModifiers`、`ClientTicks`
+—— 先从 1.21.1 逐字拷过来，再逐个对着 26.3 取证【不用改一行】：
+
+- `ModList.get()` / `isLoaded(String)` / `getModContainerById(String)` 与
+  `IModInfo.getDisplayName()` 都在（`loader-12.0.0.jar`，FML 12 这一版）
+- `Slot.setByPlayer(ItemStack,ItemStack)` 两参重载还在 ✓（它同时还有单参的那个）
+- `ItemStack.OPTIONAL_CODEC` 还在，`.fieldOf(name)` 仍返回 `MapCodec<ItemStack>` ✓
+  —— 存档格式没变，这条最要紧
+- `EditBox.moveCursorToEnd(boolean)` ✓
+- `KeyModifier.isKeyCodeModifier(InputConstants$Key)` ✓
+- `ClientTickEvent.Pre/Post` 仍在 `net.neoforged.neoforge.client.event`，
+  `NeoForge.EVENT_BUS` 仍是那条游戏总线 ✓
+
+**其中 `ModPresence` 与 `KeyModifiers` 是「该进 `layers/loader/neoforge`」的候选** ——
+它们身上只有加载器轴、没有版本轴，下一个 NeoForge 目标不必再抄第三遍。
+这一步没有直接搬：搬动要动层的内容与 `verifyLoaderTwins` 的口径，那属于「改 CI 看得见的
+声明」，留到这里说明，等一句授权。`Slots`/`StackCodecs`/`EditBoxes`/`ClientTicks`
+【不该搬】—— 它们本身就是为了版本轴而存在的（各自的类注释写着差在哪个版本），
+放进禁版本轴的加载器层是放错地方。
+
+### 数字（两个动作分开记，它们各吃掉不同的桶）
+
+| | 756（上一步末） | 补 `PhoneScreenBase` 后 | 再补六个门面后 |
+|---|---:|---:|---:|
+| javac 错误 | 756 | 568 | **526** |
+| 报错文件 | 118 | 118 | **109** |
+| B 平台文件没补 | 225 | 213 | **175** |
+| E 级联 | 186 | **27** | 27 |
+| C 覆写签名 | 41 | **17** | 17 |
+| G 真断·形变 | 205 | 210 | 208 |
+| D 附属模组 | 54 | 58 | 56 |
+
+E 从 186 掉到 27 是【第一个动作】干的：这一支的父类不再是 error type，那 169 条
+「`font`/`width`/`height`/`minecraft`/`screen` 找不到符号」自己消失，正是 §二 的预判。
+C 同时掉 24 条 —— 八个派发入口收进基类之后，子类那些 `@Override` 重新对得上了。
+六个门面吃掉的是 B 的 38 条。
+
+G 与 D 这两步里【不降反微升】（+5 与 +4，然后各回落一点）：父类一修好，原先被
+error type 挡住的真断就露出来了。这不是回退，是量尺变准 —— 剩下 526 条里真断占 297。
+双胞胎基线 4,708 → 4,838（新增 8 对同名文件，其中六个是逐字相同的零差异对），
+接缝清单 26.3 那一段从 1 个长到 8 个。五道闸全绿。
+
+### 剩下 526 条的形状
+
+B 那一桶还剩 175 条。按【直接引用数】排（一个文件引一次、级联另计），
+最大的一块已经收敛到少数几个：`MCphoneNetwork` 17、`PhonePlayerData` 9、
+`ServerConfig` 6、`Draw` 5、`PhoneSavedData` 4、`ClientConfig` 4、
+`PhoneMultiLineEditBox` 3，之后是一串 1~2 处的（`ModItems` / `ModSounds` / `ModMenus` /
+`NetworkHandler` / `DiscService` / `PhoneHud` / `AppHotkeys` / `VanillaAudio` /
+`PlayerSkins` / `SystemFiles` / `CameraGui` / `DiscSongs` ……）。
+这一桶从今天起是【一个文件一个文件地磨】，不再有那种「补一个门面掉一百条」的台阶。
+
+挂载源本身也从 422 长到了 **429**（`shared/` 354 + 四层 67 + 本平台 8），
+所以「一个字没改就编过」现在是 **320 / 429（74.6%）**。
+注意分母在动：拿这个比例跨轮次比之前，先确认分子分母是同一份挂载。
+
+G 那一桶里新冒出来的两族值得单记：`ServerPlayer.server` 变 private（21 条）与
+`Util`（21 条，§十一 说的那次换包）。这两族都得靠门面，而 `Util` 那族没法用改名表 ——
+它是整类换包【且成员有增减】，`openFile` / `openPath` 的去处是 `Blaze3D.openPath(Path)`
+（已验在 `Blaze3D.java:39`），要收进 `SystemFiles`。
