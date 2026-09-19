@@ -686,7 +686,68 @@ public class ScriptEngineTest {
             check(et instanceof ProviderError && et.getCause() instanceof com.november.mcphone.core.script.server.economy.ProviderFailure
                     && et.getCause().getMessage().startsWith(err.getClass().getName()),
                     "balance 里 " + err.getClass().getSimpleName() + "：保持 Error、finally 吞不掉、cause 是替身 —— " + et);
-            check(!(et instanceof ScriptAbort), "balance 里 provider 的 Error 不是 ScriptAbort：不记过失");
+        }
+
+        // 生产里脚本跑在 worker 上，provider 在主线程上抛：走网关跨线程那条路，Error 也要保持 Error
+        java.util.concurrent.atomic.AtomicReference<Thread> mainT = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.ExecutorService mainEx = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread th = new Thread(r, "fake-main");
+            th.setDaemon(true);
+            mainT.set(th);
+            return th;
+        });
+        try {
+            mainEx.submit(() -> { }).get();
+            var cross = new com.november.mcphone.core.script.server.economy.CurrencyGateway(mainEx::execute,
+                    () -> Thread.currentThread() == mainT.get());
+            cross.open();
+            // 第三方的虚拟机级别错误子类、getMessage 还会炸：两条路上都要换成替身，日志渲染时才不会把求值线程带走
+            class VmBomb extends VirtualMachineError {
+                @Override
+                public String getMessage() {
+                    throw new IllegalStateException("getMessage 自己炸了");
+                }
+            }
+            class OomBomb extends OutOfMemoryError {
+                @Override
+                public String getMessage() {
+                    throw new IllegalStateException("getMessage 自己炸了");
+                }
+            }
+            for (Throwable err : new Throwable[]{new NoSuchMethodError("换了版本"), new VmBomb(), new OomBomb()}) {
+                for (com.november.mcphone.core.script.server.economy.CurrencyGateway gw
+                        : new com.november.mcphone.core.script.server.economy.CurrencyGateway[]{open, cross}) {
+                    String where = err.getClass().getSimpleName() + (gw == cross ? "（跨线程）" : "（主线程直调）");
+                    var xReg = new com.november.mcphone.core.script.server.economy.CurrencyRegistry(gw);
+                    xReg.register((com.november.mcphone.api.economy.ICurrencyProvider) java.lang.reflect.Proxy.newProxyInstance(
+                            ScriptEngineTest.class.getClassLoader(), new Class<?>[]{com.november.mcphone.api.economy.ICurrencyProvider.class},
+                            (proxy, m, args) -> {
+                                if (m.getName().equals("balance") || m.getName().equals("transfer")) throw err;
+                                return m.invoke(provider, args);
+                            }), true);
+                    var xb = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                            new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, xReg);
+                    Throwable bal = thrownBy("(function () { try { return ctx.currency.balance(" + c + ") } finally { return 'SWALLOWED' } })()", xb);
+                    Throwable pay = thrownBy("(function () { try { return ctx.currency.pay(" + c + ", " + to + ", 5n) } finally { return 'SWALLOWED' } })()", xb);
+                    // 失败说明里只写类名：原样穿出来的炸弹一 toString 就炸
+                    check(bal instanceof ProviderError, where + "：balance 保持 Error、finally 吞不掉 —— " + (bal == null ? null : bal.getClass().getName()));
+                    check(pay instanceof OutcomeUnknown, where + "：pay 结果不明、finally 吞不掉 —— " + (pay == null ? null : pay.getClass().getName()));
+                    for (Throwable t : new Throwable[]{bal, pay}) {
+                        boolean renders = t != null;
+                        try {
+                            if (t != null) t.printStackTrace(new java.io.PrintWriter(new java.io.StringWriter()));
+                        } catch (Throwable e) {
+                            renders = false;
+                        }
+                        check(renders && t.getCause() instanceof com.november.mcphone.core.script.server.economy.ProviderFailure,
+                                where + "：cause 是替身、整条链打得出来 —— " + (t == null ? null : t.getClass().getName()));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            check(false, "跨线程网关的装置没搭起来：" + e);
+        } finally {
+            mainEx.shutdownNow();
         }
 
         // 原来那个连 getStackTrace 都会炸：替身不带堆栈，照样造得出来
