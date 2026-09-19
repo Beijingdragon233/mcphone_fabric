@@ -714,18 +714,37 @@ G 与 E 这两步里升（+48、+3）跟 §十五 同理 —— 父类与兄弟�
 
 ### `Util` 那 24 条：§十一 那句「成员有增减」说重了
 
-本轮把 24 条逐条拆开数：【10 条是 import 行、13 条是调用点、1 条是写全限定名的调用点】。
-涉及的成员只有四个 —— `backgroundExecutor()` 10 处、`getFilenameFormattedDateTime()` 2 处、
-`ioPool()` 1 处、`getPlatform()` 1 处，分布在 10 个文件里。
-对着 26.3 的源逐个看，【四个全在】`net/minecraft/util/Util.java` 里（那个文件确实存在，
-而 `net/minecraft/Util.java` 不存在 —— 搬家这条是真的，成员没少这条也是真的）。
-真正少掉的是 `Util.OS.openFile` / `openPath`，那两处已经被 `SystemFiles` 接住了。
+本轮把 24 条【逐条落到源码行上】数了一遍（脚本 `ut1l1d4.py`，不是估的）：
+
+| | 条 |
+|---|---:|
+| `import net.minecraft.Util;` 那一行 | 10 |
+| `Util.backgroundExecutor()` | 12（其中 `PhoneScreen.java:412` 那处写的是全限定名） |
+| `Util.getFilenameFormattedDateTime()` | 1 |
+| `Util.getPlatform().openFile(File)` | 1 |
+
+对着 26.3 的源逐个看：`net/minecraft/Util.java`【不存在】而 `net/minecraft/util/Util.java`
+【存在】，搬家这条是真的；`backgroundExecutor()` 与 `getFilenameFormattedDateTime()`
+在那份源里【原样还在】（`public static TracingExecutor backgroundExecutor()` /
+`public static String getFilenameFormattedDateTime()`），`getPlatform()` 也在、返回 `Util.OS`。
+唯一真没了的是【`OS` 这个枚举的成员】：26.3 里它是 `public enum OS { OS(String telemetryName) }`
+—— 只剩一个 `telemetryName()`，`openFile` / `openPath` 都不在了，去处是
+`com/mojang/blaze3d/Blaze3D.java` 的 `openPath(Path)` 与 `openUri(URI)`。
+
+所以准确的说法是【23 条纯粹是包路径搬家，1 条是真断】：那 1 条就是 `BookList.java:566` 的
+`Util.getPlatform().openFile(TxtLibrary.directory().toFile())`，它得改走本轮新写的 `SystemFiles`。
+（另两处 `Util.ioPool()` / 第二处 `getFilenameFormattedDateTime` 出现在注释里，本来就不算错误。）
+
+顺带把 §十一 那句话改准：当时写「整类换包【且成员有增减】」，方向对、比例错得离谱 ——
+听起来像一整族要重写，实际是 10 行 import 加 13 个调用点。
 
 所以这 24 条的根因只有一句话：【包路径从 `net.minecraft` 挪到了 `net.minecraft.util`】。
 改名表现在只按【标识符】换名，而这里标识符没变、变的是它前面的包名，所以吃不下 ——
 这不是要加门面，是要给改名表加【整行精确替换】这一档（`import net.minecraft.Util;` →
 `import net.minecraft.util.Util;`，另外那 1 处全限定名同理）。
-加完这一档，24 条一次清，是 452 之后单位收益最大的一块；`setScreen` 那 10 条也顺手一起。
+加完这一档就是【23 条一次清】（那 1 条真断的 `openFile` 另算），是 452 之后单位收益最大的一块；
+`setScreen` 那 10 条也顺手一起 —— 它的锚点本来就合适用【方法名】那一档：报错的 10 处
+全写作 `.setScreen(`，前面必定带点，`PhoneItemData.setScreenOn(ItemStack)` 那种自家定义撞不上。
 
 `setScreen → setScreenAndShow` 这条加之前先记两个坑（本轮量的）：
 仓库里另有一个【自己声明的】`setScreenOn(ItemStack)`（`core/PhoneItemData.java:105`），
