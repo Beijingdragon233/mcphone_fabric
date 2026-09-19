@@ -14,7 +14,7 @@ import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterGuiLayersEvent;
 import net.neoforged.neoforge.client.gui.VanillaGuiLayers;
-import org.lwjgl.glfw.GLFW;
+import org.lwjgl.sdl.SDLMouse;
 
 /**
  * 手机放进副手就挂到画面上 —— 一直亮着，停在哪一页就显示哪一页。
@@ -63,7 +63,7 @@ import org.lwjgl.glfw.GLFW;
  * 因为 {@link Minecraft#setScreen} 在开界面的同时会调 {@code KeyMapping.releaseAll()}。
  * 用 {@code KeyMapping.isDown()} 判断的话，界面开起来的那一刻它就变成 false——而本类靠
  * "按下去的那一沿"来切换开关，一个永远回不到按下状态的键切不动任何东西。
- * 所以问的是 GLFW："这个键此刻按着没有"，那个答案不受界面影响。键位仍然来自 {@link PhoneKeys#HUD_INTERACT}，玩家照样
+ * 所以问的是 SDL："这个键此刻按着没有"，那个答案不受界面影响。键位仍然来自 {@link PhoneKeys#HUD_INTERACT}，玩家照样
  * 能在原版按键设置里改。
  *
  * <h2>它什么时候不画</h2>
@@ -375,7 +375,7 @@ public final class PhoneHud {
      * 那儿，而手机多半贴在某个角上。玩家按下 Alt 的意思就是"我要点它"，让他先满屏找一趟
      * 光标再拖过去是没道理的。
      *
-     * 坐标换算照抄原版 {@code MouseHandler.onMove} 的那一句反过来：GLFW 的光标坐标与
+     * 坐标换算照抄原版 {@code MouseHandler.onMove} 的那一句反过来：SDL 的光标坐标与
      * 窗口像素同一套，而 GUI 坐标是它除以 {@code 屏幕宽 / GUI 宽}。高分屏上这两者不等，
      * 直接拿 GUI 坐标去设光标会偏到左上角一小块里。
      */
@@ -393,26 +393,38 @@ public final class PhoneHud {
         double centerY = PhoneHudPlacement.originY(metrics, guiW, guiH)
                 + PhoneHudPlacement.height(metrics, guiW, guiH) / 2.0;
 
-        GLFW.glfwSetCursorPos(window.getWindow(),
-                centerX * window.getScreenWidth() / guiW,
-                centerY * window.getScreenHeight() / guiH);
+        // 26.3：原版这一步走的是 InputConstants.grabMouse 里的 SDL_WarpMouseInWindow，
+        // 但那个口顺带把相对鼠标模式打开，会把光标"藏起来"，不是这里要的，所以直接调 SDL。
+        SDLMouse.SDL_WarpMouseInWindow(window.handle(),
+                (float) (centerX * window.getScreenWidth() / guiW),
+                (float) (centerY * window.getScreenHeight() / guiH));
     }
 
     /**
-     * 某个键此刻按着没有 —— 直接问 GLFW，理由见类注释。
+     * 某个键此刻按着没有 —— 直接问底层，理由见类注释。
      *
      * 键位允许绑到鼠标键上（原版按键设置里绑得到），所以两类都答得出来。没绑键时
-     * getKey() 是 UNKNOWN，值为 -1，拿它去问 glfwGetKey 是未定义行为，得先挡掉。
+     * getKey() 是 UNKNOWN，值为 -1，拿它去问按下状态是未定义行为，得先挡掉。
+     *
+     * <h2>26.3 与另外三支差在哪</h2>
+     *
+     * 键：原版的 {@code InputConstants.isKeyDown} 从 {@code (window, key)} 变成了单个
+     * {@code (scancode)} —— 26.3 里 {@code InputConstants.KEY_*} 本身就是 SDL scancode，
+     * 窗口句柄不再需要。
+     *
+     * 鼠标：{@code glfwGetMouseButton(句柄, 键)} 那种「按编号问一个键」的口在 SDL 这边
+     * 没有了，{@code SDL_GetMouseState} 给的是一把<b>位掩码</b>，要自己按
+     * {@code SDL_BUTTON(n) = 1 << (n - 1)} 取位。编号本身两边是对得上的：
+     * {@code InputConstants.MOUSE_BUTTON_LEFT} 在 26.3 上是 1，就是 SDL_BUTTON_LEFT。
      */
     private static boolean keyDown(Minecraft mc, net.minecraft.client.KeyMapping mapping) {
         InputConstants.Key key = mapping.getKey();
         int value = key.getValue();
         if (value < 0) return false;
 
-        long handle = mc.getWindow().getWindow();
         return switch (key.getType()) {
-            case KEYSYM -> InputConstants.isKeyDown(handle, value);
-            case MOUSE -> GLFW.glfwGetMouseButton(handle, value) == GLFW.GLFW_PRESS;
+            case KEYSYM -> InputConstants.isKeyDown(value);
+            case MOUSE -> (SDLMouse.SDL_GetMouseState(null, null) & (1 << (value - 1))) != 0;
             // SCANCODE：原版按键设置绑不出这一类，真出现了就当没按
             default -> false;
         };

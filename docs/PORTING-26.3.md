@@ -1497,3 +1497,35 @@ case MOUSE -> GLFW.glfwGetMouseButton(handle, value) == GLFW.GLFW_PRESS; // 415�
 **"此刻某个鼠标键按着没有"在 26.3 的原版源码里搜不到现成口**（`getMouseState`/`SDL_BUTTON` 零命中），
 原版是靠事件自己记状态。所以这 5 条要单独一步：建一个每平台接缝，
 26.3 那一份自己调 `SDLMouse.SDL_GetMouseState` 或改成自己记，另外三支仍走 GLFW。
+
+### 下半：那 5 条（实测 7 条）不需要新接缝，`PhoneHud` 本来就是每平台一份
+
+上面写"要单独一步建每平台接缝"——做完发现**接缝是多余的**：`core/client/PhoneHud.java` 在
+四个平台目录下各有一份，本来就已经是各说各话的文件（双胞胎基线里它对已有 93 行差异），
+再套一层接缝只是把同样的差异换个地方放。所以 26.3 那一份里直接换实现：
+
+```java
+case KEYSYM -> InputConstants.isKeyDown(value);                              // 26.3 去掉了句柄参数
+case MOUSE  -> (SDLMouse.SDL_GetMouseState(null, null) & (1 << (value - 1))) != 0;  // SDL 给位掩码
+// 光标：SDLMouse.SDL_WarpMouseInWindow(window.handle(), (float)x, (float)y)
+```
+
+三处要留档的取证：`org.lwjgl:lwjgl-sdl:3.4.3` **就在编译类路径上**（改完编译零 SDL 报错，
+不必往 `build.gradle` 加依赖）；`Window` 取句柄的方法在 26.3 叫 `handle()`（`Window.java:649`）；
+原版那个 `InputConstants.grabMouse` 不能用——它 `SDL_WarpMouseInWindow` 之后还顺手
+`SDL_SetWindowRelativeMouseMode(true)`，会把光标藏起来，不是"把光标挪过去"这层意思。
+`SDL_BUTTON(n) = 1 << (n - 1)` 这个位掩码换算对得上，因为 `InputConstants.MOUSE_BUTTON_LEFT`
+在 26.3 上就是 1，等于 SDL_BUTTON_LEFT。
+
+顺带修掉一条别的桶的错：26.3 的 `InputConstants.isKeyDown` 从 `(window, key)` 变成了 `(scancode)`，
+那句 `isKeyDown(handle, value)` 本来也是一条签名错，所以这一下净掉 **7 条**。
+
+| | 上半之后 | 现在 |
+|---|---:|---:|
+| 26.3 javac 错误 | 297 | **290** |
+| F 桶 GLFW | 5 | **0** |
+
+分桶现在：G 152 / D 51 / E 30 / A 27 / C 17 / B 13 / **F 0** = 290。
+`verifyPlatformTwins`：113 对、6,013 → **6,026 行**，涨的 13 行全在 `PhoneHud.java`（93 → 106）,
+就是 GLFW 与 SDL 两套不可能共用的实现，理由写在那个方法的注释里。
+另外三支没动（改的是 26.3 自己那份平台文件）。
