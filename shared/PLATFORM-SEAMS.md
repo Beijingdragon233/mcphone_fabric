@@ -500,7 +500,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
 
-#### 共用代码引用了的（29）
+#### 共用代码引用了的（30）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -522,6 +522,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.music.DiscService`　—— 1.20.5+ 原版、加载器导入
 - `feature.music.net.MusicNetworking`　—— 加载器导入
 - `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
+- `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
 - `platform.Slots`

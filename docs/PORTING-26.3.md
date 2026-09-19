@@ -1309,3 +1309,121 @@ G 一次掉 23 且【没有新的冒出来】—— 这是这几轮里少见的�
 接缝清单四段各 +1（36→37、76→77、38→39、28→29），多的那个都是 `platform.client.ClientMessages`。
 新记的那一对差 **15 行** —— 就是上面那张表的真实形状：26.3 那一份要多三个 import
 （`Minecraft`、`ChatListener`、`LocalPlayer`）与两条分支，老那三份一个方法体就完了。
+
+
+## 廿四、附属联动真正缺 jar 的只有 13 条：先量"摘文件"，再按判据收 Curios。318 → 313
+
+### 一、先把"把联动文件从 26.3 摘掉"这条路的代价量实了
+
+`build.gradle` 里临时加 11 行 `sourceSets.main.java.exclude(...)`，把 11 个联动叶子文件
+挡在 26.3 的编译源集外，实测：
+
+| | 基线 | 摘掉之后 |
+|---|---:|---:|
+| javac 错误 | 318 | **303** |
+| D 附属模组缺依赖 | 56 | 13 |
+| G 真断·形变 | 155 | **187** |
+
+净只降 **15**。省下的 43 条里 32 条没有消失，是**转到了 12 个上游引用方头上**，
+变成"找不到符号 / 程序包不存在"：
+
+| 上游文件 | 断在哪个被摘的类 |
+|---|---|
+| `terminal/client/TerminalApp` | refinedstorage、toms、ae2 |
+| `terminal/integration/Terminals`（neoforge 层） | ae2、refinedstorage、toms |
+| `settings/client/AboutPage` | CuriosCompat、NetMusicCompat |
+| `music/DiscService`（26.3 平台自有） | NetMusicCompat |
+| `music/client/NetSongPlayback`、`NetSongSound` | NetMusicPlayback |
+| `reader/client/ReaderApp`、`reader/client/source/BookSources` | GuideMeSource、PatchouliSource |
+| `quests/client/QuestsApp` | FtbQuestsBook |
+| `browser/client/BrowserBackends` | McefBackend |
+| `core/PhoneLocation`（1.20.5+ 层）、`core/PhoneItem`（1.21+ 层） | CuriosCompat 等 |
+
+这 12 个都在手机主界面与注册链路上，再摘就是第二轮级联。**"改 build.gradle 摘文件"
+这条路作废，`build.gradle` 一个字没动**（实验已 `git checkout` 回滚，工作区当时是干净的）。
+
+### 二、顺手把 D 桶查了个底：真缺 jar 的只有 13 条
+
+按 import 逐个查这 11 个"联动文件"，有 5 个（`CuriosCompat`、`NetMusicPlayback`、
+`FtbQuestsBook`、`GuideMeSource`、`WaystoneApp`）**本来就没有一行第三方 import**，
+全靠 `Class.forName` 反射——它们进 D 桶是我按关键字归因归错了。剩下真碰 jar 的是 13 条：
+
+| 文件 | 条数 | 缺的包 |
+|---|---:|---|
+| `refinedstorage/TerminalSlotReference` + `...Factory` | 6 | `com.refinedmods.refinedstorage.*` |
+| `reader/client/source/PatchouliSource` | 4 | `vazkii.patchouli.*` |
+| `browser/client/McefBackend` | 2 | `com.cinemamod.mcef` |
+| `compat/NetMusicCompat` | 1 | `com.github.tartaricacid.netmusic` |
+| `terminal/integration/toms/TomsStorageIntegration` | 1 | `com.tom.storagemod` |
+
+**D 桶另外 43 条与 jar 无关**，是"26.3 少建了平台接缝文件"（`CuriosInventories`、
+`client/Draw`、`client/VanillaAudio` 这几支老目标都有、26.3 还没建）加上普通移植错。
+
+### 三、这一步：Curios 那一族按仓库自己的判据收进接缝
+
+判据是 `gradle/mcphone-checks.gradle:765` 写着的：
+
+> 门面（ModPresence / Slots / StackCodecs / CuriosInventories）也是每个平台各一份，
+> 却不需要闸 —— 因为 **shared/ 必须在【所有目标】上都编过，门面签名一漂移当场断构建**。
+
+而 `CuriosInventories.of()` 的返回类型是 `Optional<ICuriosItemHandler>`，
+**签名带着 Curios 的类型**。于是 `CuriosCompat` 虽然没有一行 Curios import，
+也照样必须在编译期看得见 Curios —— 26.3 卡死在这里（它那 5 条错）。
+
+做法是把**四个操作整个搬进接缝**，往外只递原版类型：
+
+```java
+// shared/compat/CuriosCompat.java：只剩"判在不在场 + 委托"
+public static boolean isEquipped(LivingEntity entity, Predicate<ItemStack> filter) {
+    if (!isLoaded()) return false;
+    return CuriosInventories.isEquipped(entity, filter);
+}
+public static Optional<CurioSlotRef> findEquipped(LivingEntity entity, Predicate<ItemStack> filter) {
+    if (!isLoaded()) return Optional.empty();
+    return CuriosInventories.findFirst(entity, filter)
+            .map(slot -> new CurioSlotRef(slot.slotId(), slot.index()));
+}
+```
+
+`CuriosInventories` 四个目标各一份：老三支把 `CuriosApi` 的 handler 关在自己的
+`of()` 里转成 `Slot`，26.3 那一份四个方法直接返回"没有"（`false` / 空 / 空堆 / 什么都不做），
+**不写任何一个 Curios 类型**。
+
+"判断在不在场"与"真去调它"仍分在两个方法里 —— 那条 `NoClassDefFoundError` 的规矩没破，
+只是"真调用"这一半从 shared 挪到了接缝。对外公开签名一个字没改，
+`PhoneLocation`、`PhoneItem`、`AboutPage` 三个调用方**不需要跟着动**。
+
+### 四、实测
+
+| | 改动前 | 改动后 |
+|---|---:|---:|
+| javac 错误 | 318 | **313** |
+| `CuriosCompat` 一个文件的错 | 5 | **0** |
+| 其余 86 个报错文件的错 | 313 | **313**（一条没动） |
+
+**零新增、零级联** —— 与第一节那个"省 43 条、赔 32 条"的摘文件方案正好相反。
+
+老三支本地重编全部 `BUILD SUCCESSFUL`；`1.21.1-neoforge` 上 `assertTests --continue`
+摊平跑 47 个任务（42 执行 + 5 up-to-date），红的仍然只有改动前就红的
+`assertTestEconomyDataTest`（Windows 无 POSIX 权限）与 `assertTestScriptEngineTest`
+（zh-CN locale），**没有新增**。
+
+三支的 `CuriosInventories` 彼此差异反而从 4 行缩到 **1 行**（只剩 `.resolve()` 那句）。
+
+八道闸：`verifyPlatformTwins` 通过，113 对不变、差异合计 5,995 → **6,013 行**。
+涨的 18 行全在 `platform/CuriosInventories.java`（4 → 22）—— 这是"给一个新目标补一份
+**有意的**接缝副本"必然产生的量，与同目录里 `Nbt` 18、`ClientMessages` 15、
+`StackCodecs` 15 是一个族；理由写进了 26.3 那份的类注释和 `shared/PLATFORM-SEAMS.md`
+（`updateSeamsDoc` 已重写）。26.3 那一份刻意压到 44 行，多写的每一行注释都是这个基线上的成本。
+
+### 五、剩下的 13 条怎么走
+
+1. **9 条可以就地反射掉**：`NetMusicCompat` 1、`McefBackend` 2、`PatchouliSource` 4、
+   `TomsStorageIntegration` 1、`refinedstorage` 里那 2 条 import。照
+   `FtbQuestsBook` / `GuideMeSource` / `NetMusicPlayback` 已经在用的
+   `Class.forName` 写法改，**不需要任何构建改动**，老三支行为不变。
+2. **`refinedstorage` 剩下 4 条另算**：`SlotReference` / `SlotReferenceFactory`
+   出现在方法签名和返回类型上，要先擦成一个不带第三方类型的句柄，动的面比上面九条大，
+   单独一步做。
+3. 这条路走完，"联动以后做成附属模组"是顺手的：这套"签名只说原版类型"的接缝
+   本来就是挂载点，26.3 那份将来换成真实现或换成附属发现都行。
