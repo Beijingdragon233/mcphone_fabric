@@ -1197,3 +1197,15 @@ G 一次掉 23 且【没有新的冒出来】—— 这是这几轮里少见的�
 另外 `1.20.1-forge` 本地 `:compileJava` 真编过（24s，不是 UP-TO-DATE），这一条把
 "老平台那份接缝的 `getAsLong` / `getAsString` / `getAsByte` / `getAllKeys` /
 `getCompound(int)` 在 1.20.1 上也都在"钉住了，不是从 1.21.1 推的。
+
+### CI 这一轮把上面两句都裁完了（`dbf2e5e`）
+
+| job | 结论 | 说明 |
+|---|---|---|
+| `1.20.1-forge` / `1.21.1-neoforge` / `1.21.1-fabric` | `success` | 走的是 `gradlew build` → `check` → `assertTests`，也就是那 49 个用例在 Linux 上【全部跑完并且过了】 |
+| `26.3-neoforge` | `failure`，日志两处 `331 errors` | 与本地同一提交量到的 331【一字不差】 |
+
+顺手在 CI 日志上核了两条负证据：`EconomyData.java:<行>: error` 出现 **0 次**，
+`platform/Nbt` 相关报错出现 **0 次** —— 新接缝自己在 26.3 上干净，那 38 条确实是整族清掉的。
+老三支的 49 个用例全过，也就是"接缝在老两支上一字未改语义"这件事现在是【被机器证过的】，
+不再是本机那 11 个用例的半截证据。
