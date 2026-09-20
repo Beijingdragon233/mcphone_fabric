@@ -72,6 +72,31 @@ package com.november.mcphone.api.client.ui;
  */
 public interface IPhonePage {
 
+    /* ============================================================
+     *  鼠标键编号 —— 【本模组自己的编号，跟加载器与 Minecraft 版本无关】
+     *
+     * 为什么非要在这里写死：原版在 26.x 从 GLFW 换成了 SDL，左键的编号跟着从 0 变成 1
+     * （26.3 的 AbstractWidget.isValidClickButton 判的是 button() == 1）。这一层是【对外】
+     * 的，附属模组照今天写的 button == 0 在哪个版本上都得是左键，所以 MCphone 在派发给
+     * 页面之前把原生编号换算成下面这套（换算在 platform/client/PhoneScreenBase.pageButton）。
+     *
+     * 反过来说：手里拿着的如果是原版传下来的编号（比如自定义控件、或往 KeyMapping 里存键），
+     * 那就【别】用这几个常量，用 InputConstants.MOUSE_BUTTON_LEFT —— 那条路要的是本版本原生值。
+     * ============================================================ */
+
+    /** 左键。等价于 GLFW_MOUSE_BUTTON_LEFT */
+    int BUTTON_LEFT = 0;
+
+    /** 右键。等价于 GLFW_MOUSE_BUTTON_RIGHT */
+    int BUTTON_RIGHT = 1;
+
+    /** 中键。等价于 GLFW_MOUSE_BUTTON_MIDDLE */
+    int BUTTON_MIDDLE = 2;
+
+    /** 侧键 4 / 侧键 5。等价于 GLFW_MOUSE_BUTTON_4 / _5 */
+    int BUTTON_SIDE_1 = 3;
+    int BUTTON_SIDE_2 = 4;
+
     /**
      * 画这一页。每帧调用。
      *
@@ -80,7 +105,8 @@ public interface IPhonePage {
     void render(PhoneCanvas canvas);
 
     /**
-     * 鼠标点击。坐标是屏幕绝对坐标，与 {@link PhoneCanvas#x()} 同一套。
+     * 鼠标点击。坐标是屏幕绝对坐标，与 {@link PhoneCanvas#x()} 同一套；
+     * {@code button} 用的是本模组编号，左键是 {@link #BUTTON_LEFT}（见上面那段）。
      *
      * @return true 表示这一下我处理了。返回 false 会落到 MCphone 的默认处理，
      *         而默认处理里"点手机外面＝关机"，所以页面内的空点击建议返回 true

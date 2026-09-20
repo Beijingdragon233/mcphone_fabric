@@ -18,6 +18,7 @@ import com.november.mcphone.core.script.layout.UiState;
 import com.november.mcphone.core.script.sfc.SfcCompiler;
 import com.november.mcphone.core.script.sfc.Statements;
 import com.november.mcphone.core.script.sfc.TemplateInstance;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 
@@ -330,7 +331,7 @@ public final class ScriptPage implements IPhonePage {
 
     /** 关掉这个 App 回主屏。宿主的 navigateTo 会顺手调 {@link #onClose()}。 */
     private void close() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen phone) phone.back();
+        if (Screens.current(Minecraft.getInstance()) instanceof PhoneScreen phone) phone.back();
     }
 
     @Override

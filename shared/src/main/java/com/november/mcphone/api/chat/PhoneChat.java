@@ -8,10 +8,10 @@ import com.november.mcphone.feature.chat.ChatService;
 import com.november.mcphone.feature.chat.FriendData;
 import com.november.mcphone.feature.chat.FriendGuard;
 import com.november.mcphone.feature.chat.TextBody;
+import com.november.mcphone.platform.Profiles;
 import com.november.mcphone.util.TextSanitizer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.players.GameProfileCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -62,8 +62,7 @@ public final class PhoneChat {
         if (cached.size() != 1) return Optional.empty();
         UUID id = cached.get(0);
 
-        GameProfileCache profiles = server.getProfileCache();
-        if (profiles != null && profiles.get(id).filter(p -> !p.getName().equalsIgnoreCase(name)).isPresent()) {
+        if (Profiles.cachedName(server, id).filter(rec -> !rec.equalsIgnoreCase(name)).isPresent()) {
             return Optional.empty();
         }
         return Optional.of(contact(server, friends, id));
@@ -104,7 +103,7 @@ public final class PhoneChat {
      */
     public static Optional<PhoneConversation> conversation(ServerPlayer self, UUID peer) {
         Objects.requireNonNull(peer, "peer");
-        MinecraftServer server = self.server;
+        MinecraftServer server = self.level().getServer();
         requireServerThread(server);
         if (!isCurrent(self)) return Optional.empty();
 
@@ -131,7 +130,7 @@ public final class PhoneChat {
      */
     public static SendResult sendText(ServerPlayer sender, UUID recipient, String text) {
         Objects.requireNonNull(recipient, "recipient");
-        MinecraftServer server = sender.server;
+        MinecraftServer server = sender.level().getServer();
         requireServerThread(server);
         if (!isCurrent(sender)) return SendResult.SENDER_OFFLINE;
 
@@ -154,7 +153,7 @@ public final class PhoneChat {
     /** 下线或重生之后，附属手里那个旧实体的背包与已读进度都不再是这个玩家的，写进去会丢 */
     private static boolean isCurrent(ServerPlayer player) {
         return !player.hasDisconnected()
-                && player.server.getPlayerList().getPlayer(player.getUUID()) == player;
+                && player.level().getServer().getPlayerList().getPlayer(player.getUUID()) == player;
     }
 
     private static PhoneContact contact(MinecraftServer server, FriendData friends, UUID id) {

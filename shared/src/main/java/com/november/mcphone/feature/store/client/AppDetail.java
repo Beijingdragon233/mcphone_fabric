@@ -12,6 +12,7 @@ import com.november.mcphone.feature.store.AppPriceRegistry;
 import com.november.mcphone.feature.store.client.AppSourceRegistry;
 import com.november.mcphone.feature.store.net.StoreClientCache;
 import com.november.mcphone.core.client.GuiUtil;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -323,7 +324,7 @@ public final class AppDetail {
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         AppInfo.Signature sig = info == null ? null : info.signature();
         if (sig == null || sig.requiredPhrase() == null) return false;
-        if (keyCode == 259 && !typedPhrase.isEmpty()) {          // backspace
+        if (keyCode == InputConstants.KEY_BACKSPACE && !typedPhrase.isEmpty()) {          // backspace
             typedPhrase = typedPhrase.substring(0, typedPhrase.length() - 1);
             return true;
         }

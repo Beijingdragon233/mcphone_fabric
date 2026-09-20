@@ -9,6 +9,7 @@ import com.november.mcphone.feature.notes.net.RequestNotePacket;
 import com.november.mcphone.feature.notes.net.SaveNotePacket;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.api.client.ui.PhoneMultiLineEditBox;
+import com.november.mcphone.platform.client.EditBoxes;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -168,11 +169,11 @@ public final class NoteEditor {
             if (deleteHovered && noteId != NoteService.NEW_NOTE_ID) { delete(); return true; }
         }
         deleteArmed = false;
-        return box != null && box.mouseClicked(mx, my, button);
+        return box != null && EditBoxes.click(box, mx, my, button);
     }
 
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
-        return box != null && box.mouseDragged(mx, my, button, dx, dy);
+        return box != null && EditBoxes.drag(box, mx, my, button, dx, dy);
     }
 
     public boolean mouseScrolled(double mx, double my, double scrollX, double scrollY) {
@@ -182,11 +183,11 @@ public final class NoteEditor {
     /** 调用方无论返回值如何都该吃掉按键，别让 e 漏到背包键 */
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         // 回车在多行输入里是换行，不拿来当保存
-        return box != null && box.keyPressed(keyCode, scanCode, modifiers);
+        return box != null && EditBoxes.key(box, keyCode, scanCode, modifiers);
     }
 
     public boolean charTyped(char c, int modifiers) {
-        return box != null && box.charTyped(c, modifiers);
+        return box != null && EditBoxes.character(box, c, modifiers);
     }
 
     /** 只发包、不改本地缓存：以服务端回发的列表为准（满了会拒绝） */

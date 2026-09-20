@@ -5,6 +5,7 @@ import com.november.mcphone.core.client.PhoneChassis;
 import com.november.mcphone.core.client.PhoneScreen;
 import com.november.mcphone.core.client.PhoneScreenOpener;
 import com.november.mcphone.feature.music.menu.DiscBayMenu;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -55,7 +56,7 @@ public class DiscBayScreen extends AbstractContainerScreen<DiscBayMenu> {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
-        if (PhoneScreenOpener.open(mc.player) && mc.screen instanceof PhoneScreen phone) {
+        if (PhoneScreenOpener.open(mc.player) && Screens.current(mc) instanceof PhoneScreen phone) {
             phone.navigateTo(PhoneScreen.Mode.MUSIC_PLAYER);
         }
     }

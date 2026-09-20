@@ -1,10 +1,9 @@
 package com.november.mcphone.core.client;
 
 import com.november.mcphone.feature.chat.ChatMessage;
+import com.november.mcphone.platform.client.PhoneToastBase;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.toasts.Toast;
-import net.minecraft.client.gui.components.toasts.ToastComponent;
 
 import java.util.UUID;
 
@@ -17,7 +16,7 @@ import java.util.UUID;
  * 模组刷屏，消息提醒混进去容易被淹没，还会永久占着聊天记录。
  *
  * 通知是原版专为这件事准备的机制——有独立队列、自动排队、自动消失，
- * 连"叮"的一声都是原版 {@link Toast.Visibility#SHOW} 自带的，
+ * 连"叮"的一声都是原版 {@code Visibility.SHOW} 自带的，
  * 不必自己播音效。
  *
  * 同一个人连发要合并
@@ -27,9 +26,18 @@ import java.util.UUID;
  * 并把停留时间重新计起。
  *
  * 合并靠 {@link #getToken()} 返回发信人 UUID，
- * {@link ToastComponent#getToast} 据此找到已在显示或还在排队的那一条。
+ * 原版那个通知区管理器据此找到已在显示或还在排队的那一条。
+ *
+ * <h2>为什么这个类不直接 implements Toast</h2>
+ *
+ * 老那三支上 {@code Toast} 只有一个抽象方法 {@code render}，【画】与【还留不留】在这一个
+ * 方法里一起办完；26.x 把它拆成了两步 —— 管理器每帧先问一次「该不该继续显示」，
+ * 之后才让这条通知自己画。子类没法同时学两个形状，所以这里只写两个中立方法
+ * （{@code drawToast} 与 {@code shouldStillShow}），原版那个接口在这一支上长什么样、
+ * 由每支一份的 {@link PhoneToastBase} 自己去覆写。判据同 {@code platform.client.Screens}：
+ * 形变发生在【覆写点】上，门面与改名表都够不着。
  */
-public final class PhoneToast implements Toast {
+public final class PhoneToast extends PhoneToastBase {
 
     /** 与原版槽位一致，照这个尺寸画才不会和别的模组的通知错位 */
     private static final int WIDTH = 160;
@@ -101,15 +109,7 @@ public final class PhoneToast implements Toast {
     }
 
     @Override
-    public Visibility render(GuiGraphics g, ToastComponent component, long timeSinceLastVisible) {
-        // 有新消息并进来就把计时重置，否则第五条刚到通知就消失了
-        if (changed) {
-            lastUpdateMs = timeSinceLastVisible;
-            changed = false;
-        }
-
-        Font font = component.getMinecraft().font;
-
+    protected void drawToast(GuiGraphics g, Font font, long timeSinceLastVisible) {
         // 底：贴图优先，没有贴图就画纯色加一圈边
         if (!PhoneSkin.draw(g, PhoneSkin.Element.TOAST_BG, 0, 0, WIDTH, HEIGHT)) {
             g.fill(0, 0, WIDTH, HEIGHT, COLOR_BG);
@@ -134,10 +134,23 @@ public final class PhoneToast implements Toast {
                     badgeX, 6, badgeW, font.lineHeight + 1, COLOR_BADGE_BG);
             g.drawString(font, countLabel(), badgeX + 2, 7, COLOR_NAME, false);
         }
+    }
 
+    /**
+     * 这一条还该留着，还是该收起来。
+     *
+     * <p>【有新消息并进来就把停留计时重置】放在这一半里，不放在 {@code drawToast} 里：
+     * 26.x 上「决定去留」与「画」是分开的两次回调，而且先决定、后画。重置要留在画的那一半，
+     * 那一帧就已经按旧的计时决定完了 —— 症状是并进来一条新消息时通知先往外滑半格再回来。
+     */
+    @Override
+    protected boolean shouldStillShow(long timeSinceLastVisible, double displayMultiplier) {
+        if (changed) {
+            lastUpdateMs = timeSinceLastVisible;
+            changed = false;
+        }
         // 原版按显示时长的倍率缩放，玩家在设置里调过通知时间就该跟着变
-        double limit = DISPLAY_TIME_MS * component.getNotificationDisplayTimeMultiplier();
-        return timeSinceLastVisible - lastUpdateMs < limit ? Visibility.SHOW : Visibility.HIDE;
+        return timeSinceLastVisible - lastUpdateMs < DISPLAY_TIME_MS * displayMultiplier;
     }
 
     /** 超过 99 就显示 99+，否则一个三位数会把角标撑变形 */

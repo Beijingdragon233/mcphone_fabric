@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.camera.client;
 
 import net.minecraft.client.DeltaTracker;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.core.client.PhoneKeys;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -30,7 +31,7 @@ public final class CameraHandler {
                     CameraStamp.fileName(mc.gameDirectory, mc.player),
                     mc.getMainRenderTarget(),
                     msg -> {
-                        if (mc.player != null) mc.player.displayClientMessage(msg, true);
+                        if (mc.player != null) ClientMessages.show(mc.player, msg, true);
                     });
         }
 

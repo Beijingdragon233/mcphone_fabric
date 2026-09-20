@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.browser.client;
 
 import com.november.mcphone.platform.client.Draw;
+import com.november.mcphone.platform.client.Transforms;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -14,6 +15,7 @@ import com.november.mcphone.feature.browser.client.BrowserBackends;
 import com.november.mcphone.feature.browser.client.IBrowser;
 import com.november.mcphone.feature.browser.client.IBrowserBackend;
 import com.november.mcphone.core.client.GuiUtil;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -292,11 +294,11 @@ public final class BrowserScreen extends PhoneScreenBase {
         float gw = font.width(glyph) * sc;
         float gh = font.lineHeight * sc;
 
-        g.pose().pushPose();
-        g.pose().translate(x + (NAV_BTN_W - gw) / 2f, y + (h - gh) / 2f, 0);
-        g.pose().scale(sc, sc, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, x + (NAV_BTN_W - gw) / 2f, y + (h - gh) / 2f);
+        Transforms.scale(g, sc, sc);
         g.drawString(font, glyph, 0, 0, color, false);
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     /** 正在加载时右上角亮一个点：亮了说明点击送到了、导航发起了，没亮说明点击没到网页 */
@@ -401,7 +403,7 @@ public final class BrowserScreen extends PhoneScreenBase {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (urlBox.isFocused()) {
-            if (keyCode == 257 || keyCode == 335) {   // GLFW_KEY_ENTER / KP_ENTER
+            if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER) {   // GLFW_KEY_ENTER / KP_ENTER
                 navigateToTypedUrl();
                 return true;
             }
@@ -409,7 +411,7 @@ public final class BrowserScreen extends PhoneScreenBase {
         }
 
         // ESC 关界面，不转发给网页
-        if (keyCode == 256) {
+        if (keyCode == InputConstants.KEY_ESCAPE) {
             onClose();
             return true;
         }

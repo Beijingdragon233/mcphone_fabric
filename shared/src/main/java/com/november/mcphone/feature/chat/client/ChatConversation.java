@@ -1,6 +1,8 @@
 package com.november.mcphone.feature.chat.client;
 
 import com.november.mcphone.core.ServerConfig;
+import com.november.mcphone.platform.client.EditBoxes;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.client.PhoneTheme;
@@ -19,6 +21,7 @@ import com.november.mcphone.feature.chat.net.RequestMessagesPacket;
 import com.november.mcphone.feature.chat.net.SendChatMessagePacket;
 import com.november.mcphone.feature.gallery.client.PhotoLibrary;
 import com.november.mcphone.core.client.GuiUtil;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -385,7 +388,7 @@ public final class ChatConversation {
     /** 与服务端拒收时同一个位置：动作栏。玩家的眼睛正看着手机屏幕，聊天框那一行他看不见 */
     private static void tell(String key, Object... args) {
         var player = Minecraft.getInstance().player;
-        if (player != null) player.displayClientMessage(Component.translatable(key, args), true);
+        if (player != null) ClientMessages.show(player, Component.translatable(key, args), true);
     }
 
     /** 关掉放大图。返回 false 表示本来就没在放大——那时返回键该照常退出会话 */
@@ -782,21 +785,21 @@ public final class ChatConversation {
                 }
             }
         }
-        if (box != null) box.mouseClicked(mx, my, button);
+        if (box != null) EditBoxes.click(box, mx, my, button);
         return false;
     }
 
     /** 不管返回什么，调用方都该吃掉按键，别让 e 漏到背包键 */
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 257 || keyCode == 335) {   // Enter / 小键盘 Enter
+        if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER) {   // Enter / 小键盘 Enter
             send();
             return true;
         }
-        return box != null && box.keyPressed(keyCode, scanCode, modifiers);
+        return box != null && EditBoxes.key(box, keyCode, scanCode, modifiers);
     }
 
     public boolean charTyped(char c, int modifiers) {
-        return box != null && box.charTyped(c, modifiers);
+        return box != null && EditBoxes.character(box, c, modifiers);
     }
 
     /** 只发包、不本地插入：服务端校验没过会静默丢弃，自己那条由服务端回声送回 */

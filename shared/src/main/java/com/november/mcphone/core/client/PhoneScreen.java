@@ -1,6 +1,7 @@
 package com.november.mcphone.core.client;
 
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.ui.IPhonePage;
@@ -9,6 +10,7 @@ import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneItemData;
 import com.november.mcphone.core.PhoneLocation;
 import com.november.mcphone.platform.client.Draw;
+import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.feature.chat.client.ChatAddContact;
 import com.november.mcphone.feature.chat.client.ChatConversation;
 import com.november.mcphone.core.ServerConfig;
@@ -43,6 +45,7 @@ import com.november.mcphone.feature.store.client.AppStore;
 import com.november.mcphone.feature.store.client.CompanionApps;
 import com.november.mcphone.feature.clock.client.ClockPage;
 import com.november.mcphone.feature.weather.client.WeatherPage;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import com.november.mcphone.platform.client.PhoneScreenBase;
@@ -448,7 +451,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     private void tellPlayer(String translationKey, Object... args) {
         // 动作栏而不是聊天框：玩家的眼睛正看着手机屏幕
         if (minecraft != null && minecraft.player != null) {
-            minecraft.player.displayClientMessage(Component.translatable(translationKey, args), true);
+            ClientMessages.show(minecraft.player, Component.translatable(translationKey, args), true);
         }
     }
 
@@ -854,10 +857,10 @@ public final class PhoneScreen extends PhoneScreenBase {
         int cx = phoneLeft + metrics.screenW() / 2;
         int cy = phoneTop + metrics.screenH() / 2;
 
-        g.pose().pushPose();
-        g.pose().translate(cx, cy, 0);
-        g.pose().scale(scale, scale, 1.0f);
-        g.pose().translate(-cx, -cy, 0);
+        Transforms.push(g);
+        Transforms.translate(g, cx, cy);
+        Transforms.scale(g, scale, scale);
+        Transforms.translate(g, -cx, -cy);
 
         renderScreenBackground(g);
         renderStatusBar(g);
@@ -954,7 +957,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 外壳圈的是【整块屏幕】，不是页面能用的那块，所以这里也不能用上面的 sw
         PhoneChassis.drawFrame(g, phoneLeft, phoneTop, metrics.screenW(), sh, metrics);
 
-        g.pose().popPose();
+        Transforms.pop(g);
 
     }
 
@@ -1139,7 +1142,11 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 屏幕这条路还在。两条都试过之后仍然绑不上，那就说明这一下压根没进游戏
         if (captureHotkeyMouse(button)) return true;
 
-        if (button != 0) return super.mouseClicked(rawX, rawY, button);
+        if (button != InputConstants.MOUSE_BUTTON_LEFT) return super.mouseClicked(rawX, rawY, button);
+
+        // 从这里往下的 pb 是【本模组编号】（左 = 0，见 IPhonePage 上那五个常量）。上面那一句、
+        // 以及 super 与 captureHotkeyMouse 用的都还是原生编号：26.3 起原生左键是 1，两套不通用。
+        final int pb = PhoneScreenBase.pageButton(button);
 
         // 全屏读书这一帧没有机身，也就没有"点机身外＝关机"这回事；坐标也不必换算
         // （那一层 pose 缩放没有加上去）。必须排在下面 isInsidePhone 那一句之前
@@ -1194,11 +1201,11 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case SETTINGS -> {
-                settingsList.mouseClicked(mx, my, button);
+                settingsList.mouseClicked(mx, my, pb);
                 yield true;
             }
             case WALLPAPER_PICKER -> {
-                if (wallpaperPicker.mouseClicked(button)) {
+                if (wallpaperPicker.mouseClicked(pb)) {
                     navigateTo(Mode.SETTINGS);
                 }
                 yield true;
@@ -1217,13 +1224,13 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case FONT_COLOR_PICKER -> {
-                if (fontColorPicker.mouseClicked(button)) {
+                if (fontColorPicker.mouseClicked(pb)) {
                     navigateTo(Mode.SETTINGS);
                 }
                 yield true;
             }
             case APP_MANAGER -> {
-                appManagerPage.mouseClicked(mx, my, button);
+                appManagerPage.mouseClicked(mx, my, pb);
                 IPhoneApp picked = appManagerPage.consumeSelection();
                 if (picked != null) {
                     pendingManagedApp = picked;
@@ -1232,17 +1239,17 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case APP_MANAGER_DETAIL -> {
-                appManagerDetail.mouseClicked(mx, my, button);
+                appManagerDetail.mouseClicked(mx, my, pb);
                 // 卸载完了那个 App 已经不在列表里，留在它的详情页上没有意义
                 if (appManagerDetail.consumeBackRequest()) navigateTo(Mode.APP_MANAGER);
                 yield true;
             }
             case MUSIC_PLAYER -> {
-                musicPage.mouseClicked(mx, my, button);
+                musicPage.mouseClicked(mx, my, pb);
                 yield true;
             }
             case APP_STORE -> {
-                appStore.mouseClicked(mx, my, button);
+                appStore.mouseClicked(mx, my, pb);
                 AppInfo open = appStore.consumeOpenRequest();
                 if (open != null) {
                     appDetail.open(open);
@@ -1252,12 +1259,12 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case COMPANION_APPS -> {
-                companionApps.mouseClicked(mx, my, button);
+                companionApps.mouseClicked(mx, my, pb);
                 yield true;
             }
             case ADDON_PAGE -> {
                 // 不看返回值：附属页里的空点击不该关机
-                callPage(p -> p.mouseClicked(mx, my, button));
+                callPage(p -> p.mouseClicked(mx, my, pb));
                 yield true;
             }
             case ABOUT, CLOCK, WEATHER -> {
@@ -1266,7 +1273,7 @@ public final class PhoneScreen extends PhoneScreenBase {
             case READER -> {
                 // 按下只是按下：书架页上这一下可能是"打开这本"，也可能是"拖着排"，
                 // 由 mouseReleased 定性，见 BookList.mouseReleased
-                bookList.mouseClicked(mx, my, button);
+                bookList.mouseClicked(mx, my, pb);
                 yield true;
             }
             case TXT_BOOK -> {
@@ -1274,30 +1281,30 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case APP_DETAIL -> {
-                appDetail.mouseClicked(mx, my, button);
+                appDetail.mouseClicked(mx, my, pb);
                 // 顺序不能反：先 navigateTo 的话 reset 会把刷新请求清掉
                 if (appDetail.consumeInstalledRequest()) appStore.onInstalled();
                 if (appDetail.consumeBackRequest()) navigateTo(Mode.APP_STORE);
                 yield true;
             }
             case GALLERY -> {
-                gallery.mouseClicked(mx, my, button);
+                gallery.mouseClicked(mx, my, pb);
                 yield true;
             }
             case DEVICE_NAME -> {
-                if (deviceNameEditor.mouseClicked(mx, my, button)) navigateTo(Mode.SETTINGS);
+                if (deviceNameEditor.mouseClicked(mx, my, pb)) navigateTo(Mode.SETTINGS);
                 yield true;
             }
             case VAULT -> {
-                vaultPage.mouseClicked(mx, my, button);
+                vaultPage.mouseClicked(mx, my, pb);
                 yield true;
             }
             case AUTHOR_KEY -> {
-                authorKeyPage.mouseClicked(mx, my, button);
+                authorKeyPage.mouseClicked(mx, my, pb);
                 yield true;
             }
             case CHAT -> {
-                chatList.mouseClicked(mx, my, button);
+                chatList.mouseClicked(mx, my, pb);
                 // 点了传送就关机，包由列表自己发
                 if (chatList.consumeCloseRequest()) {
                     onClose();
@@ -1314,11 +1321,11 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case CHAT_ADD_CONTACT -> {
-                chatAddContact.mouseClicked(mx, my, button);
+                chatAddContact.mouseClicked(mx, my, pb);
                 yield true;
             }
             case CHAT_CONVERSATION -> {
-                chatConversation.mouseClicked(mx, my, button);
+                chatConversation.mouseClicked(mx, my, pb);
 
                 ChatConversation.Attach attach = chatConversation.consumeAttachRequest();
                 if (attach != null) {
@@ -1332,17 +1339,17 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case CHAT_PHOTO_PICKER -> {
-                chatPhotoPicker.mouseClicked(mx, my, button);
+                chatPhotoPicker.mouseClicked(mx, my, pb);
                 sendPicked(chatPhotoPicker.consumeSelection());
                 yield true;
             }
             case CHAT_STICKER_PICKER -> {
-                chatStickerPicker.mouseClicked(mx, my, button);
+                chatStickerPicker.mouseClicked(mx, my, pb);
                 sendPicked(chatStickerPicker.consumeSelection());
                 yield true;
             }
             case NOTES -> {
-                notesList.mouseClicked(mx, my, button);
+                notesList.mouseClicked(mx, my, pb);
                 Integer open = notesList.consumeOpenRequest();
                 if (open != null) {
                     noteEditor.open(open);
@@ -1354,7 +1361,7 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case NOTE_EDIT -> {
-                noteEditor.mouseClicked(mx, my, button);
+                noteEditor.mouseClicked(mx, my, pb);
                 if (noteEditor.consumeBackRequest()) navigateTo(Mode.NOTES);
                 yield true;
             }
@@ -1375,7 +1382,11 @@ public final class PhoneScreen extends PhoneScreenBase {
         final double ldx = dx / scale;
         final double ldy = dy / scale;
 
-        if (mode == Mode.MAIN && button == 0 && homeGrid.mouseDragged(mx, my)) {
+        // 往页面里的原版控件转那一下拖动用的是本模组编号（左 = 0）；上面判左键与末尾那句
+        // super 仍然用原生编号，两套在 26.3 上差一。
+        final int pb = PhoneScreenBase.pageButton(button);
+
+        if (mode == Mode.MAIN && button == InputConstants.MOUSE_BUTTON_LEFT && homeGrid.mouseDragged(mx, my)) {
             return true;
         }
 
@@ -1386,7 +1397,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.READER && bookList.mouseDragged(mx, my)) return true;
 
         // 多行输入框靠拖动选中文本，不转发的话选不了
-        if (mode == Mode.NOTE_EDIT && noteEditor.mouseDragged(mx, my, button, ldx, ldy)) return true;
+        if (mode == Mode.NOTE_EDIT && noteEditor.mouseDragged(mx, my, pb, ldx, ldy)) return true;
         return super.mouseDragged(rawX, rawY, button, dx, dy);
     }
 
@@ -1402,7 +1413,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.UI_SCALE) uiScalePage.mouseReleased();
         if (mode == Mode.HUD) hudPage.mouseReleased();
 
-        if (mode == Mode.MAIN && button == 0
+        if (mode == Mode.MAIN && button == InputConstants.MOUSE_BUTTON_LEFT
                 && homeGrid.mouseReleased(unscaledX(rawX), unscaledY(rawY))) {
             IPhoneApp launch = homeGrid.consumeLaunchRequest();
             if (launch != null) launchApp(launch);
@@ -1410,7 +1421,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         // 书架页同理：拖过就是排序，没拖过才是"打开这本"
-        if (mode == Mode.READER && button == 0 && bookList.mouseReleased()) {
+        if (mode == Mode.READER && button == InputConstants.MOUSE_BUTTON_LEFT && bookList.mouseReleased()) {
             BookRef book = bookList.consumeOpenRequest();
             // 打开之后接管屏幕的是那本书自己的界面，这一部手机就退下去了
             if (book != null) BookSources.open(book);
@@ -1478,7 +1489,7 @@ public final class PhoneScreen extends PhoneScreenBase {
             appManagerDetail.captureKey(keyCode, scanCode);
             return true;
         }
-        if (keyCode == 256) { // ESC
+        if (keyCode == InputConstants.KEY_ESCAPE) { // ESC
             // ESC 一下直接关机，不退层；退层交给导航栏 ◁
             onClose();
             return true;

@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.reader.client.source;
 
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.feature.reader.BookRef;
 import com.november.mcphone.platform.ModPresence;
@@ -190,11 +191,11 @@ public final class PatchouliSource implements BookSource {
         }
 
         // 它固定按 16×16 画。缩放交给矩阵，别去改它的实现
-        g.pose().pushPose();
-        g.pose().translate(x, y, 0);
-        if (size != 16) g.pose().scale(size / 16f, size / 16f, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, x, y);
+        if (size != 16) Transforms.scale(g, size / 16f, size / 16f);
         icon.render(g, 0, 0);
-        g.pose().popPose();
+        Transforms.pop(g);
         return true;
     }
 }
