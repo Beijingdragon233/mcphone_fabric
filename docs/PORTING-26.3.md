@@ -1941,3 +1941,91 @@ git log --oneline cd0a8bd^2 --not cd0a8bd^1 -- platforms/1.21.1-neoforge/   # �
 `ModAttachments` 剩 8 条是 `.serialize(Codec)` 找不到合适方法 —— 那是 NeoForge 26.3 真的换了
 `AttachmentType.Builder` 的形状，跟这笔合并无关，另开一步。
 `MCphone.java` 那份清单现在多四条，进游戏前的"填登记清单"那一步记得一起还。
+
+
+## 三十一、1d 第 17 步：`serialize(Codec)` 换成 `serialize(MapCodec)` —— 八个点逐个验过 codec 的形状。228 → 220
+
+### 一、变了什么
+
+把两版 NeoForge 的 `AttachmentType` 摆在一起数一遍（源码 jar 在 gradle 缓存里，不是猜的）：
+
+| | 1.21.1（`neoforge-21.1.248-sources.jar`） | 26.3（`neoforge-26.3.0.3-beta-sources.jar`） |
+|---|---|---|
+| `serialize` | `IAttachmentSerializer<?, T>` / `Codec<T>` / `Codec<T>, Predicate` | `IAttachmentSerializer<T>` / **`MapCodec<T>`** / `MapCodec<T>, Predicate` |
+| `serializable(...)` | `<S extends Tag, T extends INBTSerializable<S>>` | `<T extends ValueIOSerializable>` |
+| `sync` / `copyHandler` / `copyOnDeath` | 在 | **一字未动** |
+
+也就是整族附件落盘从「`Codec` 自己 parse/encode 一个 `CompoundTag`」迁到了 1.21.5+ 那套
+`ValueInput`/`ValueOutput`，附件因此必须长成一张 map。`serialize(MapCodec)` 的 internals 写得很直白
+（`AttachmentType.java:210-232`）：`input.read(codec)` 拿不到就 `orElseThrow`，写是 `output.store(codec, v)`。
+
+本仓只有 `ModAttachments` 用到这一族（8 个点），所以那三条 `sync`/`copyHandler`/`copyOnDeath` 没动是好消息：
+这 8 条错误是**一次形变**，不是重新设计。
+
+### 二、`assumeMapUnsafe` 这个名字自带警告，所以八个点逐个查
+
+DFU 给的出口叫 `MapCodec.assumeMapUnsafe(Codec<A>)` —— 名字里就写着【假设】：它不校验，
+塞一个真不是 map 的 codec 进去，编译一样过，坏在存档上。所以先把八个 codec 逐个读了一遍：
+
+- `WallpaperData` / `ChatReadState` / `DiscState` / `NoteList` / `PurchasedApps` / `ScriptKv` / `ScriptGuards`
+  这七个的 `CODEC` **全是 `RecordCodecBuilder.create(...)` 的产物** —— 这个工厂天然产 map 形状的 codec
+  （它编码出来就是一个复合标签），这是 DFU 自己的构造保证，不是我看字段猜的。
+- `ItemStack.OPTIONAL_CODEC`（`ItemStack.java:126-127`）是
+  `ExtraCodecs.optionalEmptyMap(CODEC).xmap(...)`：空物品堆编成【空复合标签】，非空编成 item 那套字段。
+  两条路都还是复合标签。
+
+顺手记一条**没踩的坑**：这个点最"正统"的写法看着是 `ItemStack.MAP_CODEC`（`ItemStack.java:114`），
+但它那两个必填字段装不下空堆：`count` 要 `ExtraCodecs.intRange(1, 99)`（`:119`），
+而 `ItemStack.EMPTY` 的 `count` 是 0 —— 编码这一步就过不去。
+而这个附件的默认值恰恰就是 `ItemStack.EMPTY`
+（`AttachmentType.builder(() -> ItemStack.EMPTY)`）—— 真用它，玩家第一次登录带空手机就当场异常。
+（老那份 `OPTIONAL_CODEC` 靠 `optionalEmptyMap` 把空堆编成空复合标签，正是为这件事存在的。）
+
+### 三、为什么不在那七个类里另立一个正式的 `MAP_CODEC`
+
+看起来更"正统"的写法是在每个数据类里放一个 `RecordCodecBuilder.mapCodec(...)` 造出来的 `MAP_CODEC`，
+让 26.3 那份 `ModAttachments` 用它。先把这些 `CODEC` 的用处全数了一遍（`rg` 按七个类名逐个匹配，
+连 `docs/` 与断言测试一起算）：**一共 41 处，分布如下**。
+
+| 在哪儿 | 几处 | 用法 |
+|---|---:|---|
+| `platforms/1.20.1-forge/.../PhonePlayerData.java` | 14 | `X.CODEC.encodeStart(NbtOps.INSTANCE, v)` / `.parse(NbtOps, tag)` —— Forge 那边附件要手写 NBT |
+| `platforms/1.20.1-forge/docs/WallpaperPacketTest.java` | 4 | 同一对 NBT 往返，断言测试 |
+| `platforms/1.21.1-fabric/.../ModAttachments.java` | 7 | `.persistent(X.CODEC)` —— Fabric 的数据附件吃的就是 `Codec` |
+| `platforms/1.21.1-neoforge/.../ModAttachments.java` | 7 | `.serialize(X.CODEC)` —— 就是这一族在 21.1 上的形状 |
+| `platforms/26.3-neoforge/.../ModAttachments.java` | 8 | 本轮这八处 |
+| `docs/PORTING.md` | 1 | 文字引用 |
+
+也就是说：**`CODEC` 现在的 32 个真用处全在 NBT / `persistent` / 老 `serialize` 这一侧，一个都不是 JSON。**
+另立 `MAP_CODEC` 就等于同一个 schema 在同一个类里写两遍（`create(...)` 与 `mapCodec(...)` 各一份），
+两份会各自漂 —— 而附件存档格式这种东西，漂了不会有人响。
+（`RecordCodecBuilder.mapCodec(g).codec()` 与 `create(g)` 是等价的，那为什么不干脆拿 `mapCodec` 当真相、
+`CODEC` 由它派生？因为【在 26.3 自己那份 DFU 上等价】我没验到源码级 —— DFU 只有 class 没有源，
+`javap` 那次也没打出方法体。为一个省不掉的假设去改七个共用类，不如把假设写小：就写在这个文件里，
+一个组的八处，看得见也数得清。）
+
+### 四、实测
+
+| | 第 16 步之后 | 现在 |
+|---|---:|---:|
+| 26.3 javac 错误 | 228 | **220** |
+
+按（文件, 错误信息, 符号）多重集比对：8 条 `对于serialize(Codec<X>), 找不到合适的方法` 逐条对上、
+全部消失，新增 **0**。改动只落在 `platforms/26.3-neoforge/` 一个文件里，
+`shared/`、`layers/` 与另三支一字未动，所以本轮不重跑老三支（判据同 §三十）。
+`verifyPlatformTwins` 通过，115 对、6,042 → 6,043。
+
+**这个 6,042→6,043 别读成"只多差了一行"**。那道闸的算法在 `gradle/mcphone-checks.gradle:924-936`：
+先 `stripComments`、再逐行 `trim()` 丢掉空行，然后以【同组里第一个物理拷贝】为基准算多重集对称差并求和
+（`ModAttachments` 这组的基准是 `platforms/1.20.1-forge` 那份 Forge 版）。两个后果：
+本轮那一大段说明注释【整段不计分】，而八个表达式的改动在这个基准下净涨 1。
+我没有逐行推出那个 1 是怎么来的，能确定的只是：它不代表"只改了一行"。
+事实的形状是这一支的 `ModAttachments` 与 1.21.1 那份差 8 个调用点 + 一段注释，**差得有理**，所以基线跟着走。
+
+### 五、还欠着的
+
+- 老规矩：没有进游戏，附件的**读写往返**没验过。`assumeMapUnsafe` 的坏法是运行期炸或静默读不回，
+  编译与闸都不会响 —— 这八条要进 26.3 存档实测：设壁纸、写笔记、买 App、领守卫、拿终端，然后
+  【重进存档】看东西还在不在。尤其 `PHONE_TERMINAL` 那条空堆默认值。
+- 以后谁要改这七个类里任何一个的 `CODEC`，记得这里假定它是 map 形状的。这条已经写进
+  `ModAttachments` 的类注释，不在别处。

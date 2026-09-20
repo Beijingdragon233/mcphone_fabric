@@ -1,5 +1,6 @@
 package com.november.mcphone.core;
 
+import com.mojang.serialization.MapCodec;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.feature.chat.ChatReadState;
 import com.november.mcphone.feature.notes.NoteList;
@@ -17,7 +18,26 @@ import net.neoforged.neoforge.registries.NeoForgeRegistries;
 import java.util.function.Supplier;
 
 /** 玩家附着数据（Attachment）注册 —— 跟着玩家走的数据；跟着物品走的见 {@link ModDataComponents}，两人共有的见 ChatData。
- *  读写别直接走这里，走 {@link PhonePlayerData}。 */
+ *  读写别直接走这里，走 {@link PhonePlayerData}。
+ *
+ *  <h2>这一份与 1.21.1 那份只差在 {@code serialize} 这一行</h2>
+ *
+ *  <p>26.3 把 {@code AttachmentType.Builder.serialize(Codec<T>)} 换成了
+ *  {@code serialize(MapCodec<T>)}（整族附件落盘迁到 {@code ValueInput}/{@code ValueOutput}，
+ *  {@code serialize(MapCodec)} 内部就是 {@code input.read(codec)} 与 {@code output.store(codec, v)}，
+ *  读不出来直接 {@code orElseThrow}）。
+ *
+ *  <p>这里用 {@link MapCodec#assumeMapUnsafe} 接上，不是随手挑的安全口子，
+ *  八个点逐个验过 {@code CODEC} 落的确实是复合标签：
+ *  {@code WallpaperData} / {@code ChatReadState} / {@code DiscState} / {@code NoteList} /
+ *  {@code PurchasedApps} / {@code ScriptKv} / {@code ScriptGuards} 的 {@code CODEC}
+ *  全是 {@code RecordCodecBuilder.create(...)} 的产物，形状天然是 map；
+ *  {@code ItemStack.OPTIONAL_CODEC} 是 {@code ExtraCodecs.optionalEmptyMap(CODEC).xmap(...)}，
+ *  空物品堆编成【空复合标签】而不是标量。
+ *  那个点不能改用 {@code ItemStack.MAP_CODEC}：它 {@code fieldOf("id")} 是必填，
+ *  空堆编码当场异常，而这个附件的默认值恰恰就是 {@code ItemStack.EMPTY}。
+ *
+ *  <p>落盘形状与 1.21.1 那份一致：都是一个复合标签挂在 {@code mcphone:xxx} 键下。 */
 public final class ModAttachments {
 
     private ModAttachments() {}
@@ -29,7 +49,7 @@ public final class ModAttachments {
     public static final Supplier<AttachmentType<WallpaperData>> WALLPAPER = ATTACHMENT_TYPES.register(
             "wallpaper_data",
             () -> AttachmentType.builder(() -> WallpaperData.DEFAULT)
-                    .serialize(WallpaperData.CODEC)
+                    .serialize(MapCodec.assumeMapUnsafe(WallpaperData.CODEC))
                     .build()
     );
 
@@ -37,7 +57,7 @@ public final class ModAttachments {
     public static final Supplier<AttachmentType<ChatReadState>> CHAT_READ = ATTACHMENT_TYPES.register(
             "chat_read_state",
             () -> AttachmentType.builder(() -> ChatReadState.DEFAULT)
-                    .serialize(ChatReadState.CODEC)
+                    .serialize(MapCodec.assumeMapUnsafe(ChatReadState.CODEC))
                     .copyOnDeath()
                     .build()
     );
@@ -46,7 +66,7 @@ public final class ModAttachments {
     public static final Supplier<AttachmentType<DiscState>> DISC = ATTACHMENT_TYPES.register(
             "phone_disc",
             () -> AttachmentType.builder(() -> DiscState.EMPTY)
-                    .serialize(DiscState.CODEC)
+                    .serialize(MapCodec.assumeMapUnsafe(DiscState.CODEC))
                     .copyOnDeath()
                     .build()
     );
@@ -55,7 +75,7 @@ public final class ModAttachments {
     public static final Supplier<AttachmentType<NoteList>> NOTES = ATTACHMENT_TYPES.register(
             "personal_notes",
             () -> AttachmentType.builder(() -> NoteList.EMPTY)
-                    .serialize(NoteList.CODEC)
+                    .serialize(MapCodec.assumeMapUnsafe(NoteList.CODEC))
                     .copyOnDeath()
                     .build()
     );
@@ -72,7 +92,7 @@ public final class ModAttachments {
     public static final Supplier<AttachmentType<ItemStack>> PHONE_TERMINAL = ATTACHMENT_TYPES.register(
             "phone_terminal",
             () -> AttachmentType.builder(() -> ItemStack.EMPTY)
-                    .serialize(ItemStack.OPTIONAL_CODEC)
+                    .serialize(MapCodec.assumeMapUnsafe(ItemStack.OPTIONAL_CODEC))
                     .sync(ItemStack.OPTIONAL_STREAM_CODEC)
                     .copyOnDeath()
                     .build()
@@ -83,7 +103,7 @@ public final class ModAttachments {
             ATTACHMENT_TYPES.register(
                     "purchased_apps",
                     () -> AttachmentType.builder(() -> PurchasedApps.EMPTY)
-                            .serialize(PurchasedApps.CODEC)
+                            .serialize(MapCodec.assumeMapUnsafe(PurchasedApps.CODEC))
                             .copyOnDeath()
                             .build()
             );
@@ -93,7 +113,7 @@ public final class ModAttachments {
             ATTACHMENT_TYPES.register(
                     "script_kv",
                     () -> AttachmentType.builder(() -> ScriptKv.DEFAULT)
-                            .serialize(ScriptKv.CODEC)
+                            .serialize(MapCodec.assumeMapUnsafe(ScriptKv.CODEC))
                             .copyOnDeath()
                             .build()
             );
@@ -109,7 +129,7 @@ public final class ModAttachments {
             ATTACHMENT_TYPES.register(
                     "script_guards",
                     () -> AttachmentType.builder(() -> ScriptGuards.DEFAULT)
-                            .serialize(ScriptGuards.CODEC)
+                            .serialize(MapCodec.assumeMapUnsafe(ScriptGuards.CODEC))
                             .copyOnDeath()
                             .build()
             );
