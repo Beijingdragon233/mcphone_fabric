@@ -50,6 +50,12 @@
   "    其余 23 条纯粹是包路径变了。把 23 条算进门面的账，会让人以为这一族还得磨很久。",
     "  * 形状真变了的（Screen 的输入事件、resize、容器背景、extractRenderState）：",
     "    那是签名差异，走 platform/client/PhoneScreenBase 那条已有接缝（§九）。",
+  "  * 通知区那一族（那个管理器类与 Minecraft 上的 getter）：类型确实改了名，",
+  "    但【这一条故意不进表】。共用代码里只剩一处拿那个管理器，已经收进",
+  "    platform/client/Toasts#manager，调用方拿 var 接住 —— 于是老名字在共用代码里",
+  "    【一次都不出现】。而这张表有一道闸专门拦「一次都没命中的规则」",
+  "    （mcphone-renames.gradle 里那句「空转的规则比没有规则更糟」），",
+  "    加一条注定空转的规则就是自己撞那道闸。而 getter 那一半本来就是形变，见 §二十八。",
     "",
     "【取证】",
     "  * ResourceLocation → Identifier：26.3 官方源 net/minecraft/resources/Identifier.java",
@@ -70,6 +76,14 @@
   "    调的那个）。本仓 10 处调用的接收者是 mc / minecraft / Minecraft.getInstance()，",
   "    全是 Minecraft；自家那个 setScreenOn(ItemStack)（PhoneItemData:105）名字不同、",
   "    而锚点要求 ( 紧跟其后，不会被牵连。",
+  "  * renderOutline → outline：【两边方法体逐字相同】，所以是纯改名。",
+  "    1.21.1 的 GuiGraphics#renderOutline 与 26.3 的 GuiGraphicsExtractor#outline",
+  "    都是那四条 fill，形参一律写作 (x, y, width, height, color) —— 这一族【不是】",
+  "    两个角点坐标，所以不需要换算，本仓那三处调用点传的本来就是宽高。",
+  "    取证取自两份官方源：26.3 那份 outline 在 GuiGraphicsExtractor.java:212；",
+  "    1.21.1 那份在构建产物 net/minecraft/client/gui/GuiGraphics.java 里。",
+  "    【进这张表的判据】：名字换、形参个数与含义都不换，才进。差一个语义的",
+  "    （比如 fill 收的是两角点、outline 收的是宽高）不进，那种得走接缝或就地换。",
   "  * net.minecraft.Util → net.minecraft.util.Util：26.3 的源里 net/minecraft/Util.java",
   "    【不存在】而 net/minecraft/util/Util.java 【存在】。本仓用到的四个成员逐个对过：",
     "    backgroundExecutor / ioPool / getPlatform / getFilenameFormattedDateTime 全在。",
@@ -89,7 +103,8 @@
   "methodRenames": {
     "drawString": "text",
     "drawCenteredString": "centeredText",
-    "setScreen": "setScreenAndShow"
+    "setScreen": "setScreenAndShow",
+    "renderOutline": "outline"
   },
   "packageRenames": {
     "net.minecraft.Util": "net.minecraft.util.Util"

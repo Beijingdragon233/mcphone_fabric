@@ -2029,3 +2029,102 @@ DFU 给的出口叫 `MapCodec.assumeMapUnsafe(Codec<A>)` —— 名字里就写�
   【重进存档】看东西还在不在。尤其 `PHONE_TERMINAL` 那条空堆默认值。
 - 以后谁要改这七个类里任何一个的 `CODEC`，记得这里假定它是 map 形状的。这条已经写进
   `ModAttachments` 的类注释，不在别处。
+
+## 三十二、1d 第 18 步：Toast 一族 + `renderOutline` —— 26.x 把【画】与【还留不留】拆成了两次回调。220 → 210
+
+### 一、原来是一个方法办两件事，现在是两个方法各办一件
+
+1.21.1 的 `Toast` 只有一个抽象方法（官方源 `toasts/Toast.java:17`）：
+
+```java
+Toast.Visibility render(GuiGraphics guiGraphics, ToastComponent toastComponent, long timeSinceLastVisible);
+```
+
+**画这一条通知**与**决定它还留不留**在这一个方法里一起办完，返回值顺手把进出场那两声也定了。
+26.3 把它拆成三个抽象方法（`toasts/Toast.java:20`、`:22`、`:28`）：`update(ToastManager, long)` 里只决定，
+决定完放在那儿等 `getWantedVisibility()` 来取；`extractRenderState(GuiGraphicsExtractor, Font, long)`
+里只画；那两声改由 `ToastManager#update` 比对实例上前后两次 visibility 来放（`ToastManager.java:41-49`）。
+顺带：`slotCount()` 换成了 `occcupiedSlotCount()`（原版这个拼错的默认方法，`Toast.java:50`），
+`getSoundEvent()` 是新增的默认方法（`:24`）且默认 `null` —— 所以本模组不会多出一声。
+
+拿管理器的路也断了：`toasts.ToastComponent` 这个类没了（同包换名叫 `ToastManager`），
+`Minecraft#getToasts()` 整个消失，去处是 `mc.gui.toastManager()`（`Gui.java:313`，
+而 `Minecraft.java:897` 自己就是这么调的）。`getToast(Class, Object)` / `addToast(Toast)` /
+`getMinecraft()` / `getNotificationDisplayTimeMultiplier()` 四个成员两边同形
+（1.21.1 `ToastComponent.java:77/101/106/110`，26.3 `ToastManager.java:122/144/162/166`）。
+
+### 二、`ToastComponent → ToastManager` 为什么【没】进改名表
+
+名字这一条确实够得上 `typeRenames` 的门槛：同包、同物、纯换名。**但共用代码里现在一次都不出现这个名字**——
+唯一的取法收进了 `platform/client/Toasts#manager`，调用方拿 `var` 接住：
+
+```java
+var toasts = Toasts.manager(mc);        // ChatNotifier.java:49
+```
+
+而 `gradle/mcphone-renames.gradle:231-237` 有一道闸专门拦「一次都没命中的规则」：
+【空转的规则比没有规则更糟，下一个人会以为这里管着这件事】。加一条注定空转的规则就是自己撞那道闸，
+所以这里让接缝把类型一起挡住，表上不动。这条判断写进了那张表的「不在这张表里」一节。
+
+本轮表上只加一条：`renderOutline → outline`。判据是**两边方法体逐字相同**——1.21.1 的
+`GuiGraphics#renderOutline` 与 26.3 的 `GuiGraphicsExtractor#outline`（`:212`）都是那四条 `fill`，
+形参一律写作 `(x, y, width, height, color)`，**不是**两个角点坐标，所以不需要换算，
+本仓三处调用点传的本来就是宽高。构建当场打的命中数：**改 3 处 / 3 文件，字面量里留 0 处**
+（`PhoneToast.java:116`、`ChatConversation.java:668`、`FontColorPicker.java:137`）。
+
+### 三、中立形状为什么是两个方法，而不是照 1.21.1 起一个名字
+
+判据还是 §十五 那条：**覆写点变了，门面与改名表都够不着**。但这一族跟 Screen 那一族不一样——
+Screen 那八个派发入口在两支上都存在，所以中立方法能照 1.21.1 的名字起；而 `Toast` 这边
+**原版的回调本身就两支不同形**，26.3 没有 `render` 这个方法可以照抄。于是中立方法只能照
+【拆得开的那一支】拆成两个，各支的 `PhoneToastBase` 再接回本支的 `Toast`：
+
+```java
+protected abstract void drawToast(<本支那个绘制上下文> g, Font font, long timeSinceLastVisible);
+protected abstract boolean shouldStillShow(long timeSinceLastVisible, double displayMultiplier);
+```
+
+老那三支的基类里两个都调、把 boolean 折成 `Visibility`；26.3 的基类里 `update` 调决定、
+`extractRenderState` 调画。共用侧的 `PhoneToast` 于是只写画与决定，不知道 `Toast` 长什么样。
+
+**两支的调用次序是真不一样**：1.21.1 是「同一个方法体里先画、后决定」，26.3 是
+「tick 里先决定，随后那一帧才画」。所以【有新消息并进来就把停留计时重置】必须写在
+`shouldStillShow` 里，不能留在 `drawToast` 里——留在画的那一半，26.3 上那一帧已经按旧计时
+决定完了，症状是同一个人刚并进来一条新消息、通知先往外滑半格再滑回来。
+`PhoneToast` 原来就把这个重置写在方法开头（决定之前），搬进决定那一半，两支的次序都不用动。
+
+### 四、实测
+
+| | 第 17 步之后 | 现在 |
+|---|---:|---:|
+| 26.3 javac 错误 | 220 | **210** |
+
+按（文件, 错误信息, 符号）多重集比对：掉的 10 条逐条对上——`PhoneToast` 5、`ChatNotifier` 3、
+`ChatConversation` 1、`FontColorPicker` 1，新增 **0**。
+
+这一轮动了 `shared/` 两个文件与 `versions/name-renames.json`，所以老三支不能跳过。重跑结果：
+`1.20.1-forge` / `1.21.1-fabric` / `1.21.1-neoforge` 的 `:compileJava` **三支全过**，
+`assertTests --continue` 仍只有那两支稳定红（`assertTestEconomyDataTest` 是 Windows 没有 POSIX 权限、
+`assertTestScriptEngineTest` 是 zh-CN locale），FAILED 的任务名与第 15 步那三份日志一字不差。
+**顺带把 1.20.1 的 `Toast` 形状验实在了**：新基类里那句 `render(GuiGraphics, ToastComponent, long)`
+在 1.20.1 上编得过，就是它到 1.20.1 还是那个形状的证据（本轮没找到 1.20.1 的官方源，之前是靠
+「共用代码编得过」反推的）。
+
+- 双胞胎：`verifyPlatformTwins` 通过，**115 对 / 6,043 行 → 117 对 / 6,069 行**。
+  涨的两对就是本轮这两个每支一份的文件（`PhoneToastBase` 差 20 行、`Toasts` 差 6 行）。
+  老三支那三份 `Toasts.java` 与 `PhoneToastBase.java` 是**逐字相同的三份**（MD5 一致）。
+- `updateSeamsDoc`：共用代码引用的接缝数 1.20.1-forge 79→81、1.21.1-fabric 41→43、
+  1.21.1-neoforge 39→41、26.3-neoforge 32→34。26.3 比另三支少的那几个就是还没补的（`Draw`、
+  `CameraGui`、`VanillaAudio`、`DiscSongs` 那一族），本轮没动它们。
+- 十道配置闸全绿；CI 矩阵仍是四目标，没动声明。
+
+### 五、还欠着的
+
+- **没进游戏**。这一族运行期的形状目前全靠读源推：通知能不能弹、同一个人连发能不能并成一条带
+  `2`/`3` 角标、五秒（乘上设置里的倍率）之后收不收。26.3 那个 `wanted` 字段初值 SHOW 只在
+  「没被 `update` 过就被 `getWantedVisibility()` 读」这个窗口里露出来，而 `ToastManager` 每帧
+  都是先 `update` 再取（`ToastManager.java:253-254` 就这两行，同一个方法体里），推的是读不到。
+  这两条要进 26.3 客户端实测：让另一个号连发五条，看合并、看角标、看它收摊。
+- 两支放音效的位置不同（一支在 `render` 返回值上、一支在 manager 比对前后值上），
+  【听感等价】没验过。并进来一条新消息时那一帧会不会重放一声，也得游戏里听。
+- 老规矩：`MCphone.java` 那份登记清单仍是空骨架，这族的运行期复核要等它能跑起来一起做。

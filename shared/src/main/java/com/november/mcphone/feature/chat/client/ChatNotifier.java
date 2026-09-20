@@ -7,8 +7,8 @@ import com.november.mcphone.feature.chat.ChatMessage;
 import com.november.mcphone.feature.chat.net.ChatClientCache;
 import com.november.mcphone.feature.chat.net.ConversationSummary;
 import com.november.mcphone.platform.client.Screens;
+import com.november.mcphone.platform.client.Toasts;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.toasts.ToastComponent;
 
 import java.util.UUID;
 
@@ -44,7 +44,9 @@ public final class ChatNotifier {
 
     /** 同一个人已有一条就合并进去，否则连发几条会占满原版通知区的 5 个槽位 */
     private static void show(Minecraft mc, UUID peer, ChatMessage message) {
-        ToastComponent toasts = mc.getToasts();
+        // 类型名两支不同（26.x 那个管理器改了名，也不再挂在 Minecraft 上），
+        // 取法两支也不同，所以这一层挡住类型、调用方拿 var 接
+        var toasts = Toasts.manager(mc);
 
         PhoneToast existing = toasts.getToast(PhoneToast.class, peer);
         if (existing != null) {

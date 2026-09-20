@@ -116,9 +116,11 @@
     "com/november/mcphone/platform/client/EditBoxes.java": 20,
     "com/november/mcphone/platform/client/KeyModifiers.java": 6,
     "com/november/mcphone/platform/client/PhoneScreenBase.java": 124,
+    "com/november/mcphone/platform/client/PhoneToastBase.java": 20,
     "com/november/mcphone/platform/client/PlayerSkins.java": 16,
     "com/november/mcphone/platform/client/Screens.java": 2,
     "com/november/mcphone/platform/client/SystemFiles.java": 47,
+    "com/november/mcphone/platform/client/Toasts.java": 6,
     "com/november/mcphone/platform/client/Transforms.java": 32,
     "com/november/mcphone/platform/client/VanillaAudio.java": 8
   }
