@@ -2236,3 +2236,78 @@ public static void setHidden(Minecraft mc, boolean hidden);
   两层，那是原版的【摄像机效果】（南瓜罩、水下那一类），与本模组的相机功能无关，别看名字撞了就当成一处。
 - 下一簇按数排：控件 `render` 一族 16 条「方法不会覆盖」+ 8 条「找不到符号 方法 `render(...)`」
   是现在最大的一块；再往后是 26.3 缺的 `platform/client/Draw` 13 条。
+## 三十四、1d 第 20 步：26.3 的 `Draw` —— 三个方法【只老实实现两个】，第三个宁可让它编译失败。204 → 192
+
+`platform/client/Draw` 是三支老平台都有、26.3 一直缺着的那个接缝，一共背着 **13 条**错误
+（五个文件的 `import` 报「类 Draw」，八个调用点报「变量 Draw」）。本轮补上这一份，
+13 条全掉；同时【新添 1 条】：`BrowserScreen.java:234` 那句 `Draw.texturedQuad(...)`
+现在报「找不到符号 方法 `texturedQuad(Matrix4f,int,int,int,int)`」，净 **204 → 192**。
+
+### 一、为什么少写一个方法，而不是写一个空壳
+
+`Draw` 三个方法在 26.3 上是三种处境：
+
+| | 这一支 | 结论 |
+|---|---|---|
+| `screenBackground` | `Screen#extractBackground`（`Screen.java:393`）—— 收的还是【画布 + 鼠标 + partialTick】那四个，方法体仍是那三件事（游戏内 UI 透明底 / 没世界画全景 / 其余模糊加暗底） | 换了名字，直接接 |
+| `scissorLeaked` | `GuiGraphicsExtractor#containsPointInScissor(int,int)`（`:160`）还在，语义见下 | 与 1.21.1 同形 |
+| `texturedQuad` | 这一支【没有能对上那个形状的东西】 | **不写** |
+
+第三格不是「还没轮到」，是【照那个形状写出来是错的】。26.x 的界面绘制改成攒 render-state：
+`GuiGraphicsExtractor` 每个画东西的方法都是往 `GuiRenderState` 里塞一条状态
+（`innerFill` 塞 `ColoredRectangleRenderState`，`GuiGraphicsExtractor.java:219-223`；
+`text` 塞 `GuiTextRenderState`，`:250-253`），真正交给 GPU 是后面那一遍。而
+`BrowserScreen.drawBrowser` 干的是「当场 `RenderSystem.setShader` 与 `setShaderTexture`、
+当场把四个顶点提交出去」（`BrowserScreen.java:228-238`）。在这套模型里坏掉的**不是编译，是顺序**：
+那一个四边形会在本帧其余界面内容之前直接怼上帧缓冲，还躲开 render-state 的 scissor 与 stratum。
+
+正解是让浏览器那张纹理以 `GpuTextureView` 的身份交给画布，走
+`blit(GpuTextureView, GpuSampler, x0, y0, x1, y1, u0, u1, v0, v1)`（`:374`），
+这一层不再自己提交顶点 —— 那是**浏览器那一族**的活，而且要等 MCEF 出一份 26.x 的构建
+（现在 `com.cinemod.mcef` 整个包不存在，`McefBackend.java` 那 3+2 条就是它）。
+
+所以这里【宁可让它报一条编译错误】。塞一个静默 no-op 的话，症状是浏览器界面在 26.3 上变成
+一块白板，而编译、十道闸、断言测试一个都不响 —— 那正是本次移植定过的规矩：不许为降错误数留静默桩。
+这一条也进了「还欠着的」清单，不会被看不见。
+
+### 二、`scissorLeaked` 那条推断在这支仍然成立（两处性质都核过）
+
+1.21.1 那一份的注释写了三件事，逐条对到 26.x 的 `ScissorStack`（`GuiGraphicsExtractor.java:1431`）：
+
+1. 【空栈恒为 true】还在：`containsPoint` 第一句就是 `stack.isEmpty() ? true : ...`（`:1457-1458`）。
+   别被构造那句骗了 —— `new ScissorStack(new ScreenRectangle(0, 0, guiWidth(), guiHeight()))`
+   （`:116`）那个全屏矩形是【基准】，存在字段里，`push` 拿它求交（`:1440` 那句
+   `Objects.requireNonNullElse(this.stack.peekLast(), this.screenSize)`），**没有压在栈上**，
+   所以栈照样从空开始，「手机画完这一页时栈是空的」这个前提没变。
+2. 【弹不穿】还在，而且形状一样：`pop()` 在空栈上抛 `IllegalStateException("Scissor stack underflow")`
+   （`:1445-1451`），所以 `PhoneScreen.java:601-603` 那个「最多弹 8 次、每轮重问一次」的循环
+   靠的就是谓词先变 false。
+3. 【会漏判】也还在：它是靠「(0,0) 在不在框里」推断的，漏下来的框恰好包含窗口左上角就发现不了。
+   只有 1.20.1 那一支问 GL（`GL11.glIsEnabled(GL11.GL_SCISSOR_TEST)`），不会漏判。
+
+### 三、实测
+
+- 26.3 `:compileJava` **204 → 192**。按（文件, 信息, 符号）多重集比对：掉的 13 条正好是
+  `PhoneScreen` 4、`BrowserScreen` 3、`PhoneContainerScreen` 2、`DiscBayScreen` 2、
+  `TerminalSlotScreen` 2 各自的 `找不到符号 [Draw]`；新增 1 条 = 上面那条 `texturedQuad`。
+- **这一轮没跑老三支**，判据：改动只有 `platforms/26.3-neoforge/` 下一个新文件，
+  `shared/`、`layers/`、改名表、`targets.json` 一个字节没动，那三支的编译与测试输入不变。
+- 双胞胎：**117 对不变，6,077 → 6,103 行**，全部涨在 `Draw.java`（38 → 64）。拆开是
+  1.20.1 独有 21 行（那一整套 `BufferBuilder`/`Tesselator`/`BufferUploader`/`Matrix4f`/`GL11`
+  与三个方法体）加 26.3 独有 5 行（`GuiGraphicsExtractor` 那套写法）。注释整段不计分，
+  所以这份文件里那一大段理由不占分。
+- `updateSeamsDoc`：26.3-neoforge 的引用接缝 35 → **36**（`platform.client.Draw` 以前指向
+  一个不存在的类），另三支 81 / 43 / 41 未动。
+- 十道配置闸全绿；CI 矩阵与目标声明没动。
+
+### 四、还欠着的
+
+- `texturedQuad` 这一条【要等浏览器那一族一起做】，前提是 MCEF 出 26.x 构建；在那之前 26.3 编不过，
+  这条红是计划内的红。
+- `Draw` 这两个新实现的方法一次都没进游戏看过：模糊背景画得对不对、`scissorLeaked` 在 26.3 上
+  会不会一直报 false（那就等于那 8 次弹栈白跑）。
+- 下一簇按数排：控件/界面的 `render` 一族（16 条「不会覆盖」+ 8 条「找不到 `render(...)`」）
+  最大，其中三个容器界面还各自撞着 26.3 的 `renderBg` 【整个没了】与 `imageWidth`/`imageHeight`
+  变成 `final`（只能走那个五参构造），这几条得连着做；`setColor` 那 8 条的真实落点在
+  `GuiUtil` 的贴图绘制上（现在每一对 `setColor/还原` 中间都只夹着一次 `PhoneSkin.draw`，
+  26.3 是 `blit(..., int color)` 那种逐次带色，不是全局调制）。
