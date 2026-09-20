@@ -5,6 +5,7 @@ import com.mojang.blaze3d.platform.Window;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneLocation;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -168,7 +169,8 @@ public final class PhoneHud {
             syncSize(mc);
         }
 
-        boolean isScreen = mc.screen == phone;
+        var shown = Screens.current(mc);
+        boolean isScreen = shown == phone;
 
         // 全屏那副面孔正开着：人已经在正经操作手机了，Alt 在这儿没有意义
         if (isScreen && !phone.isHudMode()) return;
@@ -178,7 +180,7 @@ public final class PhoneHud {
         // 只在【什么界面都没开】时才翻。全屏那副面孔中途开出别的界面是正常操作——
         // 设置里点「位置」会开位置编辑器，退出来还该回到那一页。这时候要是把它翻回
         // HUD 模式，编辑器一关，全屏的手机就画到角落里去了
-        if (!isScreen && !phone.isHudMode() && mc.screen == null) {
+        if (!isScreen && !phone.isHudMode() && shown == null) {
             phone.setHudMode(true);
         }
 
@@ -196,7 +198,7 @@ public final class PhoneHud {
         if (!interactPressed) return;
 
         // 背包、聊天框开着时不抢。玩家正在那儿操作，凭空把手机拽到最上面只会打断他
-        if (mc.screen != null) return;
+        if (Screens.current(mc) != null) return;
 
         startInteracting(mc);
     }
@@ -212,7 +214,7 @@ public final class PhoneHud {
         if (mc.options.hideGui) return;
 
         // 有界面开着就不画，理由见类注释
-        if (mc.screen != null) return;
+        if (Screens.current(mc) != null) return;
 
         syncSize(mc);
 
@@ -236,7 +238,7 @@ public final class PhoneHud {
         // ——那一下不该把他正看着的手机也一并合上。等他自己关掉，下一 tick 自然走到收
         // 手机那条路上。手机在这期间离开副手也照此办理，与从背包里开的那部一个规矩：
         // 界面开着就开着，不会因为物品没了自己合上
-        if (phone != null && mc.screen == phone && !phone.isHudMode()) return phone.location();
+        if (phone != null && Screens.current(mc) == phone && !phone.isHudMode()) return phone.location();
 
         boolean auto = PhoneHudPlacement.enabled() && PhoneItem.isDevice(player.getOffhandItem());
 
@@ -289,7 +291,8 @@ public final class PhoneHud {
     private static void onTogglePressed(Minecraft mc) {
         // 全屏那副面孔开着时不管：人已经在正经用手机了，收起的路是 ESC。
         // 背包、聊天框开着时也不管，别去抢别人正在操作的界面
-        if (mc.screen != null && !(mc.screen == phone && phone.isHudMode())) return;
+        var shown = Screens.current(mc);
+        if (shown != null && !(shown == phone && phone.isHudMode())) return;
 
         if (phone != null) {
             manual = Override.HIDE;
@@ -315,7 +318,7 @@ public final class PhoneHud {
         // removed() 认得 hudOwned，不会重复拆，见 PhoneScreen.removed()
         // 26.x 上 Minecraft 只剩 setScreenAndShow（shared/ 那一份由改名表负责，
         // 而挂载只重写 shared 与四个层的副本，本平台自己的文件得直接写真名）
-        if (mc.screen == closing) mc.setScreenAndShow(null);
+        if (Screens.current(mc) == closing) mc.setScreenAndShow(null);
         closing.shutdown();
     }
 
@@ -365,7 +368,7 @@ public final class PhoneHud {
     private static void stopInteracting(Minecraft mc) {
         interacting = false;
         // setScreenAndShow(null) 会把鼠标重新抓回去，视角控制随之恢复
-        if (mc.screen == phone) mc.setScreenAndShow(null);
+        if (Screens.current(mc) == phone) mc.setScreenAndShow(null);
     }
 
     /**

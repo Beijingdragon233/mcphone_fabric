@@ -6,6 +6,7 @@ import com.november.mcphone.core.client.PhoneToast;
 import com.november.mcphone.feature.chat.ChatMessage;
 import com.november.mcphone.feature.chat.net.ChatClientCache;
 import com.november.mcphone.feature.chat.net.ConversationSummary;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.toasts.ToastComponent;
 
@@ -37,7 +38,7 @@ public final class ChatNotifier {
     }
 
     private static boolean isViewing(UUID peer) {
-        return Minecraft.getInstance().screen instanceof PhoneScreen phone
+        return Screens.current(Minecraft.getInstance()) instanceof PhoneScreen phone
                 && phone.isViewingConversation(peer);
     }
 

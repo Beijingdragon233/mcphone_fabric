@@ -223,7 +223,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-neoforge -->
 
-#### 共用代码引用了的（37）
+#### 共用代码引用了的（38）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -261,6 +261,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.KeyModifiers`　—— 加载器导入
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
+- `platform.client.Screens`
 - `platform.client.SystemFiles`
 - `platform.client.Transforms`
 - `platform.client.VanillaAudio`
@@ -295,7 +296,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（77）
+#### 共用代码引用了的（78）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -373,6 +374,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.KeyModifiers`　—— 加载器导入
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
+- `platform.client.Screens`
 - `platform.client.SystemFiles`
 - `platform.client.Transforms`
 - `platform.client.VanillaAudio`
@@ -419,7 +421,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-fabric -->
 
-#### 共用代码引用了的（39）
+#### 共用代码引用了的（40）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -459,6 +461,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.KeyModifiers`
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
+- `platform.client.Screens`
 - `platform.client.SystemFiles`
 - `platform.client.Transforms`
 - `platform.client.VanillaAudio`
@@ -500,7 +503,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
 
-#### 共用代码引用了的（30）
+#### 共用代码引用了的（31）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -532,6 +535,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.KeyModifiers`　—— 加载器导入
 - `platform.client.PhoneScreenBase`
 - `platform.client.PlayerSkins`
+- `platform.client.Screens`
 - `platform.client.SystemFiles`
 - `platform.client.Transforms`
 

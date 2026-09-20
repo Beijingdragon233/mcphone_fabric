@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.core.PhoneLocation;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
@@ -54,7 +55,7 @@ public final class AppHotkeyHandler {
         if (event.getAction() != InputConstants.PRESS) return;
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.screen != null || mc.player == null || mc.level == null) return;
+        if (Screens.current(mc) != null || mc.player == null || mc.level == null) return;
 
         // 与原版记按键同一套：有键位符号的用 KEYSYM，没有的退回扫描码
         InputConstants.Key key = InputConstants.getKey(event.getKey(), event.getScanCode());
@@ -96,12 +97,12 @@ public final class AppHotkeyHandler {
         // （1.21.1 那边这个钩子叫 ClientHooks.onMouseButtonPre，位置一样；
         //   Forge 47.4.23 上也实测过：hook 在偏移 221，屏幕分发在 375 之后）
         // 收下之后把事件取消掉，原版就不会再把这一下发给屏幕，两条路不会都响。
-        if (mc.screen instanceof PhoneScreen phone && phone.captureHotkeyMouse(event.getButton())) {
+        if (Screens.current(mc) instanceof PhoneScreen phone && phone.captureHotkeyMouse(event.getButton())) {
             event.setCanceled(true);
             return;
         }
 
-        if (mc.screen != null || mc.player == null || mc.level == null) return;
+        if (Screens.current(mc) != null || mc.player == null || mc.level == null) return;
 
         InputConstants.Key key = InputConstants.Type.MOUSE.getOrCreate(event.getButton());
         AppHotkeys.Binding pressed = AppHotkeys.Binding.of(key, AppHotkeys.activeModifiers());
@@ -133,7 +134,7 @@ public final class AppHotkeyHandler {
         // 身上没有手机就开不了机，那就更谈不上进 App
         if (!PhoneScreenOpener.open(mc.player)) return false;
 
-        if (mc.screen instanceof PhoneScreen phone) phone.launchApp(app);
+        if (Screens.current(mc) instanceof PhoneScreen phone) phone.launchApp(app);
         return true;
     }
 

@@ -1671,3 +1671,110 @@ keyCode == InputConstants.KEY_RETURN / KEY_NUMPADENTER / KEY_BACKSPACE / KEY_TAB
 **本轮全部改动只有编译期与静态取证，没有一次真实点击验证。** 尤其这两条要在 26.3 里进游戏复核：
 左键能不能点开手机上的页面（靠 `pageButton` 那一步平移，写反了就是"点什么都没反应"），
 以及绑键界面对侧键的原生编号是否仍然对得上。
+
+## 廿八、1d 第 14 步：`Minecraft#screen` 那 30 条 —— 字段搬进了 `Gui`，而改名表写不出这种形变。279 → 249
+
+### 一、为什么这条不能进改名表，只能建接缝
+
+`versions/name-renames.json` 里已经有 `methodRenames`，`setScreen → setScreenAndShow` 走的就是那一族
+（`versions/name-renames.json:92`），所以【开界面】那条路 26.3 早就接上了。这一轮治的是【看现在开着谁】：
+
+- 老三支：`Minecraft#screen` 是个 public 字段，`mc.screen` 直接读。
+- 26.3：`Minecraft` 里再没有这个字段，它搬进了 `Gui` —— `Gui.java:79` 是
+  `private @Nullable Screen screen;`，取值口是 `Gui.java:220` 的 `public @Nullable Screen screen()`，
+  方法体就一句 `return this.screen;`。原版自己也全走这条：`Minecraft.java:1129`、`:1457`、`:1859`
+  读的都是 `this.gui.screen()`。
+
+看着像改名表该管的，其实管不了。`gradle/mcphone-renames.gradle:65-66` 那条 `methodAlt` 是
+
+```groovy
+Pattern.compile('(?<=\\.\\s*)(' + names.collect { Pattern.quote(it) }.join('|') + ')(?=\\s*\\()')
+```
+
+**两头都是定位用的**：前面必须有 `.`，后面必须有 `(`。字段读没有那对括号，规则根本命不中；
+而要是为它放宽成「标识符 → 表达式」，`screen` 这个满仓都是的普通词就跟着遭殃 ——
+`Screen screen = ...`、`instanceof PhoneScreen screen`、`net.minecraft.client.gui.screens` 那个包名，
+哪一个都得坏。何况这次要插的不只是换个词，是【中间多一段 `.gui`、末尾多一对括号】。
+改名表那三族规则干的都是等长的标识符替换，形变不是它的活。所以：接缝。
+
+### 二、位点清点：全仓 65 处，报错的只有 30 处
+
+| 位置 | 处数 | 26.3 上报不报 |
+|---|---:|---|
+| `shared/` 17 个文件 | 17 | 报（26.3 编共用代码） |
+| `layers/loader/neoforge/AppHotkeyHandler` | 4 | 报（这一层 26.3 也挂） |
+| `layers/loader/forge/AppHotkeyHandler` | 4 | 不报（26.3 不挂 forge 层） |
+| `platforms/1.21.1-fabric/AppHotkeyHandler` | 4 | 不报 |
+| 四份 `platform/*/core/client/PhoneHud` | 9 × 4 = 36 | 只有 26.3 那份报 |
+
+26.3 上 `javac` 报的正好是 17 + 4 + 9 = **30** 条，占剩余错误的一成，是当时最大的一簇。
+另外 35 处**本来就编得过**，本轮照样一并收进接缝 —— 因为这四支的同名文件在双胞胎基线里本该逐字相同：
+只改 26.3 那份，`PhoneHud` 与两份 `AppHotkeyHandler` 的接缝差异立刻凭空涨一截，
+而那一截不携带任何信息。同一个坑 §廿三 栽过一次（第一遍只改了 26.3 一路，六个 net 文件的双胞胎差异整体推高）。
+
+### 三、接缝形状：一个静态方法，只管读
+
+`platform/client/Screens.java` 四份，对外只有一个口：
+
+```java
+public static Screen current(Minecraft mc)   // 老三支 return mc.screen; / 26.3 return mc.gui.screen();
+```
+
+两点选择：
+
+- **收 `Minecraft` 参数，不在接缝里自己 `getInstance()`**。65 处调用点本来就全握着实例
+  （`mc`、`minecraft`、`Minecraft.getInstance()`），多拿一次没意义。`ClientMessages` 那份之所以自己取，
+  是因为它得先判 `instanceof LocalPlayer` 才敢碰客户端单例 —— 专用服上 `RuntimeDistCleaner`
+  一加载碰了客户端类型的类就抛。这里没这个问题：四支都是纯读，26.3 那份也只是 `return this.screen;`。
+- **不管写**。开界面走改名表那条（老 `setScreen(Screen)` → 26.3 `setScreenAndShow(Screen)`），
+  本轮一个字没动。顺带记一句两边不止同名换掉：26.3 的 `setScreenAndShow`（`Minecraft.java:2281`）
+  是 `gui.setScreen(screen)` 外加一次 `renderFrame(false)` 强制出帧。那是第 5 步定下的账，本轮没改判据。
+
+`PhoneHud` 里同一个方法读两次的两处（`tick` 与 `onTogglePressed`）提了局部量 `var shown = ...`，
+四支改法逐字相同，接缝副本之间因此没新增分歧。改完 `rg` 复查：
+`(mc|minecraft|client|Minecraft.getInstance()).screen` 在代码行上**零命中**（注释里那句
+"手机成了 mc.screen 就走不动路"留着，那说的是这件事本身，不是代码）。
+
+### 四、实测
+
+| | 第 13 步之后 | 现在 |
+|---|---:|---:|
+| 26.3 javac 错误 | 279 | **249** |
+
+少 30，正好等于 `变量 screen` 那一簇：按（文件, 错误信息）多重集比对，30 条全消、新增 **0** 条。
+老三支 `compileJava` 全 `BUILD SUCCESSFUL`（1.20.1-forge 37s / 1.21.1-neoforge 6s / 1.21.1-fabric 40s），
+`assertTests --continue` 三支摊平各自的任务，红的都还是那两个改动前就红的 Windows 环境问题
+（`assertTestEconomyDataTest` 的 `setPosixFilePermissions`、`assertTestScriptEngineTest` 的 zh-CN locale），
+三支各 2 个失败，一个不多。`verifyPlatformTwins` 通过：**113 → 114 对**（新增的就是 `Screens.java` 这一对）、
+差异合计 6,044 → **6,046 行**，涨的 2 行全在 `Screens.java`：四份里三份逐字相同，只有 26.3 那一份的取值式子两样。
+`updateSeamsDoc` 刷过，十道配置闸全绿（9 目标）。
+
+一支的环境坑记下来免得重踩：`1.21.1-neoforge` 这次第一遍跑**没带** `--init-script gw-proxy.gradle`，
+配置缓存因此失效，`createMinecraftArtifacts` 去重拉 `neoform-runtime:2.0.24`，直连 `maven.neoforged.net`
+吃一个 `Connection reset`，6 秒红。带上那条初始化脚本重跑，6 秒 `BUILD SUCCESSFUL`。
+**四支的 gradle 命令都得带同一个 `--init-script`**，不然失效的不只是网络，还有缓存。
+
+### 五、`hideGui` 那 4 条：取到证了，但没有顺手做
+
+按错误数排，下一簇本来是 `变量 hideGui` 4 条（`CameraMode.java:37/39/49` 与 26.3 的 `PhoneHud:212`），
+看着像"再建一个接缝"就完，查下去不是：
+
+26.3 的 `Options` 里 `hideGui` 这个字段**整个没了** —— 整棵 `src263full`（7301 个 java）里只剩
+`ScreenEffectRenderer` 一个文件的 5 处，还是方法参数名。F1 那条路改成
+`Options.keyToggleGui`（`Options.java:694`）→ `Gui#handleKeybinds`（`Gui.java:341`）→ `this.hud.toggle()`，
+状态存在 `Hud.isHidden`（`Hud.java:156`），读口是 `public boolean isHidden()`（`Hud.java:222`），
+`Gui#hud` 是 public final（`Gui.java:76`）。
+
+卡住的地方是：**只有 `toggle()`，没有 setter**，而 `CameraMode` 要的是"进取景写成 A、退出恢复成 B"这种三处写。
+`isHidden() != 目标值才 toggle()` 能编得过，但 `CameraGui` 那套"取景时到底谁该藏"本来就分平台
+（1.20.1 那支逼着 `hideGui=false`、改由事件自己画 HUD，NeoForge 两支用原版 `hideGui`），
+而 26.3 那份 `CameraGui` 还没建。所以这 4 条并进 `platform/client/CameraGui` 那一步一起做，
+不在这里塞一个只为了让错误数掉的半个接缝。
+
+### 六、还欠着的（别当成做完了）
+
+本轮仍然只有编译期与静态取证。§廿七 那两条进游戏复核的账还挂着（左键能不能点开手机上的页面、
+绑键界面对侧键的原生编号）。本轮再加一条同一性质的：`Screens.current` 在 26.3 上读的是 `gui.screen()`，
+而 26.x 的 `Gui` 另有 `overlay()`（`Gui.java:297`）与 `pushScreenLayer(Screen)`（`Gui.java:498`）这一层 ——
+手机是走 `setScreenAndShow` 进去的，落在 `screen` 这一层，所以"有没有别的东西挡着"判 `screen()` 是对的；
+但挂在副手 HUD 上的那面会不会被某个 overlay 层的东西挡住，得进游戏才知道。

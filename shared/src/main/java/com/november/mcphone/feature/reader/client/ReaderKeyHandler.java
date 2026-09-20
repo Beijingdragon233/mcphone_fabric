@@ -3,6 +3,7 @@ package com.november.mcphone.feature.reader.client;
 import com.november.mcphone.core.client.PhoneHud;
 import com.november.mcphone.core.client.PhoneKeys;
 import com.november.mcphone.core.client.PhoneScreen;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -46,7 +47,7 @@ public final class ReaderKeyHandler {
         Minecraft mc = Minecraft.getInstance();
 
         // 有界面开着就不管：手机界面自己有方向键与点击翻页，别的界面更轮不到我们插手
-        if (mc.screen != null) return;
+        if (Screens.current(mc) != null) return;
 
         PhoneScreen phone = PhoneHud.hudPhone();
         if (phone == null) return;

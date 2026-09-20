@@ -7,6 +7,7 @@ import com.november.mcphone.feature.reader.client.source.BookSources;
 import com.november.mcphone.feature.reader.client.source.GuideMeSource;
 import com.november.mcphone.feature.reader.client.source.ImmersiveEngineeringManual;
 import com.november.mcphone.feature.reader.client.source.PatchouliSource;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -84,7 +85,7 @@ public final class ReaderApp extends PhoneApp {
     /** 与时钟、记事本一致：书架是手机内的一个模式，不另开 Screen */
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
+        if (Screens.current(Minecraft.getInstance()) instanceof PhoneScreen ps) {
             ps.navigateTo(PhoneScreen.Mode.READER);
         }
     }
