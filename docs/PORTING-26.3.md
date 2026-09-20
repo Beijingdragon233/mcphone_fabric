@@ -1672,6 +1672,7 @@ keyCode == InputConstants.KEY_RETURN / KEY_NUMPADENTER / KEY_BACKSPACE / KEY_TAB
 左键能不能点开手机上的页面（靠 `pageButton` 那一步平移，写反了就是"点什么都没反应"），
 以及绑键界面对侧键的原生编号是否仍然对得上。
 
+
 ## 廿八、1d 第 14 步：`Minecraft#screen` 那 30 条 —— 字段搬进了 `Gui`，而改名表写不出这种形变。279 → 249
 
 ### 一、为什么这条不能进改名表，只能建接缝
@@ -1778,3 +1779,103 @@ public static Screen current(Minecraft mc)   // 老三支 return mc.screen; / 26
 而 26.x 的 `Gui` 另有 `overlay()`（`Gui.java:297`）与 `pushScreenLayer(Screen)`（`Gui.java:498`）这一层 ——
 手机是走 `setScreenAndShow` 进去的，落在 `screen` 这一层，所以"有没有别的东西挡着"判 `screen()` 是对的；
 但挂在副手 HUD 上的那面会不会被某个 overlay 层的东西挡住，得进游戏才知道。
+
+
+## 廿九、1d 第 15 步：`GameProfile` 取名与档案缓存那 14 条 —— 接缝选路要看【会不会联网】。249 → 235
+
+### 一、一个语义，两处断裂
+
+「查这个人叫什么」这件事在 26.3 上断了两个环节，六个调用点一起红（`ChatService` 3、`PhoneChat` 1、
+`Scores` 2、`ScriptRpcHandler` 1，错误 14 条）：
+
+| 环节 | 老三支 | 26.3 |
+|---|---|---|
+| 档案上的名字 | `GameProfile#getName()`（authlib 普通类） | `GameProfile#name()`（换成了带访问器的形状） |
+| 那本档案 | `MinecraftServer#getProfileCache()` → `net.minecraft.server.players.GameProfileCache` | 方法与类【都没了】，换成 `server.services().nameToIdCache()`（`UserNameToIdResolver`） |
+
+证据链：`Services.java:15-21` 那个 record 里 `nameToIdCache`（`:19`）与 `profileResolver`（`:20`）
+是两个分量；`create` 里 `:27` 先建档案缓存，`:28` 才把 `ProfileResolver.Cached(sessionService, profileCache)`
+套在它上面。而档案文件名还是 `:22` 那句 `USERID_CACHE_FILE = "usercache.json"` ——
+老 `GameProfileCache` 落的也正是这一份。
+`NameAndId.java` 是 `record NameAndId(UUID id, String name)`，不再是 `GameProfile`。
+
+### 二、选路判据是「联不联网」，不是「名字像不像」
+
+`MinecraftServer#getProfileCache()` 没了之后，全 `src263full` 里语义最近的候选是
+`ProfileResolver`（`fetchById(UUID)` / `fetchByName(String)`，返回的正是 `Optional<GameProfile>`，连返回类型都对得上）。
+**但它不能用来替老那句**：`ProfileResolver.java` 里 `Cached` 的
+`profileCacheById` 是个 Guava `LoadingCache`，`CacheLoader.load(UUID)` 直接
+`sessionService.fetchProfile(profileId, true)` —— **缓存未命中就打 HTTP**，还是在服务器主线程上。
+而老的 `getProfileCache().get(id)` 读的是内存表，未命中就是空，从不发请求。
+替过去的话：离线模式、私服、断网测试机上，每次"查一个陌生 UUID 的名字"都要白等一趟网络超时，
+而这三处调用点（好友列表、脚本 RPC、计分板持有者名）全是读多写多的路径。
+
+真正对得上的是 `services().nameToIdCache().get(id)`：
+`CachedUserNameToIdResolver.java:135-143` 就一句 `profilesByUUID.get(id)`，
+拿不到直接 `Optional.empty()`，没有网络。（它那个【按名字】的 `get(String)` 才会走
+`profileRepository.findProfileByName`，但本仓这六个点全是按 UUID 查，碰不到那条。）
+
+顺带一条：**没给它编名字**。老注释里那句"从没上过线的人查不到，那是事实，不该编一个名字出来"
+在 26.3 上照样成立，所以 `cachedName` 查不到就返回空，由调用方自己退回 UUID 前 8 位。
+
+### 三、往外递 `String`，不递 `GameProfile`
+
+`NameAndId` 手上只有 `(id, name)`，要拼一个 `GameProfile` 回来就得在 26.3 那份里 `new GameProfile(...)`
+—— 那是为了保住一个老类型名而凭空造对象，还会把"档案里有纹理属性吗"这种这支根本没有的东西装成有。
+六个调用点要的只是名字或"有没有记录"，所以接缝就递 `String`：
+
+```java
+public static String name(GameProfile p)                            // 老 getName() / 26.3 name()
+public static Optional<String> cachedName(MinecraftServer s, UUID)  // 档案缓存里的名字，不联网
+```
+
+`name(GameProfile)` 单独留着，是因为 `ChatService:307/353` 与 `ScriptRpcHandler:47` 手上已经有
+真档案（在线玩家的 `getGameProfile()`），不需要查缓存，只需要那个取值口换了名字。
+
+### 四、为什么 `getName → name` 不进改名表
+
+改名表要是有 `methodRenames: {"getName": "name"}` 就省事了吗 —— 不行，那一族是**全局**的，
+`methodAlt` 只认「点后、括号前」这个形状，不管 receiver 是什么类型。而 `getName(`
+在 `shared/`、`layers/`、`platforms/` 里有 **45 个文件、87 处**，服务于四五个互不相干的类：
+`Class#getName`（`SpiLoader`、`EmcWallets`、`TerminalSlotLocator`）、
+`Player#getName`（返回 `Component`，`RequestThrottle`、`StoreNetworking`、`NetworkHandler` 在用）、
+`Container#getMetadata().getName()`（`ModPresence`）、`User#getName()`（`MCphoneClient` 两处）、
+`WorldVersion#getName()`（`AboutPage:104`，那一条还没修）。
+一把换下去这 87 处一起遭殃，而 `Player#getName` 与 `GameProfile#getName` 本来就不是一个东西。
+何况这次动的是 **authlib 那本 jar**，不是原版类的改名。所以进接缝，和 `Nbt` / `ClientMessages` 同族。
+
+### 五、局部量重名：同类坑第二次被 javac 抓到
+
+第一遍改完是 **237** 而不是 235：多出的两条是 `已在方法 ... 中定义了变量 cached` ——
+`PhoneChat.findPlayer` 里本来就有 `List<UUID> cached = friends.idsNamed(name);`，
+`ChatService.rawName` 里本来就有 `String cached = friends.getName(id);`，
+我新写的 lambda 参数与局部量都撞上了 `cached` 这个名字。
+改成 `rec` 与 `fromCache` 之后掉到 235。
+这与 §廿七 那条 `pb` 是同一件事：**往共用代码里塞新局部量之前，先读一遍这个方法已有的名字**；
+四支同改，靠编译发现比靠眼看便宜，但前提是没有写成静默兜底。
+
+### 六、实测
+
+| | 第 14 步之后 | 现在 |
+|---|---:|---:|
+| 26.3 javac 错误 | 249 | **235** |
+
+按（文件, 错误信息, 符号）多重集比对：14 条全消 —— `GameProfileCache` 5、`getProfileCache()` 5、
+`getName()` 4（3 条"找不到符号" + 1 条 `Scores` 的"方法引用无效"）；新增 **0** 条。
+老三支 `compileJava` 全 `BUILD SUCCESSFUL`（22s / 3s / 3s），
+`assertTests --continue` 摊平 43 / 51 / 46 个任务，三支各红 **2** 个，
+且都是改动前就红的那两个 Windows 环境问题（`assertTestEconomyDataTest` 的
+`Files.setPosixFilePermissions`、`assertTestScriptEngineTest` 的 zh-CN locale），
+一个不多 —— 这一轮动到了 `Scores`（EconomyData 那条链路）与 `ChatService`/`PhoneChat`，
+`assertTestScriptRpcTest`、`assertTestMailboxTest`、`assertTestConversationKeyTest` 全绿。
+`verifyPlatformTwins` 通过：**114 → 115 对**、6,046 → **6,054 行**，
+涨的 8 行全在新的一对 `Profiles.java`（import 那行 + 两个方法体）；
+`Scores.java` 那一对仍是 25 行 —— 因为两份副本改的是同一段，`1.20.1-forge` 自己那份
+`platforms/.../economy/Scores.java` 跟着一起收了，不然基线要凭空涨。
+十道配置闸全绿。
+
+### 七、还欠着的
+
+`getName` 那一族还剩 `AboutPage:104` 一条：`SharedConstants.getCurrentVersion().getName()`，
+那是 `WorldVersion` 的改名，跟玩家档案无关，归到"整类不存在/改名见底"那一堆里再算。
+进游戏复核的账仍然全部挂着（§廿七、§廿八 各一条）。

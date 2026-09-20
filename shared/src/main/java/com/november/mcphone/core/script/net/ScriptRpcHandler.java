@@ -3,6 +3,7 @@ package com.november.mcphone.core.script.net;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.server.PlayerSnapshot;
 import com.november.mcphone.core.script.server.ScriptPipeline;
+import com.november.mcphone.platform.Profiles;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -44,7 +45,7 @@ public final class ScriptRpcHandler {
         }
         PlayerSnapshot snapshot = new PlayerSnapshot(
                 player.getUUID(),
-                player.getGameProfile().getName(),
+                Profiles.name(player.getGameProfile()),
                 player.level().dimension().location().toString(),
                 player.gameMode.getGameModeForPlayer().getName(),
                 0L);

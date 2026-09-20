@@ -8,10 +8,10 @@ import com.november.mcphone.feature.chat.ChatService;
 import com.november.mcphone.feature.chat.FriendData;
 import com.november.mcphone.feature.chat.FriendGuard;
 import com.november.mcphone.feature.chat.TextBody;
+import com.november.mcphone.platform.Profiles;
 import com.november.mcphone.util.TextSanitizer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.players.GameProfileCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -62,8 +62,7 @@ public final class PhoneChat {
         if (cached.size() != 1) return Optional.empty();
         UUID id = cached.get(0);
 
-        GameProfileCache profiles = server.getProfileCache();
-        if (profiles != null && profiles.get(id).filter(p -> !p.getName().equalsIgnoreCase(name)).isPresent()) {
+        if (Profiles.cachedName(server, id).filter(rec -> !rec.equalsIgnoreCase(name)).isPresent()) {
             return Optional.empty();
         }
         return Optional.of(contact(server, friends, id));

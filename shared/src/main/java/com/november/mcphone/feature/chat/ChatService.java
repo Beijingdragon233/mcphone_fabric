@@ -5,10 +5,10 @@ import com.november.mcphone.core.ServerConfig;
 import com.november.mcphone.feature.chat.net.ConversationSummary;
 import com.november.mcphone.feature.chat.net.OnlinePlayer;
 import com.november.mcphone.feature.chat.net.Relation;
+import com.november.mcphone.platform.Profiles;
 import com.november.mcphone.util.TextSanitizer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.players.GameProfileCache;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -304,7 +304,7 @@ public final class ChatService {
             UUID id = p.getUUID();
             if (id.equals(selfId)) continue;
 
-            String name = ConversationSummary.clampName(p.getGameProfile().getName());
+            String name = ConversationSummary.clampName(Profiles.name(p.getGameProfile()));
             friends.rememberName(id, name);
 
             if (out.size() >= limit) continue;   // 仍要走完循环，名字缓存不能漏
@@ -330,8 +330,7 @@ public final class ChatService {
         if (server.getPlayerList().getPlayer(id) != null) return true;
         if (friends.getName(id) != null) return true;
 
-        GameProfileCache cache = server.getProfileCache();
-        return cache != null && cache.get(id).isPresent();
+        return Profiles.cachedName(server, id).isPresent();
     }
 
     /** 建立关系时把双方的名字都记一遍，日后任一方离线都显示得出来 */
@@ -351,17 +350,14 @@ public final class ChatService {
     private static String rawName(MinecraftServer server, FriendData friends,
                                   UUID id, ServerPlayer online) {
         if (online != null) {
-            return online.getGameProfile().getName();
+            return Profiles.name(online.getGameProfile());
         }
 
         String cached = friends.getName(id);
         if (cached != null) return cached;
 
-        GameProfileCache cache = server.getProfileCache();
-        if (cache != null) {
-            var profile = cache.get(id);
-            if (profile.isPresent()) return profile.get().getName();
-        }
+        var fromCache = Profiles.cachedName(server, id);
+        if (fromCache.isPresent()) return fromCache.get();
 
         return id.toString().substring(0, 8);
     }
