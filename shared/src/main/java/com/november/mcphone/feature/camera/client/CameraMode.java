@@ -14,7 +14,7 @@ public final class CameraMode {
 
     private static boolean active = false;
 
-    /** 进入相机前玩家原本的 hideGui 设置，退出时还原 */
+    /** 进入相机前玩家原本的 HUD 隐藏状态，退出时原样还回去。读写都走 CameraGui */
     private static boolean savedHideGui = false;
 
     private static long enteredAtMs = 0L;
@@ -34,9 +34,10 @@ public final class CameraMode {
         Minecraft mc = Minecraft.getInstance();
 
         active = true;
-        savedHideGui = mc.options.hideGui;
-        // 取景时 vanilla 的 hideGui 该置成什么，【两支正好相反】—— 理由见 CameraGui
-        mc.options.hideGui = CameraGui.hideGuiWhileFraming();
+        savedHideGui = CameraGui.hidden(mc);
+        // 取景时该不该把原版 HUD 藏起来，【各支的答案不一样】—— 理由见 CameraGui；
+        // 怎么写也不统一：1.20.1 / 1.21.1 是直接赋值，26.x 那边只剩一个 toggle
+        CameraGui.setHidden(mc, CameraGui.hideGuiWhileFraming());
         enteredAtMs = System.currentTimeMillis();
         pendingCapture = false;
         cleanFrameReady = false;
@@ -46,7 +47,7 @@ public final class CameraMode {
         if (!active) return;
 
         // 还原而不是无脑置 false：玩家可能本来就自己按了 F1
-        Minecraft.getInstance().options.hideGui = savedHideGui;
+        CameraGui.setHidden(Minecraft.getInstance(), savedHideGui);
         active = false;
         pendingCapture = false;
         cleanFrameReady = false;

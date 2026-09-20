@@ -2128,3 +2128,111 @@ protected abstract boolean shouldStillShow(long timeSinceLastVisible, double dis
 - 两支放音效的位置不同（一支在 `render` 返回值上、一支在 manager 比对前后值上），
   【听感等价】没验过。并进来一条新消息时那一帧会不会重放一声，也得游戏里听。
 - 老规矩：`MCphone.java` 那份登记清单仍是空骨架，这族的运行期复核要等它能跑起来一起做。
+## 三十三、1d 第 19 步：`hideGui` 那 6 条 —— 状态搬进了 `Hud`，而且【只剩一个 toggle】。210 → 204
+
+§廿八 那一步把这一族顶到了「证已取完、就差动手」的位置，本轮做掉。6 条：`CameraMode.java`
+五条（`:3` 那个 import 是「本平台没有 `CameraGui` 这个类」，`:37`/`:49` 两处读写 + `:39` 那一行
+报了 `变量 hideGui` 与 `变量 CameraGui` 两条）+ 26.3 自己那份 `core/client/PhoneHud.java:214` 一条。
+
+### 一、那个字段的去处，和它这次换了几个出口
+
+`Options.hideGui` 在 26.x 整个没了（§廿八 那条：整棵 26.3 反编译源码里 `hideGui` 只剩
+`ScreenEffectRenderer` 一个文件的方法参数名）。状态现在住在 `Hud`：
+
+| | 26.3 |
+|---|---|
+| 字段 | `Hud.java:156` `private boolean isHidden;` |
+| 读 | `:222` `public boolean isHidden()` |
+| 写 | `:218` `public void toggle()` —— **就这一个，没有 setter** |
+| 取到 `Hud` | `Minecraft.java:302` `public final Gui gui;` → `Gui.java:76` `public final Hud hud;` |
+
+F1 那条链的头尾也跟着换了：`Options.keyToggleGui`（`Options.java:694`）→ `Gui#handleKeybinds`
+（`Gui.java:338`、`:341-342`）→ `this.hud.toggle()`。原版自己问「HUD 藏了没」也走这一个口子
+（`GameRenderer.java:618` 那句 `!this.minecraft.gui.hud.isHidden()`），所以这一层没有自创第二条路。
+
+**改名表治不了这一族**：它不是「同一个东西换个名」，是【住处换了 + 少一个 setter】，
+写进去的是「比对再翻」这种带逻辑的式子。
+
+### 二、接缝：`CameraGui` 从「一个常量」长成「一读一写」
+
+老那三支里这个类只回答一句 `hideGuiWhileFraming()`（1.20.1 false / 1.21.1 两支 true），
+读写都在调用方（`shared/CameraMode`）直接摸 `mc.options.hideGui`。本轮给它加两个：
+
+```java
+public static boolean hidden(Minecraft mc);
+public static void setHidden(Minecraft mc, boolean hidden);
+```
+
+- 老三支那两份实现【逐字相同】：读 `mc.options.hideGui`，写也是 —— 那个字段本身就是状态，
+  赋值即生效。
+- 26.3 那份读 `mc.gui.hud.isHidden()`，写只能是
+
+  ```java
+  if (mc.gui.hud.isHidden() != hidden) { mc.gui.hud.toggle(); }
+  ```
+
+  【先比对再翻】不是风格，是那边只有 toggle：无条件调用等于「替玩家按一次 F1」，
+  而调用方要的是「置成这个值」。这条差别也就是双胞胎基线里 `CameraGui` 从 4 涨到 12 的全部内容
+  （三处方法体各算一次对称差：`return false`↔`return true` 2、`hidden` 体 2、`setHidden` 1↔3 行 4）。
+- `shared/CameraMode` 三处全改走接缝；`savedHideGui` 那个字段名留着 —— 它是本仓自己的状态名，
+  不是原版字段。
+- **`PhoneHud` 四份一起改**：那一句 `if (mc.options.hideGui) return;` 换成
+  `if (CameraGui.hidden(mc)) return;`。三支老的本来就编得过，改它不是为了修编译，
+  是为了那一行在四份里保持【逐字相同】—— 只给 26.3 打补丁的话，这一对又要为了一行去涨基线，
+  与 §廿五 下半那次（只改一支被闸拦下）同一个道理。
+
+### 三、取景时该不该藏：这一支返回 `true`，这次是【读打补丁的源】验的
+
+`hideGuiWhileFraming()` 的值取决于一件事：我们的取景框画在 `RenderGuiEvent.Post` 上，
+把 HUD 藏起来之后那个事件还发不发。1.20.1 与 1.21.1 两份注释里那套「两支正好相反」的论证
+只到 1.21.1 为止，26.x 得重新问一遍。这次拿的是 **NeoForge 打过补丁的那份源**
+（`build/moddev/artifacts/minecraft-patched-26.3.0.3-beta-sources.jar`，不是 §二 那棵原版反编译树）：
+
+1. `Hud.java:186` 那个 `layerManager` 就是 `net.neoforged.neoforge.client.gui.GuiLayerManager`；
+2. `GuiLayerManager#render`（`:63-71`）的形状是【发 `RenderGuiEvent.Pre` → `renderInner` 过一遍层
+   → 发 `RenderGuiEvent.Post`】，而 `isHidden` 那个关卡是挂在**每个层自己**的包装上
+   （`Hud.java:243` 定义 `hudVisible = () -> !this.isHidden`，`:246-269` 逐个 `add(..., hudVisible)`），
+   Pre/Post 那两句的周围【没有】 `isHidden` 判断；
+3. `Hud#extractRenderState`（`:232-240`）里 `layerManager.render(...)` 只被
+   `!(screen instanceof LevelLoadingScreen)` 挡；再往上 `Gui#extractRenderState`（`:156-160`）
+   只看 `shouldRenderLevel`，而 `GameRenderer.java:460` 是无条件调它。
+
+所以：`isHidden=true` → 准星与物品栏那些层各自闭嘴，`RenderGuiEvent.Post` 照发，取景框照画。
+**与 1.21.1-neoforge 同一形状**，Forge 1.20.1 那条「事件根本不发」的坑在这支不存在。
+
+### 四、顺手验到的一条：toast 在这支也认同一个状态
+
+打补丁那份 `ToastManager.java:83-84`：`extractRenderState` 的第一句就是
+`if (!this.minecraft.gui.hud.isHidden()) {`。1.21.1 那边是
+`ToastComponent.java:29-30` 的 `if (!this.minecraft.options.hideGui) {` —— 同一道门，换了个读法。
+也就是说 1.20.1 那一支为了「拍照几帧把 toast 藏掉」发明的那套【推迟翻 hideGui】的机关，
+在 26.3 上不需要：这一支进取景就把 HUD 藏了，toast 跟着一起藏，与 1.21.1 一致。
+
+### 五、实测
+
+- 26.3 `:compileJava` **210 → 204**。按（文件, 信息, 符号）多重集比对：掉的 6 条正好是
+  `CameraMode.java` 的 `找不到符号 [hideGui]×3 + [CameraGui]×2` 与 `PhoneHud.java` 的
+  `找不到符号 [hideGui]×1`，**新增 0**。
+- 这一轮动了 `shared/`，老三支没得跳：`:compileJava` 40s / 25s / 13s 全 **BUILD SUCCESSFUL**；
+  `assertTests --continue` 摊平 44 / 47 / 45 个任务，三支红的都是改动前就红的那两个 Windows
+  环境问题（`assertTestEconomyDataTest` 撞 `Files.setPosixFilePermissions`、
+  `assertTestScriptEngineTest` 撞 zh-CN locale），FAILED 任务名与 `at15` / `at18` 那两份日志一字不差。
+- 双胞胎：**117 对不变，6,069 → 6,077 行**，涨的 8 行全在 `CameraGui.java`（4 → 12），
+  就是上面拆给 26.3 那三处方法体。`PhoneHud` 那一处四份同步改，所以那一对的分一个字没动。
+- `updateSeamsDoc`：26.3-neoforge 的引用接缝 34 → **35**（`platform.client.CameraGui` 这条以前
+  指向一个不存在的类，所以没进表），另三支 81 / 43 / 41 未动。
+- 十道配置闸全绿；CI 矩阵与目标声明没动。
+
+### 六、这一层名字的事，与还欠着的
+
+`CameraGui` 这个名字现在管的是「本平台原版 HUD 的隐藏状态存在哪儿、怎么读写」，
+早就不止相机在用。**没改名**：改一次要牵四支的文件名、`shared/CameraMode` 与 `PhoneHud` 的 import、
+还有 `docs/` 里前二十几步已经写死的那些引用，那些记录会全指向一个不存在的类。留作一次独立的小整理。
+
+- **没进游戏**。这一族要看三条：进取景之后 HUD 是不是真没了而取景框还在；退出取景之后玩家
+  【自己按过 F1】的那份状态还得原样回来（`savedHideGui` 那条还原路径，三支老的是赋值、
+  这一支是比对后 toggle，走的是两条不同的物理路径）；以及拍照那几帧 toast 是不是真的跟着藏了。
+- 26.3 那个 `Hud` 的层表里有 `CAMERA_OVERLAYS`（`:246`）与 `AFTER_CAMERA_DECORATIONS`（`:248`）
+  两层，那是原版的【摄像机效果】（南瓜罩、水下那一类），与本模组的相机功能无关，别看名字撞了就当成一处。
+- 下一簇按数排：控件 `render` 一族 16 条「方法不会覆盖」+ 8 条「找不到符号 方法 `render(...)`」
+  是现在最大的一块；再往后是 26.3 缺的 `platform/client/Draw` 13 条。

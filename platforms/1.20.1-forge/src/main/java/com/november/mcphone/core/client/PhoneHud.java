@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.Window;
 import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneLocation;
+import com.november.mcphone.platform.client.CameraGui;
 import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -225,7 +226,7 @@ public final class PhoneHud {
         Minecraft mc = Minecraft.getInstance();
 
         // 这一条得自己写，理由见类注释
-        if (mc.options.hideGui) return;
+        if (CameraGui.hidden(mc)) return;
 
         // 有界面开着就不画，理由见类注释
         if (Screens.current(mc) != null) return;

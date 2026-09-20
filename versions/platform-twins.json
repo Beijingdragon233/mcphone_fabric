@@ -108,7 +108,7 @@
     "com/november/mcphone/platform/Profiles.java": 8,
     "com/november/mcphone/platform/Slots.java": 6,
     "com/november/mcphone/platform/StackCodecs.java": 15,
-    "com/november/mcphone/platform/client/CameraGui.java": 4,
+    "com/november/mcphone/platform/client/CameraGui.java": 12,
     "com/november/mcphone/platform/client/ClientMessages.java": 15,
     "com/november/mcphone/platform/client/ClientTicks.java": 26,
     "com/november/mcphone/platform/client/DiscSongs.java": 18,
