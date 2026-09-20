@@ -1879,3 +1879,65 @@ public static Optional<String> cachedName(MinecraftServer s, UUID)  // 档案缓
 `getName` 那一族还剩 `AboutPage:104` 一条：`SharedConstants.getCurrentVersion().getName()`，
 那是 `WorldVersion` 的改名，跟玩家档案无关，归到"整类不存在/改名见底"那一堆里再算。
 进游戏复核的账仍然全部挂着（§廿七、§廿八 各一条）。
+
+
+## 三十、1d 第 16 步：`main` 那两笔 economy 提交漏在了 26.3 的平台副本外面。235 → 228
+
+这一步不是"又找到一个 26.3 的断口"，是**还合并欠账**。前一步清完 `ScriptEconomy` 那 4 条时顺手查了一下
+这个类在哪儿，结果发现它**整个仓库都没有** —— 只有 26.3 自己那两份文件在引用它。
+
+### 一、账是怎么对的
+
+`platforms/26.3-neoforge/src/main/java` 下那批本平台文件是第 4 步（`7bb4bf3`）从
+`platforms/1.21.1-neoforge/` 逐字拷来的。所以判据很清楚：
+
+```
+git diff --name-only 7bb4bf3 HEAD -- platforms/1.21.1-neoforge/     # 拷来之后这一支被改过哪些文件
+git log --oneline cd0a8bd^2 --not cd0a8bd^1 -- platforms/1.21.1-neoforge/   # 其中哪些是 main 侧带来的
+```
+
+合并点 `cd0a8bd` 的**第二父**里只有两笔提交动过 1.21.1 的平台目录：
+`71e481c`（货币落进世界存档）与 `14e1be6`（托管每 5 分钟扫一次），共碰三个文件 ——
+`MCphone.java`、`core/ModAttachments.java`、`core/PhonePlayerData.java`。
+合并时 `platforms/26.3-neoforge/` 那一侧只有本分支有，git 不会替我把同一笔改动**镜像**过去，
+于是那一份停在改动之前。两边副本有差异的一共 16 份，除去今天这两份，剩下 14 份（含入口那份）
+逐个对过：`Nbt`、`ClientMessages`、`Transforms`、`Screens`、`Profiles`、`CuriosInventories`、
+`EditBoxes`、`PhoneScreenBase`、`PhoneMultiLineEditBox`、`PhoneHud`、`NetworkHandler`、
+`ChatNetworking`、`StoreNetworking`、`MCphone` —— 差异都有出处（接缝或已知欠账），不是漏。
+
+### 二、这笔欠账有两半，危险的那半不报错
+
+| | 表现 |
+|---|---|
+| `ModAttachments.SCRIPT_ECONOMY` 与 `PhonePlayerData.economy()/setEconomy()` | 引用的类已经被 S15e 删掉（余额改住世界级存档 `EconomyData`），26.3 这两份还留着 → **7 条 `找不到符号 类 ScriptEconomy`**，编译看得见 |
+| `MCphone.java` 里那四条 economy 登记 | 26.3 的入口本来就是【空骨架 + 待接回清单】，编译不响、闸也不响 —— 差点就这么滑过去 |
+
+第一条治法：把 26.3 那两份**对齐到 1.21.1 现在的版本**（不是手写删，是整份照抄，抄完两边 MD5 一致）。
+顺带把 `PhonePlayerData` 类注释里那三行也带回来了 —— 那半截是文档，讲的正是
+"货币余额不在这里：它在世界级存档（`EconomyData`），不挂玩家，死亡与它无关"，
+少这一句，下一个改这里的人就会再把余额挂回玩家身上。
+第二条治法（这步能做的部分）：把四条登记**写进骨架那份【待接回清单】**，
+并标清它们来自 `71e481c` / `14e1be6`、补的时候要连"先关货币网关、再停 worker"那段次序注释一起带过来。
+真正接回来要等 `EconomyRuntime` / `EconomyCommand` 自己清完错误，这里不硬塞 —— 空骨架那份文档里
+写过为什么：现在写上去换来的不是功能，是十几行 `cannot find symbol` 混进直方图。
+
+### 三、实测
+
+| | 第 15 步之后 | 现在 |
+|---|---:|---:|
+| 26.3 javac 错误 | 235 | **228** |
+
+多重集比对：7 条 `ScriptEconomy` 全消（`ModAttachments` 4 + `PhonePlayerData` 3）、新增 **0**。
+`verifyPlatformTwins` 通过，115 对不变，差异合计 6,054 → **6,042**（`ModAttachments` 223→214、
+`PhonePlayerData` 500→497）—— 基线**降**了 12 行，这正是那道棘轮要的：合并不对称就该收掉。
+十道配置闸全绿。
+
+本轮**没有重跑老三支**：改动全在 `platforms/26.3-neoforge/` 与 `versions/platform-twins.json` 里，
+`shared/`、`layers/` 与另外三支的源文件一个字节没动；而基线只降不升，那三支的
+`verifyPlatformTwins` 读同一份文件算同一个数，不会因此翻红。
+
+### 四、还欠着的
+
+`ModAttachments` 剩 8 条是 `.serialize(Codec)` 找不到合适方法 —— 那是 NeoForge 26.3 真的换了
+`AttachmentType.Builder` 的形状，跟这笔合并无关，另开一步。
+`MCphone.java` 那份清单现在多四条，进游戏前的"填登记清单"那一步记得一起还。

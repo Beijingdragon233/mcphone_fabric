@@ -39,6 +39,13 @@ import org.slf4j.Logger;
  *       注意它【必须留在构造期】，理由见 1.20.1 那份入口里那段注释</li>
  *   <li>{@code modContainer.registerConfig(Type.SERVER, ServerConfig.SPEC, ...)}
  *       —— 等平台文件</li>
+ *   <li>{@code ServerStartedEvent -> EconomyRuntime.start(e.getServer())}、
+ *       停服那侧的 {@code EconomyRuntime.stop()}、
+ *       {@code ServerTickEvent.Post -> EconomyRuntime.tick()}（超时托管每 5 分钟扫一次）、
+ *       {@code RegisterCommandsEvent -> EconomyCommand.register(e.getGenerator())} 四条
+ *       —— 这四条是 main 侧 S15e（{@code 71e481c} 与 {@code 14e1be6}）加进 1.21.1 那份入口的，
+ *       补进来时顺带把 1.21.1 那段【先关货币网关、再停 worker】的次序注释一起带过来；
+ *       等的是 {@code EconomyRuntime} 与 {@code EconomyCommand} 把错误清完（两个都在挂载里）</li>
  *   <li>{@code TerminalCharger} / {@code DiscService} / {@code CompatModules} /
  *       {@code MCphoneClient} 那几条游戏总线与客户端 init —— 各等平台文件</li>
  *   <li>{@code RequestThrottle} / {@code ChatImageUploads} / {@code ChatImageStore} /
