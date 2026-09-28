@@ -202,12 +202,12 @@ public final class GuiUtil {
      * {@code MultiLineEditBox} 进手机，放大后正文顶上几行会整行不见。要在手机里用原版的
      * 滚动控件，先看 {@link com.november.mcphone.api.client.ui.PhoneMultiLineEditBox}。
      *
-     * 【26.x 起这一段要分开读】：那边原版那句自己认变换矩阵了 —— 压栈之前先把矩形过一遍
-     * 当前的 pose。于是这一支上【先在这里换算一遍、再交给原版】等于换算【两次】，倍数不是
-     * 100% 时页面级裁剪（含对外的 {@code PhoneCanvas.clipped}）会偏。这条【还没修】：修它要
-     * 在裁剪上开一条 seam，取证与编号记在 {@code docs/PORTING-26.3.md} 的 §三十七，进游戏
-     * 复核时一并看。上面那句"原版控件内部也踩同一个坑"在 26.3 已经不成立，那边的补丁类
-     * 于是不再覆写裁剪，只剩构造入口。
+     * 【26.x 起这一段要分开读】：那边原版那句【也】认变换矩阵了 —— 压栈之前先把矩形过一遍
+     * 当前的 pose。于是「先在这里换算一遍、再交给原版」在这三支上等于换算【两次】。所以交出去
+     * 那一步收进了 {@link Transforms#scissor}：换算与两头取整的规矩四支共用这一份，
+     * 【别再让 pose 过第二遍】归各支自己管。取证与来回比较在
+     * {@code docs/PORTING-26.3.md} 的 §三十七、§三十八。上面那句"原版控件内部也踩同一个坑"
+     * 在 26.3 已经不成立，那边的补丁类于是不再覆写裁剪，只剩构造入口。
      */
     public static void enableScissor(GuiGraphics g, int x1, int y1, int x2, int y2) {
         // 「这个点变换之后落在哪」收在 Transforms 里 —— 1.21.1 那边是 PoseStack 顶上的
@@ -221,7 +221,7 @@ public final class GuiUtil {
         // 倍数不是整数时（125%，或者被窗口 fit() 夹出来的小数），四个角各自四舍五入
         // 会让框比内容实际盖住的像素窄半格，最外面一行字被切掉一个像素——正是这次要修的
         // 症状的微缩版。这么取最多多画 1 像素：多画看不出来，少画看得出来。
-        g.enableScissor(
+        Transforms.scissor(g,
                 (int) Math.floor(Math.min(ax, bx)), (int) Math.floor(Math.min(ay, by)),
                 (int) Math.ceil(Math.max(ax, bx)), (int) Math.ceil(Math.max(ay, by)));
     }

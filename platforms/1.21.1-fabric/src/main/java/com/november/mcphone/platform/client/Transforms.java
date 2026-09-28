@@ -64,4 +64,15 @@ public final class Transforms {
     public static float mapY(GuiGraphics g, float x, float y) {
         return g.pose().last().pose().transformPosition(x, y, 0.0F, new Vector3f()).y;
     }
+
+    /**
+     * 开一个裁剪区。交来的四个数是【已经按当前 pose 换算过的 GUI 坐标】，这一句只负责交出去。
+     *
+     * <p>与 {@link #mapX}、{@link #mapY} 配套：换算与两头取整的规矩写在 {@code GuiUtil.enableScissor}
+     * 里、四支共用那一份，这一层只管「交出去」这个动作在各支的原版叫什么、要不要防着原版再过一遍
+     * 矩阵。这一支的原版那句【不看】pose、收的本来就是窗口坐标，所以直接给。
+     */
+    public static void scissor(GuiGraphics g, int x0, int y0, int x1, int y1) {
+        g.enableScissor(x0, y0, x1, y1);
+    }
 }

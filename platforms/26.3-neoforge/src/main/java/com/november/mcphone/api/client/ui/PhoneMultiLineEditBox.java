@@ -51,12 +51,13 @@ import net.minecraft.network.chat.Component;
  * 26.3 那个构造器第 6、7 个参数依次是 {@code placeholder}、{@code narration}，所以按位置原样
  * 递过去就是同一件事，没有换顺序。
  *
- * <h2>这一支上还有【一处】同一个坑没修，与本类无关</h2>
+ * <h2>同一个坑在【页面级裁剪】那一条路上：已经收进 seam，本类不管它</h2>
  *
- * shared 的 {@code GuiUtil.enableScissor} 自己先把矩形按 pose 换算一遍、再调原版那句。
- * 26.3 的原版那句【也】换算一遍，于是这一支上会被变换【两次】：倍数不是 100% 时页面级裁剪
- * （含对外的 {@code PhoneCanvas.clipped}）会偏。修它要在裁剪上开一条 seam，不在这个类里，
- * 记在 {@code docs/PORTING-26.3.md} 等下一轮，进游戏复核时一并看。
+ * shared 的 {@code GuiUtil.enableScissor} 自己先把矩形按 pose 换算一遍、再交出去；而这一支的
+ * 原版那句【也】换算一遍。所以「交出去」那一步收进了 {@code Transforms.scissor}：这一支在那儿
+ * 压一层单位矩阵再弹掉，让原版的变换等于不动，四支于是共用同一套换算与取整规矩。
+ * 取证与来回比较在 {@code docs/PORTING-26.3.md} 的 §三十八；对外的 {@code PhoneCanvas.clipped}
+ * 走的同一条路，进游戏复核时一起看。
  *
  * <p>类是 {@code final} 的，和另三支一致：这份镜像得跟着原版走，留继承口子等于把镜像变成
  * 不能改的 API。要改行为就在外面包一层。

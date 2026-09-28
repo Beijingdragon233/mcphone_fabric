@@ -2646,3 +2646,71 @@ shared 那一份是先 `Transforms.mapX/mapY` 把矩形按 pose 换算、再调�
 - `GuiUtil.enableScissor` 换算两次（第六节），修它要开 seam，下一轮排它。
 - 下一簇按数排：`setColor` 8 条、`getMainRenderTarget` 3 条（`Screenshot.grab` 变五参会冒 arity 新错）、
   `MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，再往后是真缺 jar 那一堆。
+
+## 三十八、1d 第 24 步：把裁剪「交出去」那一步开成 seam —— 26.3 上换算两次修掉了，156 条不变
+
+这一步【不减错误数】：它修的是 §三十七 第六节记下的那条【静默行为差】—— 26.3 上页面级裁剪会把
+矩形换算**两次**。错误计数 **156 → 156**，消失 0 条、新增 0 条（这一步动了错误数才需要解释）。
+
+### 一、症状，以及它为什么不报错
+
+`GuiUtil.enableScissor`（shared，四支共用）先把手机本地坐标按当前 pose 换算成 GUI 坐标，再交给
+原版那句。而 26.x 的原版那句【也】换算一遍（`GuiGraphicsExtractor.java:151-153`：
+`new ScreenRectangle(x0, y0, x1-x0, y1-y0).transformAxisAligned(this.pose)` 之后才 `push`）。
+于是这一支上倍数不是 100% 时，裁剪框被缩两遍（150% 时框成了 225% 大小、位置也偏出去），
+而这一切【不报错也不红】—— 裁剪是一段全局状态，表现只有画面少一块或多一块。
+
+受影响的入口是四处页面加两条对外的路：`AboutPage:92`、`AppManagerDetail:190`、`ChatConversation:457`、
+`HomeGrid:228`，以及 `PhoneCanvas.clipped`（附属模组走的那一条，`PhoneCanvas.java:117`）与
+`PhoneChassis:251` 的状态栏。
+
+### 二、修法：换算与取整只留一份，「别让 pose 过第二遍」归各支
+
+没有图省事把 shared 那份换算删掉、让 26.x 的原版去做，因为两边的取整规矩不一样：
+
+- `GuiUtil` 这一套是【小头 floor、大头 ceil】，最多多画 1 像素 —— 那是 1.9.3 追
+  「放大后最外面一行字被切掉」时定下来的方向（多画看不出来，少画看得出来）。
+- 26.x 的 `ScreenRectangle#transformAxisAligned`（`:105-109`）是【左下角 floor + 宽高各 floor】，
+  比上面窄最多 1 像素，正对着那个老症状。
+
+所以把「交出去」这一步开成 seam，加在本仓唯一碰 `g.pose()` 的那份接缝 `platform/client/Transforms` 上
+（没有新造类）：老三支 = `g.enableScissor(x0, y0, x1, y1)` 原样交出去，行为一字不变；
+26.3 = 先 `pushMatrix()` + `identity()`、交出去、再 `popMatrix()`，让原版那次变换等于不动。
+压进裁剪栈的是一份【算好的矩形值】，弹掉 pose 不影响它，后续绘制照旧走真 pose。
+
+### 三、`identity()` 这条路是查过的，不是想当然
+
+1. `org.joml.Matrix3x2fStack`（joml 1.10.9，javap 过）只声明 `clear` / `pushMatrix` / `popMatrix`
+   加序列化那几个方法，数学操作全在父类 `Matrix3x2f` 上；栈顶那一份【就是】这个实例的字段，
+   所以 `identity()` 改的是当前层，`popMatrix()` 之后原样回来。
+2. `public org.joml.Matrix3x2f identity()` 在同一份 javap 输出里存在（类声明是
+   `public class org.joml.Matrix3x2f implements Matrix3x2fc, Externalizable, Cloneable`）。
+3. 26.3 的 `enableScissor` 只有收四个 int 的那一个入口，没有收 `ScreenRectangle` 的重载 ——
+   `GuiGraphicsExtractor` 里裁剪相关只有 `:151`（开）、`:156`（关）、`:160`（`containsPointInScissor`）
+   三个方法。所以「把算好的矩形直接压栈」这条路【不存在】，只能在交出去之前把 pose 暂时按住。
+4. `disableScissor()`（`:156-158`）只 `pop`，不碰坐标，所以收口那一句不用开 seam；
+   `PhoneScreen` 那圈「附属页面漏了收口就替它弹干净」的兜底因此四支同形。
+
+### 四、实测
+
+- 26.3 `:compileJava` **156 → 156**，`BUILD FAILED in 5m 2s`，多重集比对消失 0 条、新增 0 条。
+- 动了 `shared/`，老三支 `:compileJava` 全 `BUILD SUCCESSFUL`：1.21.1-neoforge 6s、
+  1.21.1-fabric 5s、1.20.1-forge 21s。`assertTests --continue` 三支都只剩已知那两条环境红
+  （`assertTestEconomyDataTest` = POSIX 路径、`assertTestScriptEngineTest` = zh-CN locale）；
+  这次没并行构建，第 23 步那条 `assertTestLayoutEngineTest` 计时红【没复现】，反过来支持了
+  「那是挤出来的」这个判断。
+- 双胞胎：**118 对不变，6,171 → 6,176**。涨的 5 行全在 `Transforms.java`（32 → 37）——
+  老三支那三份的新方法代码逐字相同，加分只来自 26.3 独有的 push/identity/pop。
+- `updateSeamsDoc`：清单没变（26.3-neoforge 47 个、共用代码引用 37 个）—— 没造新接缝类。
+- 十道配置闸全绿；CI 矩阵、目标声明、改名表未动。
+
+### 五、还欠着的
+
+- 这条修的是【不报错】的行为，编译与断言都证明不了它：要进游戏看 150% / 200% 下 `AboutPage`、
+  `AppManagerDetail`、`ChatConversation`、`HomeGrid` 的正文有没有少一行或多一行，以及附属页面走
+  `PhoneCanvas.clipped` 的框对不对。老三支理论上【一字不变】（走的是原样交出去那一条），
+  顺带复核一下这个「理论上」。
+- 第 23 步那条还挂着：AT 在运行期到底生效没有，只有开游戏进笔记 App 才算验过
+  （`IllegalAccessException` / `NoSuchMethodError` 会是它没通）。
+- 下一簇按数排：`setColor` 8 条、`getMainRenderTarget` 3 条（`Screenshot.grab` 变五参会冒 arity 新错）、
+  `MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，再往后是真缺 jar 那一堆。

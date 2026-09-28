@@ -90,4 +90,25 @@ public final class Transforms {
     public static float mapY(GuiGraphicsExtractor g, float x, float y) {
         return g.pose().transformPosition(x, y, new Vector2f()).y;
     }
+
+    /**
+     * 开一个裁剪区。交来的四个数是【已经按当前 pose 换算过的 GUI 坐标】。
+     *
+     * <p>这一支的原版那句【会】再过一遍矩阵：{@code GuiGraphicsExtractor#enableScissor}
+     * （{@code :151-153}）先 {@code new ScreenRectangle(x0, y0, x1-x0, y1-y0)}、紧接着
+     * {@code transformAxisAligned(this.pose)}（{@code ScreenRectangle.java:105-109}，
+     * 两个角各 {@code Mth.floor} 一次）才压栈。调用方 {@code GuiUtil.enableScissor} 交来的数
+     * 已经换过算了，所以这里压一层单位矩阵、让那次变换等于不动、再弹掉：压进裁剪栈的是
+     * 【算好的矩形值】，弹掉 pose 不影响它，而后续的绘制照旧走真 pose。
+     *
+     * <p>为什么不干脆把换算删掉、交给原版去做：那句的取整是「左下角 floor + 宽高 floor」，
+     * 比 {@code GuiUtil} 那套「小头 floor、大头 ceil」窄最多 1 像素 —— 那 1 像素正是 1.9.3
+     * 追过的「最外面一行字被切掉」。四支给附属模组看到的是同一个框，取整规矩只留一份。
+     */
+    public static void scissor(GuiGraphicsExtractor g, int x0, int y0, int x1, int y1) {
+        g.pose().pushMatrix();
+        g.pose().identity();
+        g.enableScissor(x0, y0, x1, y1);
+        g.pose().popMatrix();
+    }
 }
