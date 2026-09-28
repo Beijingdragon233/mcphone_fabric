@@ -2,6 +2,7 @@ package com.november.mcphone.core.script.client;
 
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.core.script.server.store.VaultPassphrase;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -141,15 +142,15 @@ public final class VaultPage {
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         List<Character> buf = onSecond ? second : first;
-        if (keyCode == 259 && !buf.isEmpty()) {          // backspace
+        if (keyCode == InputConstants.KEY_BACKSPACE && !buf.isEmpty()) {          // backspace
             buf.remove(buf.size() - 1);
             return true;
         }
-        if (keyCode == 258) {                             // tab
+        if (keyCode == InputConstants.KEY_TAB) {                             // tab
             onSecond = !onSecond;
             return true;
         }
-        if (keyCode == 256) {                             // esc
+        if (keyCode == InputConstants.KEY_ESCAPE) {                             // esc
             backRequested = true;
             return true;
         }

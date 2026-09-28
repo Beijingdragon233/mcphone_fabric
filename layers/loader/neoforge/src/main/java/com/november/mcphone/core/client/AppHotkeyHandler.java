@@ -4,12 +4,12 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.core.PhoneLocation;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.settings.KeyModifier;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * 按下某个 App 的快捷键 —— 直接进那个 App。键盘、鼠标键都行，支持
@@ -27,7 +27,7 @@ import org.lwjgl.glfw.GLFW;
  * 没有那口队列。改在 tick 里轮询 {@code isKeyDown} 的话，比一个 tick（50ms）
  * 更短的一下就会整个丢掉——按得快正是快捷键的常态。所以听按下事件本身。
  *
- * 只认 GLFW_PRESS：REPEAT 是按住不放时系统补发的，那会变成一直重开手机。
+ * 只认 {@code InputConstants.PRESS}：REPEAT 是按住不放时系统补发的，那会变成一直重开手机。
  *
  * 键盘与鼠标为什么不是同一套收尾
  *
@@ -52,10 +52,10 @@ public final class AppHotkeyHandler {
 
     /** 由 MCphoneClient 构造函数挂到游戏总线 */
     public static void onKeyInput(InputEvent.Key event) {
-        if (event.getAction() != GLFW.GLFW_PRESS) return;
+        if (event.getAction() != InputConstants.PRESS) return;
 
         Minecraft mc = Minecraft.getInstance();
-        if (mc.screen != null || mc.player == null || mc.level == null) return;
+        if (Screens.current(mc) != null || mc.player == null || mc.level == null) return;
 
         // 与原版记按键同一套：有键位符号的用 KEYSYM，没有的退回扫描码
         InputConstants.Key key = InputConstants.getKey(event.getKey(), event.getScanCode());
@@ -80,7 +80,7 @@ public final class AppHotkeyHandler {
      * 打开时不会顺带挥一次手、放一次方块。键盘那条没有这个待遇。
      */
     public static void onMouseInput(InputEvent.MouseButton.Pre event) {
-        if (event.getAction() != GLFW.GLFW_PRESS) return;
+        if (event.getAction() != InputConstants.PRESS) return;
 
         Minecraft mc = Minecraft.getInstance();
 
@@ -95,12 +95,12 @@ public final class AppHotkeyHandler {
         //     if (ClientHooks.onMouseButtonPre(...)) return;   ← 这里
         //     ... 之后才轮到 screen.mouseClicked(...)
         // 收下之后把事件取消掉，原版就不会再把这一下发给屏幕，两条路不会都响。
-        if (mc.screen instanceof PhoneScreen phone && phone.captureHotkeyMouse(event.getButton())) {
+        if (Screens.current(mc) instanceof PhoneScreen phone && phone.captureHotkeyMouse(event.getButton())) {
             event.setCanceled(true);
             return;
         }
 
-        if (mc.screen != null || mc.player == null || mc.level == null) return;
+        if (Screens.current(mc) != null || mc.player == null || mc.level == null) return;
 
         InputConstants.Key key = InputConstants.Type.MOUSE.getOrCreate(event.getButton());
         AppHotkeys.Binding pressed = AppHotkeys.Binding.of(key, AppHotkeys.activeModifiers());
@@ -131,7 +131,7 @@ public final class AppHotkeyHandler {
         // 身上没有手机就开不了机，那就更谈不上进 App
         if (!PhoneScreenOpener.open(mc.player)) return false;
 
-        if (mc.screen instanceof PhoneScreen phone) phone.launchApp(app);
+        if (Screens.current(mc) instanceof PhoneScreen phone) phone.launchApp(app);
         return true;
     }
 

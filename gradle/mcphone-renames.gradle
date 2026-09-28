@@ -1,0 +1,298 @@
+// 共用代码的【按目标改名挂载】。表在 versions/name-renames.json，为什么需要它、
+// 代价是什么、哪五条不变量当场验，全在那张表的 _comment 里，这里不重抄。
+//
+// 这个脚本只干一件事：把要挂的目录复制一份到 build/generated/name-renames/ 下，
+// 按表改名，然后把那一份挂进 source set。git 里的原文一个字不动。
+//
+// 【产物里的目录层级照抄源目录在仓库里的相对路径】（shared/src/main/java/... 与
+// layers/loader/neoforge/src/main/java/...），所以 javac 报出来的路径仍然能直接
+// grep 回仓库里那一份，错误统计与归因脚本一行都不必改。
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
+abstract class NameRenamedMountTask extends DefaultTask {
+    // 注解直接写在 getter 上，不写 @get: —— .gradle 是 Groovy 脚本，@get: 那种
+    // 形式在这里解析不过去（实测 startup failed）。这个仓库里的任务类都是这个写法。
+
+    /** 挂载名（= 源目录在仓库里的相对路径）→ 源目录绝对路径。只用来算相对路径。 */
+    @Internal abstract MapProperty<String, String> getMounts()
+    /** 类型名规则：旧名 → 新名，词边界，任意位置。 */
+    @Input abstract MapProperty<String, String> getTypePairs()
+    /** 方法名规则：旧名 → 新名，只在「. 之后、( 之前」命中。 */
+    @Input abstract MapProperty<String, String> getMethodPairs()
+    /**
+     * 限定名规则：旧的整条限定名 → 新的，命中「整条点名 + 后面不是标识符字符」。
+     *
+     * <p>这一档治的是【标识符没变、包名变了】那一类（{@code net.minecraft.Util} →
+     * {@code net.minecraft.util.Util}）：typeRenames 是按标识符换名的，对这种改名
+     * 完全看不见；而按整词锚又锚不住（{@code Util} 太短太通用）。整条点名本身够具体，
+     * 所以这一档能安全地按整条换。
+     */
+    @Input abstract MapProperty<String, String> getPackagePairs()
+    @InputFiles @PathSensitive(PathSensitivity.RELATIVE)
+    abstract ConfigurableFileCollection getJavaFiles()
+    @OutputDirectory abstract DirectoryProperty getGeneratedDir()
+
+    /**
+     * 字符串与字符字面量。【改名只发生在它之外】。
+     *
+     * <p>这条不是洁癖，是被自己拦过一次拦出来的：第一版整份文本一起改，
+     * ScriptAppFolder 里那句给玩家看的 "id '...' 不是合法的 ResourceLocation"
+     * 跟着变了 —— 那是一处不会编译报错的行为变化。
+     *
+     * <p>注释【照改】：注释不是数据，而改成这一支的真名字更贴近事实。
+     */
+    static final Pattern LITERAL =
+            Pattern.compile('"(?:\\\\.|[^"\\\\\r\n])*"|\'(?:\\\\.|[^\'\\\\\r\n])*\'')
+
+    static List<String> literals(String src) {
+        def out = []
+        def m = LITERAL.matcher(src)
+        while (m.find()) { out << m.group() }
+        return out
+    }
+
+    /** 类型名：前后不许粘连标识符字符，readResourceLocation / ResourceLocationCodec 不算。 */
+    static Pattern typeAlt(Collection names) {
+        if (!names) return null
+        return Pattern.compile('(?<![A-Za-z0-9_$])(' +
+                names.collect { Pattern.quote(it) }.join('|') + ')(?![A-Za-z0-9_$])')
+    }
+
+    /** 方法名：只在「. 之后、( 之前」命中，所以自家的定义与裸 token 不会被牵连。 */
+    static Pattern methodAlt(Collection names) {
+        if (!names) return null
+        return Pattern.compile('(?<=\\.\\s*)(' +
+                names.collect { Pattern.quote(it) }.join('|') + ')(?=\\s*\\()')
+    }
+
+    /**
+     * 限定名：前面不许粘标识符字符或点（{@code com.foo.net.minecraft.Util} 不算命中），
+     * 后面只禁标识符字符 —— 【点要放过】，因为 {@code net.minecraft.Util.backgroundExecutor()}
+     * 这种全限定调用后面跟的就是点。大小写敏感，所以换完之后的 {@code net.minecraft.util.Util}
+     * 不会被同一条规则再咬一遍。
+     */
+    static Pattern packageAlt(Collection names) {
+        if (!names) return null
+        return Pattern.compile('(?<![A-Za-z0-9_$.])(' +
+                names.collect { Pattern.quote(it) }.join('|') + ')(?![A-Za-z0-9_$])')
+    }
+
+    /**
+     * 对【一段不是字面量的】文本做改名：先限定名那一族，再类型名，再方法名。
+     *
+     * <p>三族分三遍走，不是走一遍合并起来的正则：它们的 token 空间不相交
+     * （限定名前面必带包、类型名是专有名词、方法名前面必带点），而分开写能各自用各自最紧的锚。
+     * 顺序也不能反：限定名先走，类型名才认得改过包的那一处；而方法名那一族的接收者变量
+     * 在被改过名的文本上才算得准。
+     *
+     * @param counter 单元素数组，回来时 counter[0] 多了这一段的命中数
+     */
+    static String renameCode(Pattern pAlt, Map pPairs, Pattern tAlt, Map tPairs,
+                             Pattern mAlt, Map mPairs, String code,
+                             Map hits, Map touched, String where, int[] counter) {
+        def out = code
+        [[pAlt, pPairs], [tAlt, tPairs], [mAlt, mPairs]].each { alt, pairs ->
+            if (alt == null) { return }
+            def m = alt.matcher(out)
+            def sb = new StringBuffer()
+            while (m.find()) {
+                def oldName = m.group(1)
+                hits[oldName] = ((hits[oldName] ?: 0) as int) + 1
+                touched[oldName] << where
+                counter[0] = counter[0] + 1
+                m.appendReplacement(sb, Matcher.quoteReplacement(pairs[oldName]))
+            }
+            m.appendTail(sb)
+            out = sb.toString()
+        }
+        return out
+    }
+
+    @TaskAction
+    void generateMount() {
+        def tPairs = typePairs.get()
+        def mPairs = methodPairs.get()
+        def pPairs = packagePairs.get()
+        if (tPairs.isEmpty() && mPairs.isEmpty() && pPairs.isEmpty()) {
+            throw new GradleException(
+                    "三张改名表都是空的，可这个任务还是被挂进了构建 —— 挂载条件与表对不上，" +
+                    "这时候挂进来的会是【一份没改名也没东西的副本】，编得过但全是错的。")
+        }
+        def outRoot = generatedDir.get().asFile
+        outRoot.deleteDir()
+        outRoot.mkdirs()
+
+        def tAlt = NameRenamedMountTask.typeAlt(tPairs.keySet())
+        def mAlt = NameRenamedMountTask.methodAlt(mPairs.keySet())
+        def pAlt = NameRenamedMountTask.packageAlt(pPairs.keySet())
+        def allOld = (pPairs.keySet() + tPairs.keySet() + mPairs.keySet()).asList()
+        // 不变量 4 要按【旧名属于哪一族】挑锚点，所以留一张索引。
+        def family = [:]
+        pPairs.keySet().each { family[it] = 'p' }
+        tPairs.keySet().each { family[it] = 't' }
+        mPairs.keySet().each { family[it] = 'm' }
+        def hits = allOld.collectEntries { k -> [(k): 0] }
+        def touched = allOld.collectEntries { k -> [(k): new LinkedHashSet()] }
+        def inLiterals = allOld.collectEntries { k -> [(k): 0] }
+        def alreadyNew = []
+        def counter = new int[1]
+        int n = 0
+        int copied = 0
+        def rootList = mounts.get().collect { k, v -> [k, new File(v).path.replace('\\', '/')] }
+                .sort { -it[1].length() }
+
+        javaFiles.asFileTree.matching { include '**/*.java' }.each { f ->
+            def abs = f.path.replace('\\', '/')
+            def owner = rootList.find { abs.startsWith(it[1] + '/') }
+            if (owner == null) {
+                throw new GradleException(
+                        "挂载源里冒出一个不属于任何挂载目录的文件：${abs}\n" +
+                        "说明 @InputFiles 与 mounts 这两份输入对不上了，产物路径没法算。")
+            }
+            def where = owner[0] + '/' + abs.substring(owner[1].length() + 1)
+            copied++
+            def src = f.getText('UTF-8')
+
+            // 不变量 2：新名不许已经在原文里。只对【类型名】判 —— 方法名那边
+            // .text( 本来就有 29 处在用，拿同一条判会把好规则拦死。
+            tPairs.each { oldName, newName ->
+                if (NameRenamedMountTask.typeAlt([newName]).matcher(src).find()) {
+                    alreadyNew << [where, oldName, newName]
+                }
+            }
+            // 限定名这一族【要判】：包里带点，锚得住，而「新名已在原文」意味着
+            // 同一个文件里两种写法共存，那正是要拦的东西。
+            pPairs.each { oldName, newName ->
+                if (NameRenamedMountTask.packageAlt([newName]).matcher(src).find()) {
+                    alreadyNew << [where, oldName, newName]
+                }
+            }
+
+            // 不变量 3：按「字面量 / 非字面量」交替切，只有非字面量那段过改名。
+            def rebuilt = new StringBuffer()
+            def codeOnly = new StringBuffer()
+            def lm = NameRenamedMountTask.LITERAL.matcher(src)
+            int cursor = 0
+            int before = counter[0]
+            while (lm.find()) {
+                if (lm.start() > cursor) {
+                    def seg = NameRenamedMountTask.renameCode(pAlt, pPairs, tAlt, tPairs, mAlt, mPairs,
+                            src.substring(cursor, lm.start()), hits, touched, where, counter)
+                    rebuilt.append(seg); codeOnly.append(seg)
+                }
+                rebuilt.append(lm.group())
+                cursor = lm.end()
+            }
+            if (cursor < src.length()) {
+                def seg = NameRenamedMountTask.renameCode(pAlt, pPairs, tAlt, tPairs, mAlt, mPairs,
+                        src.substring(cursor), hits, touched, where, counter)
+                rebuilt.append(seg); codeOnly.append(seg)
+            }
+            def dstText = rebuilt.toString()
+
+            if (counter[0] != before) {
+                n++
+                if (NameRenamedMountTask.literals(src) != NameRenamedMountTask.literals(dstText)) {
+                    throw new GradleException(
+                            "字面量被动了：${where}\n" +
+                            "改名切段切错了（多半是文本块 \"\"\" 这种这份切法不认的形状）。" +
+                            "字面量是要落盘与上线的，改了就是行为变化，而它不会编译报错。")
+                }
+                allOld.each { oldName ->
+                    // 不变量 4：代码段里不许还剩旧名。
+                    def w = family[oldName] == 'p'
+                            ? NameRenamedMountTask.packageAlt([oldName])
+                            : family[oldName] == 't'
+                                    ? NameRenamedMountTask.typeAlt([oldName])
+                                    : NameRenamedMountTask.methodAlt([oldName])
+                    if (w.matcher(codeOnly.toString()).find()) {
+                        throw new GradleException("改完代码里还剩旧名：${where} 里仍有 ${oldName}。替换逻辑漏了。")
+                    }
+                    // 字面量里留着旧名是【有意】的，那是数据；但它得出声，
+                    // 否则下一个人不知道这一支的文案还写着老名字。
+                    if (w.matcher(dstText).find()) { inLiterals[oldName] = (inLiterals[oldName] as int) + 1 }
+                }
+            }
+
+            def dst = new File(outRoot, where)
+            dst.parentFile.mkdirs()
+            // 显式按 UTF-8 写字节：File.text = '...' 走平台默认编码，
+            // 而这一支源文件里全是中文注释，zh-CN 的 Windows 上会写坏。
+            dst.bytes = dstText.getBytes('UTF-8')
+        }
+
+        if (alreadyNew) {
+            throw new GradleException(
+                    "改名表里的新名【已经】出现在共用代码原文里，共 ${alreadyNew.size()} 处，例：\n  " +
+                    alreadyNew.take(6).collect { "${it[0]}：${it[1]} → ${it[2]}" }.join('\n  ') +
+                    "\n说明那条规则要么多余、要么会跟已有的名字撞车。先把共用代码里那个名字处理干净。")
+        }
+        def dead = hits.findAll { k, v -> v == 0 }.keySet()
+        if (dead) {
+            throw new GradleException(
+                    "versions/name-renames.json 里这几条规则一次都没命中：${dead.join('、')}。\n" +
+                    "空转的规则比没有规则更糟 —— 下一个人会以为这里管着这件事。" +
+                    "名字改回去了、或者本仓已经不用它了，就把那条删掉。")
+        }
+        // 不变量 5：【少挂了东西必须说话】。漏一个目录的症状是「少编了几个文件」——
+        // 不报错、不红，只是那个类在游戏里不存在。
+        int expected = javaFiles.asFileTree.matching { include '**/*.java' }.files.size()
+        if (expected == 0 || copied != expected) {
+            throw new GradleException(
+                    "挂载源应该有 ${expected} 个 java 文件，实际复制了 ${copied} 个" +
+                    (expected == 0 ? '。一个都没有 —— 挂载目录空了或者路径不对。' : '。'))
+        }
+        def allPairs = pPairs + tPairs + mPairs
+        logger.lifecycle("按目标改名挂载共用代码：${expected} 个文件；" +
+                hits.collect { e ->
+                    "${e.key}→${allPairs[e.key]} 改 ${e.value} 处/${touched[e.key].size()} 文件" +
+                    "（字面量里留 ${inLiterals[e.key]} 处）" }.join('，') +
+                "；改动落在 ${n} 个文件上，产物在 build/generated/name-renames/")
+    }
+}
+
+/**
+ * 把共用代码挂进一个 source set。
+ *
+ * 两张表都空（这支的 Minecraft 没到 since）→ 照旧直接把源目录加进 srcDirs，
+ * 与另三支一模一样，一行都不许多做。表非空 → 生成一份改过名的副本，挂那一份。
+ *
+ * @param javaSrc 目标 source set 的 java
+ * @param mounts  挂载名（产物里的一层目录名，用源目录在仓库里的相对路径）→ 源目录
+ */
+ext.mcphoneMountSharedJava = { SourceDirectorySet javaSrc, Map<String, File> mounts ->
+    def table = ext.mcphoneNameRenames
+    def tPairs = (table?.typeRenames ?: [:]) as LinkedHashMap
+    def mPairs = (table?.methodRenames ?: [:]) as LinkedHashMap
+    def pPairs = (table?.packageRenames ?: [:]) as LinkedHashMap
+    if (tPairs.isEmpty() && mPairs.isEmpty() && pPairs.isEmpty()) {
+        mounts.each { name, dir -> javaSrc.srcDir dir }
+        logger.lifecycle("共用代码原样挂载：${mounts.size()} 个目录（改名表对这支的 Minecraft 不生效）")
+        return
+    }
+    def present = mounts.findAll { name, dir -> dir != null && dir.isDirectory() }
+    if (present.isEmpty()) {
+        throw new GradleException(
+                "mcphoneMountSharedJava 一个挂载目录都没收到，而改名表是非空的。" +
+                "要么挂载条件反了，要么仓库结构被挪了 —— 两种都不能静默挂一个空集。")
+    }
+    // 闭包参数要写出来：内层两参数的闭包里【没有 it】，写 it.xxx 会在配置阶段抛
+    // MissingPropertyException（实测过一次）。
+    def t = tasks.register('mountSharedJavaRenamed', NameRenamedMountTask) { task ->
+        task.description = '把共用代码按 versions/name-renames.json 改过名再挂进来'
+        task.group = 'build'
+        present.each { name, dir ->
+            task.mounts.put(name, dir.absolutePath)
+            task.javaFiles.from(project.fileTree(dir) { include '**/*.java' })
+        }
+        tPairs.each { o, nw -> task.typePairs.put(o, nw) }
+        mPairs.each { o, nw -> task.methodPairs.put(o, nw) }
+        pPairs.each { o, nw -> task.packagePairs.put(o, nw) }
+        task.generatedDir.set(layout.buildDirectory.dir('generated/name-renames'))
+    }
+    javaSrc.srcDir(t.map { it.generatedDir })
+    // 不只 compileJava：任何会读 java 源码集的任务（sourcesJar 之类）拿到没生成的
+    // 空目录都不报错，只静默产出少文件的产物。withType 一律挂上依赖。
+    tasks.withType(JavaCompile).configureEach { dependsOn t }
+}

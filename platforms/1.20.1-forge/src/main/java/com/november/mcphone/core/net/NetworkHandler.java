@@ -1,6 +1,7 @@
 package com.november.mcphone.core.net;
 
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.core.ModCapabilities;
 import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneItemData;
@@ -53,8 +54,7 @@ public final class NetworkHandler {
      * 能走到这里说明客户端状态没对上，或者有人在伪造包，两种情况都值得回一句话。
      */
     private static void notPurchased(ServerPlayer player) {
-        player.displayClientMessage(
-                Component.translatable("mcphone.store.not_purchased")
+        ClientMessages.show(player, Component.translatable("mcphone.store.not_purchased")
                         .withStyle(ChatFormatting.RED), true);
     }
 
@@ -190,8 +190,7 @@ public final class NetworkHandler {
         if (!com.november.mcphone.compat.WaystonesCompat.openSelection(player)) {
             // true = 显示在物品栏上方那一行，不占聊天记录。与 Waystones
             // 自己报传送失败时的位置一致，玩家不会觉得是两个模组在说话
-            player.displayClientMessage(
-                    Component.translatable("mcphone.waystone.unavailable"), true);
+            ClientMessages.show(player, Component.translatable("mcphone.waystone.unavailable"), true);
         }
     }
 

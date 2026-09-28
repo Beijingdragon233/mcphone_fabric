@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.notes.net;
 
 import com.november.mcphone.core.net.MCphoneNetwork;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.feature.notes.Note;
 import com.november.mcphone.feature.notes.NotePrinter;
@@ -101,7 +102,7 @@ public final class NotesNetworking {
                 .map(note -> NotePrinter.print(player, note))
                 .orElse(false);
 
-        player.displayClientMessage(Component.translatable(
+        ClientMessages.show(player, Component.translatable(
                 done ? "mcphone.notes.print_done" : "mcphone.notes.print_failed"), true);
     }
 

@@ -367,10 +367,9 @@ public final class HomeGrid {
         int top = phoneTop + PhoneTheme.STATUS_BAR_HEIGHT;
         int h = dotsTop() - top;
 
-        // setColor 调制透明度后必须还原，否则后面的东西跟着变淡
-        g.setColor(1f, 1f, 1f, progress);
-        boolean drawn = PhoneSkin.draw(g, PhoneSkin.Element.HOME_PAGE_EDGE, x, top, w, h);
-        g.setColor(1f, 1f, 1f, 1f);
+        // 进度就是这一条边光的整体不透明度；alpha 走参数，不再用那句【全局】setColor
+        // （那句在 26.x 已经删了，而且漏一次还原就会把后面整屏画淡）
+        boolean drawn = PhoneSkin.draw(g, PhoneSkin.Element.HOME_PAGE_EDGE, x, top, w, h, progress);
 
         if (!drawn) {
             int alpha = (int) (progress * ((PhoneTheme.COLOR_PAGE_EDGE >>> 24) & 0xFF));

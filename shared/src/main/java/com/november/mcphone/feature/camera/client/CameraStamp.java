@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.camera.client;
 
 import com.november.mcphone.core.client.AppOptions;
+import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.core.client.ClientConfig;
 import com.november.mcphone.core.client.PhoneTheme;
 import net.minecraft.client.Minecraft;
@@ -176,9 +177,9 @@ public final class CameraStamp {
      * 代价在一个满屏渲染世界的地方可以忽略。
      */
     private static void drawOutlined(GuiGraphics g, Font font, String text, int x, int y, int scale) {
-        g.pose().pushPose();
-        g.pose().translate(x, y, 0);
-        g.pose().scale(scale, scale, 1);
+        Transforms.push(g);
+        Transforms.translate(g, x, y);
+        Transforms.scale(g, scale, scale);
 
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
@@ -187,7 +188,7 @@ public final class CameraStamp {
         }
         g.drawString(font, text, 0, 0, COLOR, false);
 
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     /**

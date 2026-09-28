@@ -74,6 +74,37 @@ if (renamesJson.since == null) {
 }
 ext.mcphoneDatapackRenames = renamesJson.renames.asImmutable()
 
+// 名字改名表：Mojang 官方名换掉的那几个【类型名与方法名】，挂载共用代码时按它生成副本。
+// 与上面那张数据包表同一个理由 —— 【只此一份声明】，构建与挂载脚本读同一个文件。
+// 为什么这件事不归「层」管：层的准入条件是正文逐字相同，而名字出现在文件内部的
+// 字段、形参、泛型实参、调用点上，那是正文的一部分，两个版本上【不可能】逐字相同。
+// 判据、代价与那五条不变量在 versions/name-renames.json 与 gradle/mcphone-renames.gradle。
+def nameRenamesJson = readTrackedJson('versions/name-renames.json')
+if (nameRenamesJson.since == null) {
+    throw new GradleException("versions/name-renames.json 缺 since：没有它判不了这个目标该不该改名。")
+}
+// 三张表【可以都空】（那表示这张机制还没启用），但结构必须对 ——
+// 结构错了会静默变成「一条规则都没有」，而那是这张表最坏的失效方式。
+def nameRules = [:]
+['typeRenames', 'methodRenames', 'packageRenames'].each { axis ->
+    def part = nameRenamesJson[axis]
+    if (part == null) { nameRules[axis] = [:]; return }
+    if (!(part instanceof Map)) {
+        throw new GradleException(
+                "versions/name-renames.json 里的 ${axis} 不是对象 —— 取不到这一族规则，" +
+                "这一支就会【悄悄退回不改名】，错误照旧一堆而没人说话。")
+    }
+    part.each { oldName, newName ->
+        if (!oldName?.trim() || !newName?.trim()) {
+            throw new GradleException("versions/name-renames.json 的 ${axis} 里有一条空规则：\"${oldName}\" → \"${newName}\"")
+        }
+        if (oldName == newName) {
+            throw new GradleException("versions/name-renames.json 的 ${axis} 里有一条自己改成自己的规则：\"${oldName}\"")
+        }
+    }
+    nameRules[axis] = part.asImmutable()
+}
+
 // shared/ 里允许出现哪些第三方模组的 API 包。四条判据一条都不覆盖第三方包，
 // 而一刀切禁掉会把真能共用的联动代码（Curios）赶出 shared/ ——
 // 「这个第三方 API 跨版本稳不稳定」只能一条条查过再写下来，所以是一张声明表。
@@ -122,6 +153,15 @@ ext.mcphoneRepoRoot = layersRepoRoot
 // 平台自己的数据包单复数。【在这儿算】：McphoneVersions 是这个脚本里的类，
 // 别的 apply 脚本看不见它 —— 版本比较只此一处，结果靠 ext 传出去。
 ext.mcphoneTargetDatapackSingular = McphoneVersions.datapackSingular(myEntry.value.minecraft, renamesJson.since)
+
+// 这一支挂共用代码时按哪几条改名。【三张表都空 = 原样挂载】，那是常态而不是缺失：
+// 1.20.1 与 1.21.1 都在 since 之下，它们照旧直接把共用源挂上去，一行不多做。
+boolean nameRenamable = McphoneVersions.cmp(myEntry.value.minecraft, nameRenamesJson.since) >= 0
+ext.mcphoneNameRenames = nameRenamable
+        ? [typeRenames   : nameRules.typeRenames,
+           methodRenames : nameRules.methodRenames,
+           packageRenames: nameRules.packageRenames]
+        : [typeRenames: [:], methodRenames: [:], packageRenames: [:]]
 
 // 【全部目标的信息，供接缝清单用】
 //
@@ -264,6 +304,9 @@ ext.mcphoneLayers = (myEntry.value.layers ?: []).collect { name ->
     [
             name            : name,
             kind            : kind.label,
+            // 这一层在仓库里的相对目录。挂载脚本拿它当产物里的那一层目录名，
+            // 这样 javac 报出来的路径能直接 grep 回仓库里那一份。
+            relDir          : layerDir,
             // 禁的是【没被钉住】的那些轴
             forbiddenAxes   : ((pinsVersion ? [] : ['版本']) + (pinsLoader ? [] : ['加载器'])).asImmutable(),
             javaDir         : javaDir,

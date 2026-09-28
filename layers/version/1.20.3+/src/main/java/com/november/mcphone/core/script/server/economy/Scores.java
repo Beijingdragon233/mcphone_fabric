@@ -1,5 +1,6 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.november.mcphone.platform.Profiles;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.scores.Objective;
@@ -78,10 +79,7 @@ public final class Scores {
     public static String nameOf(MinecraftServer server, UUID player) {
         var online = server.getPlayerList().getPlayer(player);
         if (online != null) return online.getScoreboardName();
-        var profile = server.getProfileCache() == null
-                ? java.util.Optional.<com.mojang.authlib.GameProfile>empty()
-                : server.getProfileCache().get(player);
-        return profile.map(com.mojang.authlib.GameProfile::getName).orElse(null);
+        return Profiles.cachedName(server, player).orElse(null);
     }
 
     /**

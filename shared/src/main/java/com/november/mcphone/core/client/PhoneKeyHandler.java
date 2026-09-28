@@ -1,5 +1,6 @@
 package com.november.mcphone.core.client;
 
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -40,7 +41,7 @@ public final class PhoneKeyHandler {
 
         // 已经开着别的界面（背包、聊天框、手机自己）就不抢——玩家正在那儿
         // 操作，凭空跳到手机界面只会打断他
-        if (mc.screen != null) return;
+        if (Screens.current(mc) != null) return;
 
         // 身上没有手机就什么都不做。不提示：按错键是很常见的事，
         // 为此弹一句"你没有手机"反而聒噪

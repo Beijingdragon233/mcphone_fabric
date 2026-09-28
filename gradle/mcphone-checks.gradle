@@ -981,12 +981,23 @@ abstract class PlatformTwinsTask extends DefaultTask {
 
     /** 一对（或一组）的分数：以字典序第一个目标为基准，与其余各家的分数之和。 */
     static List measure(Map<String, File> copies) {
-        def names = copies.keySet().toList()
-        def base = lines(copies[names[0]])
+        // 【先按绝对路径去重，再算分】。collect() 已经用「去重后还剩几份」决定要不要盯这一组，
+        // 但分数原先是对【每一个看见它的名义目标】算一遍：同一个共享层文件被 N 个目标挂上，
+        // map 里就占 N 个 key，于是同一份真实差异被重复计 N-1 次。26.3-neoforge 挂上 1.20.5+
+        // 层的那天，62 对的分数齐刷刷 ×1.5 —— 那是重复计数，不是代码漂了。棘轮照着这个数
+        // 往下写就会自己松开：明天真漂 22 行，日志说「基线内」。
+        def reps = []
+        def seenPaths = new HashSet<String>()
+        copies.each { String name, File f ->
+            if (seenPaths.add(f.canonicalPath)) {
+                reps << f
+            }
+        }
+        def base = lines(reps[0])
         int total = 0
         boolean allExact = true
-        names.drop(1).each { o ->
-            def other = lines(copies[o])
+        reps.drop(1).each { File f ->
+            def other = lines(f)
             total += score(base, other)
             if (other != base) allExact = false
         }
@@ -1006,7 +1017,13 @@ abstract class PlatformTwinsTask extends DefaultTask {
         groups.each { rel, copies ->
             def (int total, boolean exact) = measure(copies)
             now[rel] = total
-            if (exact) movable << "  ${rel}  （${copies.keySet().join('、')}）"
+            // 报的时候也只报【不同的物理文件】各是谁的：同一个层文件被两家挂上，
+            // 列两个名字会让人以为有两份待搬。
+            if (exact) {
+                def ownerOf = new TreeMap<String, String>()
+                copies.each { String n, File f -> ownerOf.putIfAbsent(f.canonicalPath, n) }
+                movable << "  ${rel}  （${ownerOf.values().join('、')}）"
+            }
         }
 
         if (writeBaseline.get()) {

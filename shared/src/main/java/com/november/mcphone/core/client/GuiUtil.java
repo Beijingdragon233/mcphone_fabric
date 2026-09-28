@@ -1,14 +1,13 @@
 package com.november.mcphone.core.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.november.mcphone.platform.client.Transforms;
+import com.november.mcphone.platform.client.Draw;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -83,15 +82,35 @@ public final class GuiUtil {
         drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH);
     }
 
+    /** 同上，整张拉伸，外加【整体不透明度】 */
+    public static void drawTexture(GuiGraphics g, ResourceLocation tex,
+                                   int x, int y, int w, int h, int texW, int texH, float alpha) {
+        drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
+    }
+
     /** 只画贴图的一块（裁剪用），参数顺序同 GuiGraphics 的 11 参重载：目标宽高在前、UV 在后 */
     public static void drawTexture(GuiGraphics g, ResourceLocation tex,
                                    int x, int y, int w, int h,
                                    float u, float v, int srcW, int srcH,
                                    int texW, int texH) {
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
-        RenderSystem.disableBlend();
+        drawTexture(g, tex, x, y, w, h, u, v, srcW, srcH, texW, texH, 1.0F);
+    }
+
+    /**
+     * 同上，外加一个【整体不透明度】，1.0 就是不上色。
+     *
+     * <p>为什么色调是一个【参数】而不是从前那句 {@code g.setColor(...)}：那句在老原版是一段
+     * 【全局】着色器颜色（1.21.1 的 {@code GuiGraphics#setColor} 里就是一句
+     * {@code RenderSystem.setShaderColor}），包住后面画的每一样东西，所以用的时候必须成对还原；
+     * 26.x 把那句连同 {@code RenderSystem} 的开关混合一起删了，颜色改成【每一次绘制各带一个】。
+     * 于是这一维只能跟着参数走，四支才有同一个意思 —— 具体怎么交出去在
+     * {@link Draw#textured} 那一份每平台各写的实现里。
+     */
+    public static void drawTexture(GuiGraphics g, ResourceLocation tex,
+                                   int x, int y, int w, int h,
+                                   float u, float v, int srcW, int srcH,
+                                   int texW, int texH, float alpha) {
+        Draw.textured(g, tex, x, y, w, h, u, v, srcW, srcH, texW, texH, alpha);
     }
 
     /**
@@ -105,9 +124,16 @@ public final class GuiUtil {
      */
     public static void drawNineSlice(GuiGraphics g, ResourceLocation tex,
                                      int x, int y, int w, int h, int texW, int texH, int border) {
+        drawNineSlice(g, tex, x, y, w, h, texW, texH, border, 1.0F);
+    }
+
+    /** 同上，外加【整体不透明度】；九块每一块都带同一个 alpha，与从前那句全局 setColor 等价 */
+    public static void drawNineSlice(GuiGraphics g, ResourceLocation tex,
+                                     int x, int y, int w, int h, int texW, int texH, int border,
+                                     float alpha) {
         if (w <= 0 || h <= 0) return;
         if (border <= 0 || border > (Math.min(texW, texH) - 1) / 2) {
-            drawTexture(g, tex, x, y, w, h, texW, texH);
+            drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
             return;
         }
         int bx = Math.min(border, w / 2);
@@ -122,7 +148,8 @@ public final class GuiUtil {
                 int dh = dy[row + 1] - dy[row];
                 if (dw > 0 && dh > 0) {
                     drawTexture(g, tex, dx[col], dy[row], dw, dh,
-                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row], texW, texH);
+                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row],
+                            texW, texH, alpha);
                 }
             }
         }
@@ -144,9 +171,16 @@ public final class GuiUtil {
     public static void drawNineSliceScaled(GuiGraphics g, ResourceLocation tex,
                                            int x, int y, int w, int h, int texW, int texH,
                                            int designW, int designH, int corner) {
+        drawNineSliceScaled(g, tex, x, y, w, h, texW, texH, designW, designH, corner, 1.0F);
+    }
+
+    /** 同上，外加【整体不透明度】，十块（边角中央）每一块都带同一个 alpha */
+    public static void drawNineSliceScaled(GuiGraphics g, ResourceLocation tex,
+                                           int x, int y, int w, int h, int texW, int texH,
+                                           int designW, int designH, int corner, float alpha) {
         if (w <= 0 || h <= 0) return;
         if (corner <= 0 || designW <= 0 || designH <= 0) {
-            drawTexture(g, tex, x, y, w, h, texW, texH);
+            drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
             return;
         }
 
@@ -154,7 +188,7 @@ public final class GuiUtil {
         int sbx = Math.max(1, Math.round((float) corner * texW / designW));
         int sby = Math.max(1, Math.round((float) corner * texH / designH));
         if (sbx > (texW - 1) / 2 || sby > (texH - 1) / 2) {
-            drawTexture(g, tex, x, y, w, h, texW, texH);
+            drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
             return;
         }
 
@@ -171,7 +205,8 @@ public final class GuiUtil {
                 int dh = dy[row + 1] - dy[row];
                 if (dw > 0 && dh > 0) {
                     drawTexture(g, tex, dx[col], dy[row], dw, dh,
-                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row], texW, texH);
+                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row],
+                            texW, texH, alpha);
                 }
             }
         }
@@ -202,19 +237,29 @@ public final class GuiUtil {
      * 【原版控件自己内部那句也踩同一个坑】，而且它在方法正中间、改不到——摆一个原版
      * {@code MultiLineEditBox} 进手机，放大后正文顶上几行会整行不见。要在手机里用原版的
      * 滚动控件，先看 {@link com.november.mcphone.api.client.ui.PhoneMultiLineEditBox}。
+     *
+     * 【26.x 起这一段要分开读】：那边原版那句【也】认变换矩阵了 —— 压栈之前先把矩形过一遍
+     * 当前的 pose。于是「先在这里换算一遍、再交给原版」在这三支上等于换算【两次】。所以交出去
+     * 那一步收进了 {@link Transforms#scissor}：换算与两头取整的规矩四支共用这一份，
+     * 【别再让 pose 过第二遍】归各支自己管。取证与来回比较在
+     * {@code docs/PORTING-26.3.md} 的 §三十七、§三十八。上面那句"原版控件内部也踩同一个坑"
+     * 在 26.3 已经不成立，那边的补丁类于是不再覆写裁剪，只剩构造入口。
      */
     public static void enableScissor(GuiGraphics g, int x1, int y1, int x2, int y2) {
-        Matrix4f matrix = g.pose().last().pose();
-        Vector3f a = matrix.transformPosition(x1, y1, 0, new Vector3f());
-        Vector3f b = matrix.transformPosition(x2, y2, 0, new Vector3f());
+        // 「这个点变换之后落在哪」收在 Transforms 里 —— 1.21.1 那边是 PoseStack 顶上的
+        // Matrix4f，26.x 那边栈本身就是 Matrix3x2f，两句写不到一起去。
+        float ax = Transforms.mapX(g, x1, y1);
+        float ay = Transforms.mapY(g, x1, y1);
+        float bx = Transforms.mapX(g, x2, y2);
+        float by = Transforms.mapY(g, x2, y2);
 
         // 【两头取整的方向不一样】：小的那头往下取、大的那头往上取。
         // 倍数不是整数时（125%，或者被窗口 fit() 夹出来的小数），四个角各自四舍五入
         // 会让框比内容实际盖住的像素窄半格，最外面一行字被切掉一个像素——正是这次要修的
         // 症状的微缩版。这么取最多多画 1 像素：多画看不出来，少画看得出来。
-        g.enableScissor(
-                (int) Math.floor(Math.min(a.x, b.x)), (int) Math.floor(Math.min(a.y, b.y)),
-                (int) Math.ceil(Math.max(a.x, b.x)), (int) Math.ceil(Math.max(a.y, b.y)));
+        Transforms.scissor(g,
+                (int) Math.floor(Math.min(ax, bx)), (int) Math.floor(Math.min(ay, by)),
+                (int) Math.ceil(Math.max(ax, bx)), (int) Math.ceil(Math.max(ay, by)));
     }
 
     /**
@@ -340,11 +385,11 @@ public final class GuiUtil {
     public static boolean drawItemIcon(GuiGraphics g, ItemStack stack, int x, int y, int size) {
         if (!canDrawItemIcon(stack)) return false;
 
-        g.pose().pushPose();
-        g.pose().translate(x, y, 0);
-        if (size != 16) g.pose().scale(size / 16f, size / 16f, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, x, y);
+        if (size != 16) Transforms.scale(g, size / 16f, size / 16f);
         g.renderItem(stack, 0, 0);
-        g.pose().popPose();
+        Transforms.pop(g);
         return true;
     }
 
@@ -438,11 +483,11 @@ public final class GuiUtil {
         String shown = truncate(font, name, Math.round(cellWidth / scale));
         float shownW = font.width(shown) * scale;
 
-        g.pose().pushPose();
-        g.pose().translate(iconX + (iconSize - shownW) / 2f, iconY + iconSize + 2, 0);
-        g.pose().scale(scale, scale, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, iconX + (iconSize - shownW) / 2f, iconY + iconSize + 2);
+        Transforms.scale(g, scale, scale);
         g.drawString(font, shown, 0, 0, color, false);
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     //  时间
