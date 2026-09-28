@@ -86,8 +86,9 @@ public final class EditBoxes {
      * 形状一字不差 —— 所以这一句纯粹是换名字，四支的行为一致。
      *
      * <p>共用代码里原先是自己写 {@code box.render(...)}：那是【调用】不是覆写，收进门面就行。
-     * 第五处 {@code NoteEditor} 的接收者是 {@code PhoneMultiLineEditBox}，那个类在 26.3 上
-     * 撞的是别的事（它要继承的那个原版类换成 builder 造了），本轮没并进来。
+     * 第五处 {@code NoteEditor} 的接收者是 {@code PhoneMultiLineEditBox}：另三支在第 22 步就
+     * 并进来了，这一支要等那个类先在 26.3 上编得过（它的父类换成 builder 造了，第 23 步用
+     * access transformer 把构造入口接回去）才跟上。现在五处都在这一句里。
      */
     public static void render(AbstractWidget w, GuiGraphicsExtractor g, int mouseX, int mouseY,
                               float partialTick) {

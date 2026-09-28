@@ -124,7 +124,7 @@ public final class NoteEditor {
         }
 
         fillFromCacheOnce();
-        box.render(g, mouseX, mouseY, partialTick);
+        EditBoxes.render(box, g, mouseX, mouseY, partialTick);
 
         renderButtons(g, font, x, buttonY, w, mouseX, mouseY);
     }

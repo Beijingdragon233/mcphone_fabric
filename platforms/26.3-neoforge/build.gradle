@@ -137,6 +137,17 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 neoForge {
     version = project.neo_version
 
+    // 只放宽一处可见性：net.minecraft.client.gui.components.MultiLineEditBox 那个
+    // 12 参 private 构造器，放宽到 protected。为什么要放宽、为什么只能这么放宽，
+    // 取证在 ../../docs/PORTING-26.3.md 的 §三十七；AT 机制的许可与再分发条件
+    // 在 gradle/access-transformer-LICENSE.md。这一份文件【同时】是运行期的输入：
+    // src/main/templates 那份 neoforge.mods.toml 没写 [[accessTransformers]] 块，
+    // 加载器按惯例回落到 META-INF/accesstransformer.cfg，两边吃同一份是有意的。
+    accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
+
+    // AT 条目必须命中真实成员：写歪了要以构建错误收场，不要静默地什么都不改。
+    validateAccessTransformers = true
+
     // 【没有 parchment 块】。它只补参数名，不改类型名与方法名，缺它不影响编不编得过；
     // 而 26.3 上还没有对应的 parchment 构建，留着会让配置阶段去解析一个不存在的构件。
 

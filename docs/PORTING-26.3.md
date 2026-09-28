@@ -2526,3 +2526,123 @@ Shift 与 Alt 两边语义本来就相同（1.21.1 查 340/344、342/346；26.x 
   逐次带色）、`getMainRenderTarget` 3 条（`mc.gameRenderer.mainRenderTarget()`，且 `Screenshot.grab`
   变五参会冒出 arity 新错）、`MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，
   再往后是真缺 jar 那一堆（refinedstorage 13、Patchouli 11、AE2/RS/Tom 6、MCEF 5、Waystones 2）。
+
+## 三十七、1d 第 23 步：`PhoneMultiLineEditBox` 用 AT 把构造入口接回去 —— 162 → 156
+
+这一步吃掉 **6 条**：`PhoneMultiLineEditBox.java` 自己那 5 条，加上上一轮【故意留着】的
+`NoteEditor:127`。**162 → 156，新增 0 条。**
+
+### 一、方案是用户点的 A，代价是本仓第一次引入 AT 这套机制
+
+上一轮留的三条证据把路收窄成三条：A 给 26.3 加一条 access transformer，只放宽那个私有构造，
+类继续 `extends MultiLineEditBox`，抄来的父类正文整段删；B 改继承 `AbstractTextAreaWidget`
+自己带一个 `MultilineTextField`，等于把原版那三百多行镜像进平台目录，而且不再 is-a
+`MultiLineEditBox`；C 外面包一层委托 —— 那是对【外】API 的形状变了，违反口径。
+选 A 换来的是「附属模组那一句 `new` 一个字不用改」，赔进来的是本仓没有先例的构建配置。
+所以这一步额外留了两份纸：`platforms/26.3-neoforge/src/main/resources/META-INF/accesstransformer.cfg`
+自己把「放宽了什么、为什么必须放宽」写在文件头，机制与许可的条件在
+`platforms/26.3-neoforge/gradle/access-transformer-LICENSE.md`。
+
+### 二、这个补丁要修的事，26.x 上游已经修掉了
+
+`GuiGraphicsExtractor#enableScissor`（`GuiGraphicsExtractor.java:151-153`）把
+`new ScreenRectangle(x0, y0, x1-x0, y1-y0).transformAxisAligned(this.pose)` 算完再压栈，
+`disableScissor`（`:156-158`）只弹栈。父类 `AbstractTextAreaWidget#extractWidgetRenderState`
+（`:64-81`）用的正是这一句：`:70` 开、`:75` 收，中间夹 pose 的 push/translate/pop，
+背景与装饰则按 `showBackground` / `showDecorations` 两个开关走（`:66` 与 `:77`）。
+
+所以这一支【一个方法都不覆写】。留着那份镜像不是「多此一举」而是【会把变换做两遍】，
+还要盖掉原版新加的那两个开关与 IME 预编辑（`preeditOverlay`）。类本身只剩一件事：构造入口。
+
+### 三、只剩构造入口：一条 AT，而且只放宽到 `protected`
+
+26.3 的 `MultiLineEditBox` 公开造法是 `builder()`（`:276`）＋ `Builder#build`（`:330`），
+底下真正干活的构造器是 `private`（`:35`）。Java 的子类构造器只能调【直接父类】的构造器，
+静态工厂递不进 `super(...)`，而那一句 `new PhoneMultiLineEditBox(...)` 是对外 API —— 没有第三条路。
+条目写的是 `protected` 不是 `public`：只有子类要用它，多余的可见性不给。
+
+### 四、描述符是我抄错的，闸替我抓了出来（顺手更正 §三十六 的一处数字）
+
+§三十六 写的「13 参」数错了。`javap -p -s` 对着
+`build/moddev/artifacts/minecraft-patched-26.3.0.3-beta-merged.jar` 量出来是 12 参：
+
+```
+descriptor: (Lnet/minecraft/client/gui/Font;IIIILnet/minecraft/network/chat/Component;Lnet/minecraft/network/chat/Component;IZIZZ)V
+```
+
+第一版按「13」写成了 `...IIZIIZ`，`:createMinecraftArtifacts` 当场报
+`access-transformer:missing-target: The target ... does not exist`
+（NeoForm 的 `ApplySourceTransformAction`）。这条全靠 `neoForge { validateAccessTransformers = true }`
+开着 —— 不开的话写歪的条目一声不响，症状要到下一轮变成「`MultiLineEditBox` 的构造器是
+`private`，访问不到」那种看不懂的错。Java 那一句 `super(...)` 递的是 12 个实参，从一开始就是对的。
+
+### 五、补上去的五个参数，逐个对得上老三支的行为
+
+`Builder` 的字段初值（`:283-288`）是 `textColor = -2039584`、`textShadow = true`、
+`cursorColor = -3092272`、`showBackground = true`、`showDecorations = true`。对 1.21.1：
+
+- `-2039584` = 那边的 `TEXT_COLOR`（`MultiLineEditBox.java:21`）
+- `-3092272` = 那边的 `CURSOR_INSERT_COLOR`（`:19`）
+- `textShadow = true`：那边画正文用的是 `GuiGraphics.drawString(font, text, x, y, color)`
+  这个五参重载，它内部转的就是 `dropShadow = true` 那一个（`GuiGraphics.java:556-558`；
+  `String` 那一对 `:453-455` 同形）
+- `showBackground` / `showDecorations`：那边 `AbstractScrollWidget.renderWidget` 无条件画背景与装饰
+
+`placeholder` 与 `message` 落在哪个位置也核过：1.21.1 那句 `super(x, y, width, height, message)`
+（`:30`）里 `message` 走的是父类 narration，26.3 那个构造器第 6、7 参依次是 `placeholder`、
+`narration` —— 按位置原样递，没有换顺序。
+
+### 六、顺带查出【一处还没修】的行为差：`GuiUtil.enableScissor` 在 26.3 上换算两次
+
+shared 那一份是先 `Transforms.mapX/mapY` 把矩形按 pose 换算、再调原版那句 `enableScissor`；
+而 26.3 的原版那句【也】换算一遍，于是这一支上等于【变换两次】：倍数不是 100% 时页面级裁剪会偏，
+对外的 `PhoneCanvas.clipped` 也在同一条路上（附属模组在用）。
+
+本轮【没修】它。修它要在裁剪上开一条 seam（每平台一份），和这一步要答的问题是两件事；
+已经写进 `GuiUtil.enableScissor` 的 javadoc 与本节，进游戏复核时一并看。这也是当初那份
+「补丁类」文档在这一支上要重读一遍的原因 —— 上游把 pose 认了，我们的门面反而多算了一遍。
+
+### 七、第五处 `render` 收进接缝
+
+`NoteEditor:127` 改成 `EditBoxes.render(box, g, mouseX, mouseY, partialTick)`，
+26.3 那份 `EditBoxes.java` 里「本轮没并进来」那段注释跟着改成「五处都在这一句里」。
+判据是类型：26.3 的 `AbstractScrollArea extends AbstractWidget`（`:15`），
+`MultiLineEditBox` 挂它下面，所以 `PhoneMultiLineEditBox` 是 `AbstractWidget`，门面收得下。
+
+### 八、实测
+
+- 26.3 `:compileJava` **162 → 156**（`BUILD FAILED in 4m 46s`）：多重集比对【消失】的正是那 6 条
+  （`无法将类 MultiLineEditBox 中的构造器应用到给定类型`、`方法不会覆盖或实现超类型的方法`、
+  `找不到符号 renderBackground/renderContents/renderDecorations`、`NoteEditor` 那条 `render`），
+  【新增 0 条】。
+- `:processResources` 之后 `build/resources/main/META-INF/accesstransformer.cfg` 在 ——
+  运行期吃的那份就是编译期那份，不是两处各写一遍。
+- 动了 `shared/`，老三支 `:compileJava` 全 `BUILD SUCCESSFUL`：1.21.1-neoforge 19s、
+  1.21.1-fabric 1m26s、1.20.1-forge 46s（独立 checkout 冷构建，比主工作树那几次慢）。
+- 老三支 `assertTests`：fabric 与 forge 各仍是已知那两条环境红（EconomyData=POSIX 路径、
+  ScriptEngine=zh-CN locale），与第 19/21/22 步逐条一致；1.21.1-neoforge 第一次【多出】第三条红
+  `assertTestLayoutEngineTest`（1000 项布局预算 100ms，实际 135.26ms）—— 那是我把三个平台的构建
+  同时开着跑挤出来的，机器空下来单跑是 0.75ms / 0.62ms、215 项全过。计时类断言不能和并行构建
+  一起读，记在这儿免得下一个人当成回归。
+- 双胞胎：**118 对不变，6,154 → 6,171 行**。涨的 17 行全在 `PhoneMultiLineEditBox.java`（13 → 30）：
+  这一支的实现形状【必然】与另三支不同 —— 补丁方法没了、构造改成 12 参带默认值。注释不计分，
+  加分的只有代码。`verifyPlatformTwins` 按新基线通过。
+- `updateSeamsDoc`：清单没变（26.3-neoforge 47 个、共用代码引用 37 个）—— 没引入新接缝类。
+- 十道配置闸全绿；CI 矩阵、目标声明、改名表未动。
+- 这一步是在独立 checkout `Y:\mod-手机\port263-wt`（分支 `port/26.3-s23`，起点 `346fee6`）做的。
+  主工作树当时有【在线书源】那一族未提交的新文件，其中 `OnlineReaderPage.java` 直接写了改名表的
+  【新名】 `net.minecraft.util.Util`，`:mountSharedJavaRenamed` 那条「新名不许已经出现在共用代码
+  原文里」的闸因此把整个 26.3 挂载拦下来（同一个文件在我改 `GuiUtil` 注释时也拦过我一次，
+  我把那句里的类型名换成描述性说法就过了）。那是别人的在途工作，不该由我改，
+  所以换一份干净树把这一支的数字测准 —— CI 数的也是这份干净树，两边可比。
+
+### 九、还欠着的
+
+- 这个类【一次没进游戏看过】：笔记 App 正文框在 150% / 200% 下放大了还裁不裁得对（这一步的信心
+  全压在「上游那句认 pose」那条取证上）、光标闪烁、IME 预编辑（中文输入法的候选窗那一块）、
+  字符上限计数、滚动条拖动、`setValue` 与 `getValue` 的往返。
+- 附属模组拿到的是同一个 `new`、同一个 `final`、同一个 is-a `MultiLineEditBox`；但它【不能】
+  指望 26.3 上存在过那个 7 参公开构造 —— 那是我们靠 AT 接出来的入口，不是原版给的。
+- `GuiUtil.enableScissor` 换算两次（第六节），修它要开 seam，下一轮排它。
+- 下一簇按数排：`setColor` 8 条、`getMainRenderTarget` 3 条（`Screenshot.grab` 变五参会冒 arity 新错）、
+  `MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，再往后是真缺 jar 那一堆。
