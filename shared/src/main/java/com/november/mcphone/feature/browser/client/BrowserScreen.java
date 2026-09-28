@@ -283,9 +283,10 @@ public final class BrowserScreen extends PhoneScreenBase {
 
         if (hovered) g.fill(x, y, x + NAV_BTN_W, y + h, PhoneTheme.COLOR_APP_PRESSED);
 
-        if (!enabled) g.setColor(1.0F, 1.0F, 1.0F, DISABLED_ALPHA);
-        boolean drawn = PhoneSkin.draw(g, element, x, y, NAV_BTN_W, h);
-        if (!enabled) g.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        // 「禁用」= 这一张贴图整体淡到 DISABLED_ALPHA；alpha 走参数（兜底那个字符符号不淡，
+        // 它换的是 COLOR_BUTTON_DISABLED 那个颜色 —— 与从前那句 setColor 当场还原后一模一样）
+        boolean drawn = PhoneSkin.draw(g, element, x, y, NAV_BTN_W, h,
+                enabled ? 1.0F : DISABLED_ALPHA);
         if (drawn) return;
 
         int color = !enabled ? PhoneTheme.COLOR_BUTTON_DISABLED

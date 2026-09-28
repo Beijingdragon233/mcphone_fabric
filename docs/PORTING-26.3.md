@@ -2714,3 +2714,93 @@ shared 那一份是先 `Transforms.mapX/mapY` 把矩形按 pose 换算、再调�
   （`IllegalAccessException` / `NoSuchMethodError` 会是它没通）。
 - 下一簇按数排：`setColor` 8 条、`getMainRenderTarget` 3 条（`Screenshot.grab` 变五参会冒 arity 新错）、
   `MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，再往后是真缺 jar 那一堆。
+
+## 三十九、1d 第 25 步：`setColor` 那一族 —— 色调从【全局状态】搬成【这一次绘制的参数】。156 → 148
+
+`GuiGraphics#setColor` 在 26.x 整条没了，混合开关 `RenderSystem.enableBlend / defaultBlendFunc /
+disableBlend` 也没了。这一簇 8 条红是同一个根：手机贴图要「淡一点」，而在 1.21.1 上那是**一段全局
+着色器状态**，在 26.x 上是**这一次绘制自带的一个参数**。两句不能互译，所以这一维只能搬到参数上。
+
+### 一、两支各是什么形状（都在官方源里查过）
+
+- 1.21.1：`GuiGraphics#setColor(float,float,float,float)` 的函数体只有两句 —— `flushIfManaged()` 加
+  `RenderSystem.setShaderColor(...)`（1.21.1 的
+  `sourcesAndCompiledWithNeoForge_…jar` 里 `GuiGraphics.java:243-246`）。它是【全局】的：设一次，
+  后面画的每一样东西都跟着变，所以用的时候必须当场成对还原 —— 本仓那两处调用点各自包着一对。
+- 26.3：`setColor` 不在 `GuiGraphicsExtractor` 上了，`RenderSystem` 上那三个混合开关也不在。颜色改成
+  每次绘制各带一个：`blit(RenderPipeline, Identifier, int, int, float, float, int, int, int, int,
+  int, int, int color)`（`GuiGraphicsExtractor.java:340-368`），最后那个 `color` 占的正是从前那段
+  全局状态的位置；而那条【不带色】的 blit 收尾给它传 `-1`（`:337`）。
+- 混合也不再取决于「轮到这一句时 GL 恰好是什么状态」：`RenderPipelines.GUI_TEXTURED_SNIPPET` 自带
+  `ColorTargetState(BlendFunction.TRANSLUCENT)`（`RenderPipelines.java:318-327`），`GUI_TEXTURED`
+  就是它 `register` 出来的（`:1107`）。谁走这条 pipeline 谁就混合。
+
+第 24 步那份日志里这 8 条的分布：`GuiUtil` 4 条（`enableBlend`、`defaultBlendFunc`、`disableBlend`
+三条「找不到符号」，加一条「不兼容的类型：`Identifier` 无法转换为 `RenderPipeline`」—— 那条 11 参
+blit 在这一支上头一个参数是 pipeline）、`HomeGrid` 2 条、`BrowserScreen` 2 条。
+
+### 二、修法：alpha 跟着参数走，落地各支写一份
+
+共用侧加的是【带 alpha 的重载】，不是新函数：
+
+- `GuiUtil.drawTexture(…, float alpha)`、`drawNineSlice(…, int border, float alpha)`、
+  `drawNineSliceScaled(…, int corner, float alpha)`，以及 `PhoneSkin.draw(g, element, x, y, w, h,
+  float alpha)`。不带 alpha 的老签名全部保留、转手交给 `1.0F`，所以没改的调用点行为一字不变。
+- 真需要淡的只有两处：`HomeGrid` 的页边光进度（从前 `setColor(1,1,1,progress)` 包一句画再还原）、
+  `BrowserScreen` 的禁用导航键（从前那对 `setColor(1,1,1,DISABLED_ALPHA)`）。九块/十块的九宫格把
+  同一个 alpha 发给每一块，与从前那句全局色等价，而且再也不会漏还原。
+- 四支共用的落地入口是本仓已有的接缝类 `platform/client/Draw`，新方法 `Draw.textured(…)`。老三支 =
+  `enableBlend → defaultBlendFunc →（alpha≠1 时 setColor）→ blit → 还原 → disableBlend`，
+  与从前那三句加那对 setColor 逐句同形；26.3 = `blit(GUI_TEXTURED, …, ARGB.white(alpha))`。
+- 等价到什么程度：`ARGB.white(1.0F)` = `255 << 24 | 0xFFFFFF` = `-1`，正是原版那条不带色 blit 自己传
+  的值（`:337`），所以 100% 不透明的东西【逐像素同一个值】，不是「差不多」。`0 < alpha < 1` 时这一支
+  要多过一遍 8 位量化：`as8BitChannel` 是 `Mth.floor(value * 255.0F)`（`ARGB.java:343-345`），
+  `0.35f` 落到 `89/255` = 0.3490。这是【粒度】的差，不是【方向】的错，而这一支的顶点格式
+  `POSITION_TEX_COLOR` 只有 8 位颜色，没有别的入口。
+
+### 三、越过 1.0 的提亮：宁可让它继续红
+
+`PhoneTheme.SKIN_HOVER_BRIGHTNESS = 1.8f` 要的是**大于 1** 的乘色，老那句浮点给得起，这一支给不起，
+而且失败的方式比「给不起」更难看：`as8BitChannel`【不夹范围】—— `Mth.floor` 就是 `(int)Math.floor(v)`
+（`Mth.java:62-64`），`1.8f * 255.0F` 在 float 里正好是 459，`459 << 24` 截成 int 之后高位丢了，
+剩下的 alpha 字节是 `0xCB` = 203，也就是 **0.796**。照老句直译过来的结果不是「提亮没了」，
+是「提亮变成变暗加半透明」。
+
+所以 `PhoneSkin.java:372/376`（`drawOrFill` 的 highlight）与 `PhoneChassis.java:276/290`（导航键悬停）
+这 4 条【留在 `g.setColor(…)` 上继续报编译错误】，没有换成一句 `Draw.textured(…, 1.8F)` 把红刷掉：
+那是把一种静默的行为丢失换成另一种。这一支上看着最像真办法的是再叠一遍带 `ADDITIVE` 的 textured
+pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `BlendFunction.ADDITIVE`，
+`RenderPipelines.java:1126-1131`），但加法混合与「着色器颜色乘 1.8」在半透明像素上不等价。
+**三个候选留给用户定夺**：换 ADDITIVE 叠一层、把 1.8 改成 8 位内表达得出的一档（那就得接受提亮变弱）、
+或者 26.3 上干脆不做悬停提亮。
+
+### 四、实测
+
+- 26.3 `:compileJava` **156 → 148**（首轮 `BUILD FAILED in 4m 39s`；改注释之后复跑 6s，仍 148）。
+  按（文件, 错误信息, 那条代码快照）多重集比对：消失的 8 条逐条对上 —— `GuiUtil` 4 + `HomeGrid` 2 +
+  `BrowserScreen` 2；新增 **0** 条。
+- 动了 `shared/`，老三支 `:compileJava` 全 `BUILD SUCCESSFUL`：1.21.1-neoforge 4s、1.21.1-fabric 4s、
+  1.20.1-forge 27s。`assertTests --continue` 三支都只剩已知那两条环境红（`assertTestEconomyDataTest`
+  = POSIX 路径、`assertTestScriptEngineTest` = zh-CN locale），其余 40 来份全过，含
+  `assertTestSdkGateTest`。
+- 双胞胎：**118 对不变，6,176 → 6,191（+15）**。+15 全在 `Draw.java`（基线 64 → 79），而且只长在
+  26.3 那一段：按 `PlatformTwinsTask` 同一套算法（去注释、逐行 trim、多重集对称差、以字典序第一个
+  目标为基准）复算，1.20.1-forge↔1.21.1-fabric 19 → 19、1.20.1-forge↔1.21.1-neoforge 19 → 19、
+  1.20.1-forge↔26.3-neoforge 26 → 41。也就是老三支新增的那三份 `textured` 去注释之后逐字相同，
+  加分全部来自 26.3 独有的 pipeline + ARGB 那一份。
+- `updateSeamsDoc`：清单没变（26.3-neoforge 47 个、共用代码引用 37 个）—— 新方法挂在已有的 `Draw`
+  接缝类上，没造新接缝类。
+- 十道配置闸全绿；CI 矩阵、目标声明、改名表未动。
+- 对外的附属模组 API 这一层没动：`shared/…/api/` 一个文件都没改，`GuiUtil`/`PhoneSkin` 的老签名
+  全部保留，新增的都是重载。
+
+### 五、还欠着的
+
+- 第三节那 4 条 setColor 错误等定夺，本步不动它。
+- 只有进游戏才能验的：禁用键淡到 0.35 那档、桌面页边光的进度动画、皮肤贴图在 26.3 上的半透明
+  （混合现在来自 pipeline，不再取决于 GL 状态）。老三支理论上【一字不变】，但 `enableBlend` 现在排在
+  `setColor` 之前（从前 setColor 在调用点、先于 GuiUtil 那三句），而 1.21.1 的 `setColor` 自己会
+  `flushIfManaged()` —— 顺带复核一下这个「理论上」。
+- 第 23 步那条 AT 运行期生效没有、第 24 步那条裁剪倍数，两条都还等进游戏。
+- 下一簇按数排（与上一步同）：`getMainRenderTarget` 3 条（`Screenshot.grab` 变五参会冒 arity 新错）、
+  `MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，后面还是真缺 jar 那一堆。

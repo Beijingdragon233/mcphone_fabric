@@ -260,16 +260,31 @@ public final class PhoneSkin {
 
     /** 画贴图，拉伸到目标区域。真的画了才 true；没有贴图返回 false，调用方自行兜底 */
     public static boolean draw(GuiGraphics g, Element element, int x, int y, int w, int h) {
+        return draw(g, element, x, y, w, h, 1.0F);
+    }
+
+    /**
+     * 同上，外加【整体不透明度】：0.35 就是「禁用」那一档，进度动画就传当前那一帧的进度。
+     *
+     * <p>为什么这一维在参数上而不是从前那句 {@code g.setColor(...)}：那句是【全局】着色器颜色，
+     * 用的时候必须成对还原，而且它管不住【画之后】的东西；26.x 直接把那句删了，颜色改成
+     * 每一次绘制各带一个。走参数，四支才是同一件事，也再不会漏还原。
+     */
+    public static boolean draw(GuiGraphics g, Element element, int x, int y, int w, int h,
+                               float alpha) {
         if (w <= 0 || h <= 0) return false;
 
         SkinTexture tex = resolve(element).orElse(null);
         if (tex == null) return false;
 
-        // 走 GuiUtil 而不是 g.blit：原版那条 blit 不开混合，半透明贴图会被当成不透明画
         if (tex.border() > 0) {
-            GuiUtil.drawNineSlice(g, tex.location(), x, y, w, h, tex.width(), tex.height(), tex.border());
+            // 走 GuiUtil 而不是 g.blit：老三支那句 blit 不开混合，半透明贴图会被当成不透明画；
+            // 这一层还顺带把 alpha 递下去（各支怎么落地见 platform/client/Draw#textured）
+            GuiUtil.drawNineSlice(g, tex.location(), x, y, w, h,
+                    tex.width(), tex.height(), tex.border(), alpha);
         } else {
-            GuiUtil.drawTexture(g, tex.location(), x, y, w, h, tex.width(), tex.height());
+            GuiUtil.drawTexture(g, tex.location(), x, y, w, h,
+                    tex.width(), tex.height(), alpha);
         }
         return true;
     }

@@ -1,7 +1,7 @@
 package com.november.mcphone.core.client;
 
 import com.november.mcphone.platform.client.Transforms;
-import com.mojang.blaze3d.systems.RenderSystem;
+import com.november.mcphone.platform.client.Draw;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -82,15 +82,35 @@ public final class GuiUtil {
         drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH);
     }
 
+    /** 同上，整张拉伸，外加【整体不透明度】 */
+    public static void drawTexture(GuiGraphics g, ResourceLocation tex,
+                                   int x, int y, int w, int h, int texW, int texH, float alpha) {
+        drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
+    }
+
     /** 只画贴图的一块（裁剪用），参数顺序同 GuiGraphics 的 11 参重载：目标宽高在前、UV 在后 */
     public static void drawTexture(GuiGraphics g, ResourceLocation tex,
                                    int x, int y, int w, int h,
                                    float u, float v, int srcW, int srcH,
                                    int texW, int texH) {
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
-        RenderSystem.disableBlend();
+        drawTexture(g, tex, x, y, w, h, u, v, srcW, srcH, texW, texH, 1.0F);
+    }
+
+    /**
+     * 同上，外加一个【整体不透明度】，1.0 就是不上色。
+     *
+     * <p>为什么色调是一个【参数】而不是从前那句 {@code g.setColor(...)}：那句在老原版是一段
+     * 【全局】着色器颜色（1.21.1 的 {@code GuiGraphics#setColor} 里就是一句
+     * {@code RenderSystem.setShaderColor}），包住后面画的每一样东西，所以用的时候必须成对还原；
+     * 26.x 把那句连同 {@code RenderSystem} 的开关混合一起删了，颜色改成【每一次绘制各带一个】。
+     * 于是这一维只能跟着参数走，四支才有同一个意思 —— 具体怎么交出去在
+     * {@link Draw#textured} 那一份每平台各写的实现里。
+     */
+    public static void drawTexture(GuiGraphics g, ResourceLocation tex,
+                                   int x, int y, int w, int h,
+                                   float u, float v, int srcW, int srcH,
+                                   int texW, int texH, float alpha) {
+        Draw.textured(g, tex, x, y, w, h, u, v, srcW, srcH, texW, texH, alpha);
     }
 
     /**
@@ -104,9 +124,16 @@ public final class GuiUtil {
      */
     public static void drawNineSlice(GuiGraphics g, ResourceLocation tex,
                                      int x, int y, int w, int h, int texW, int texH, int border) {
+        drawNineSlice(g, tex, x, y, w, h, texW, texH, border, 1.0F);
+    }
+
+    /** 同上，外加【整体不透明度】；九块每一块都带同一个 alpha，与从前那句全局 setColor 等价 */
+    public static void drawNineSlice(GuiGraphics g, ResourceLocation tex,
+                                     int x, int y, int w, int h, int texW, int texH, int border,
+                                     float alpha) {
         if (w <= 0 || h <= 0) return;
         if (border <= 0 || border > (Math.min(texW, texH) - 1) / 2) {
-            drawTexture(g, tex, x, y, w, h, texW, texH);
+            drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
             return;
         }
         int bx = Math.min(border, w / 2);
@@ -121,7 +148,8 @@ public final class GuiUtil {
                 int dh = dy[row + 1] - dy[row];
                 if (dw > 0 && dh > 0) {
                     drawTexture(g, tex, dx[col], dy[row], dw, dh,
-                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row], texW, texH);
+                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row],
+                            texW, texH, alpha);
                 }
             }
         }
@@ -143,9 +171,16 @@ public final class GuiUtil {
     public static void drawNineSliceScaled(GuiGraphics g, ResourceLocation tex,
                                            int x, int y, int w, int h, int texW, int texH,
                                            int designW, int designH, int corner) {
+        drawNineSliceScaled(g, tex, x, y, w, h, texW, texH, designW, designH, corner, 1.0F);
+    }
+
+    /** 同上，外加【整体不透明度】，十块（边角中央）每一块都带同一个 alpha */
+    public static void drawNineSliceScaled(GuiGraphics g, ResourceLocation tex,
+                                           int x, int y, int w, int h, int texW, int texH,
+                                           int designW, int designH, int corner, float alpha) {
         if (w <= 0 || h <= 0) return;
         if (corner <= 0 || designW <= 0 || designH <= 0) {
-            drawTexture(g, tex, x, y, w, h, texW, texH);
+            drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
             return;
         }
 
@@ -153,7 +188,7 @@ public final class GuiUtil {
         int sbx = Math.max(1, Math.round((float) corner * texW / designW));
         int sby = Math.max(1, Math.round((float) corner * texH / designH));
         if (sbx > (texW - 1) / 2 || sby > (texH - 1) / 2) {
-            drawTexture(g, tex, x, y, w, h, texW, texH);
+            drawTexture(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, alpha);
             return;
         }
 
@@ -170,7 +205,8 @@ public final class GuiUtil {
                 int dh = dy[row + 1] - dy[row];
                 if (dw > 0 && dh > 0) {
                     drawTexture(g, tex, dx[col], dy[row], dw, dh,
-                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row], texW, texH);
+                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row],
+                            texW, texH, alpha);
                 }
             }
         }
