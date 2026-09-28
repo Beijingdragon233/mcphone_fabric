@@ -1,5 +1,6 @@
 package com.november.mcphone.platform.client;
 
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.input.CharacterEvent;
@@ -71,6 +72,26 @@ public final class EditBoxes {
     /** 把一个字符转给页面里嵌的原版控件。26.3 上 {@code CharacterEvent} 只收码点。 */
     public static boolean character(AbstractWidget w, char c, int modifiers) {
         return w.charTyped(new CharacterEvent(c));
+    }
+
+
+    /**
+     * 画一个控件一次。
+     *
+     * <p>这一支上入口叫 {@code extractRenderState}（{@code Renderable.java:9}），而
+     * {@code AbstractWidget} 把它做成了 {@code final}（{@code AbstractWidget.java:59}）：
+     * 里面依次是判 visible、算 {@code isHovered}、转调 {@code extractWidgetRenderState}
+     * （{@code :62}）、挂 tooltip。1.21.1 那边同一个方法是 {@code public final void render}
+     * （那份源的 {@code AbstractWidget.java:66}）转 {@code renderWidget}（{@code :73}），
+     * 形状一字不差 —— 所以这一句纯粹是换名字，四支的行为一致。
+     *
+     * <p>共用代码里原先是自己写 {@code box.render(...)}：那是【调用】不是覆写，收进门面就行。
+     * 第五处 {@code NoteEditor} 的接收者是 {@code PhoneMultiLineEditBox}，那个类在 26.3 上
+     * 撞的是别的事（它要继承的那个原版类换成 builder 造了），本轮没并进来。
+     */
+    public static void render(AbstractWidget w, GuiGraphicsExtractor g, int mouseX, int mouseY,
+                              float partialTick) {
+        w.extractRenderState(g, mouseX, mouseY, partialTick);
     }
 
 }

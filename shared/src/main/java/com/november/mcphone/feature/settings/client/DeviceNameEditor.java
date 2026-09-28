@@ -137,7 +137,7 @@ public final class DeviceNameEditor {
             box.setY(y);
             box.setWidth(w);
         }
-        box.render(g, mouseX, mouseY, partialTick);
+        EditBoxes.render(box, g, mouseX, mouseY, partialTick);
         y += BOX_HEIGHT + 4;
 
         // ---- 剩余字数 ----

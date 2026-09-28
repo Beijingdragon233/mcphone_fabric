@@ -1,6 +1,8 @@
 package com.november.mcphone.feature.browser.client;
 
 import com.november.mcphone.platform.client.Draw;
+import com.november.mcphone.platform.client.EditBoxes;
+import com.november.mcphone.platform.client.KeyModifiers;
 import com.november.mcphone.platform.client.Transforms;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -212,7 +214,7 @@ public final class BrowserScreen extends PhoneScreenBase {
                     viewX + viewW / 2, viewY + viewH / 2 + 2, FontPalette.subtle());
         }
 
-        urlBox.render(g, mouseX, mouseY, partialTick);
+        EditBoxes.render(urlBox, g, mouseX, mouseY, partialTick);
     }
 
     /**
@@ -390,13 +392,14 @@ public final class BrowserScreen extends PhoneScreenBase {
 
     /**
      * 此刻按着哪些修饰键。mouseScrolled 的签名里没有 modifiers，只能自己查，
-     * 不查的话 Ctrl+滚轮缩放永远不触发。Screen 的这几个静态方法在 macOS 上把 Command 当 Ctrl，不用分平台。
+     * 不查的话 Ctrl+滚轮缩放永远不触发。三个查询走 platform/client/KeyModifiers：老三支是
+     * Screen 上那三个静态方法，26.3 是 Minecraft 的实例方法加自己补的 macOS 换键，四支同语义。
      */
     private static int currentModifiers() {
         int mods = 0;
-        if (hasShiftDown()) mods |= MOD_SHIFT;
-        if (hasControlDown()) mods |= MOD_CTRL;
-        if (hasAltDown()) mods |= MOD_ALT;
+        if (KeyModifiers.shift()) mods |= MOD_SHIFT;
+        if (KeyModifiers.ctrl()) mods |= MOD_CTRL;
+        if (KeyModifiers.alt()) mods |= MOD_ALT;
         return mods;
     }
 

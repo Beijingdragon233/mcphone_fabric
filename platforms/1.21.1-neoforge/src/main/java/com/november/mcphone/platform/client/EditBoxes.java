@@ -1,5 +1,6 @@
 package com.november.mcphone.platform.client;
 
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 
@@ -49,6 +50,20 @@ public final class EditBoxes {
     /** 把一个字符转给页面里嵌的原版控件。 */
     public static boolean character(AbstractWidget w, char c, int modifiers) {
         return w.charTyped(c, modifiers);
+    }
+
+
+    /**
+     * 画一个控件一次。这一支上入口就叫 {@code render}。
+     *
+     * <p>1.21.1 那份是 {@code public final}（{@code AbstractWidget.java:66}），里面判 visible、
+     * 算悬停、转调 {@code renderWidget}（{@code :73}）、挂 tooltip；26.x 上同一套改叫
+     * {@code extractRenderState}。共用代码里那几个嵌在页面里的原版输入框原先自己写
+     * {@code box.render(...)}，现在四支统一走这一句。
+     */
+    public static void render(AbstractWidget w, GuiGraphics g, int mouseX, int mouseY,
+                              float partialTick) {
+        w.render(g, mouseX, mouseY, partialTick);
     }
 
 }

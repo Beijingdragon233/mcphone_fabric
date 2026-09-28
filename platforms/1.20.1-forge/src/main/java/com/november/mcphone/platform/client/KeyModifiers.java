@@ -1,6 +1,7 @@
 package com.november.mcphone.platform.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.client.settings.KeyModifier;
 
 /**
@@ -19,6 +20,13 @@ import net.minecraftforge.client.settings.KeyModifier;
  * {@code AppHotkeys} 是另一回事：那个类把 {@code Set<KeyModifier>} 摆进了自己的数据
  * 模型（{@code record Binding}）、存盘格式与冲突判定里，要脱钩得先换掉那个类型参数——
  * 那是一次真重构而不是加个门面，而它只有两百多行。<b>没有做，也不该拿这个门面硬套。</b>
+ *
+ * <h2>第二组：此刻按着哪个修饰键</h2>
+ *
+ * 下面那三个 {@code ctrl()} / {@code shift()} / {@code alt()} 与上面那个加载器类型无关，
+ * 它们回答的是「这一帧有没有按着某个修饰键」。放在一起是因为这就是同一件事的两半，
+ * 而 26.x 把原版那三个查询从 {@code Screen} 的静态方法搬成了 {@code Minecraft} 的实例方法，
+ * 四支必须有同一个名字的出口 —— macOS 那条换键的取舍写在各自那份里。
  */
 public final class KeyModifiers {
 
@@ -27,5 +35,28 @@ public final class KeyModifiers {
     /** 这个键本身是不是一个修饰键（Ctrl / Shift / Alt）。 */
     public static boolean isModifierKey(InputConstants.Key key) {
         return KeyModifier.isKeyCodeModifier(key);
+    }
+
+    // ==== 第二组：此刻按着哪个修饰键 ====
+
+    /**
+     * Ctrl 有没有按着；macOS 上认的是 Command —— 这一支上就是原版
+     * {@code Screen.hasControlDown()} 本来的语义（{@code ON_OSX} 时查左右 SUPER，否则查左右
+     * CONTROL）。行号写在另两份里：本支没有可查的官方源，那三个静态方法在本支存在由
+     * {@code :compileJava} 编过证明。共用代码里「按住 Ctrl 滚轮调悬浮 HUD 大小」与
+     * 「浏览器页 Ctrl+滚轮缩放」都认这一条，26.3 那一份要自己补这个换键。
+     */
+    public static boolean ctrl() {
+        return Screen.hasControlDown();
+    }
+
+    /** Shift 有没有按着（原版 {@code Screen.hasShiftDown()}，没有平台差异）。 */
+    public static boolean shift() {
+        return Screen.hasShiftDown();
+    }
+
+    /** Alt 有没有按着（原版 {@code Screen.hasAltDown()}，没有平台差异）。 */
+    public static boolean alt() {
+        return Screen.hasAltDown();
     }
 }

@@ -329,7 +329,7 @@ public final class BookList {
                 ? GuiUtil.truncate(font, Component.translatable("mcphone.reader.search").getString(),
                         textW - 2)
                 : null);
-        search.render(g, mouseX, mouseY, partialTick);
+        EditBoxes.render(search, g, mouseX, mouseY, partialTick);
 
         folderHovered = folderSlot
                 && GuiUtil.hit(mouseX, mouseY, x + w - countW - HIT_PAD, y,
@@ -668,12 +668,12 @@ public final class BookList {
      * 按到 e，而背包键默认就是 e，不吃掉就成了"搜着搜着背包开了"。
      */
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        return search != null && search.keyPressed(keyCode, scanCode, modifiers);
+        return search != null && EditBoxes.key(search, keyCode, scanCode, modifiers);
     }
 
     /** 文字（含输入法提交与粘贴）进入搜索框的唯一通道 */
     public boolean charTyped(char c, int modifiers) {
-        return search != null && search.charTyped(c, modifiers);
+        return search != null && EditBoxes.character(search, c, modifiers);
     }
 
     public boolean mouseScrolled(double scrollY) {

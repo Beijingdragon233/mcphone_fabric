@@ -2418,3 +2418,111 @@ RenderPipelines.GUI_TEXTURED, INVENTORY_LOCATION, leftPos, topPos, 0, 0, imageWi
   `setColor` 8 条（真实落点在 `GuiUtil` 的贴图绘制，26.3 是 `blit(..., int color)` 逐次带色）、
   `getMainRenderTarget` 3 条（26.3 走 `mc.gameRenderer.mainRenderTarget()`，而且 `Screenshot.grab`
   变成五参，符号修好后会冒出 arity 新错）、`MetadataSectionSerializer` 3 条、以及真缺 jar 那一堆。
+## 三十六、1d 第 22 步：控件的绘制入口 + 此刻按着哪个修饰键 —— 173 → 162
+
+这一步吃掉 **11 条**，全是【调用点】：四份每平台接缝文件各加两个方法（`EditBoxes.render`、
+`KeyModifiers.ctrl/shift/alt`），六个共用文件把裸调用改过去。**173 → 162，新增 0 条。**
+
+| 条数 | 报的是 | 落点 |
+|---|---|---|
+| 4 | `找不到符号 方法 render(GuiGraphicsExtractor,int,int,float)` | `BookList:332`、`BrowserScreen:215`、`ChatConversation:599`、`DeviceNameEditor:140` —— 页面里嵌的原版输入框自己画自己 |
+| 2 | `无法将类 EditBox 中的方法 keyPressed / charTyped 应用到给定类型` | `BookList:671/676` —— 同一个文件里别处已经走 `EditBoxes.click`，这两行漏了 |
+| 5 | `找不到符号 方法 hasControlDown() / hasShiftDown() / hasAltDown()` | `PhoneScreen:1450`、`BrowserScreen:397-399`、`TerminalApp:103` |
+
+### 一、`render` 那一族是改名，不是形变
+
+26.x 控件的绘制入口是 `Renderable#extractRenderState(GuiGraphicsExtractor,int,int,float)`
+（`Renderable.java:9`），`AbstractWidget` 把它做成 `final`（`AbstractWidget.java:59`）：里面判
+visible、算 `isHovered`、转调 `extractWidgetRenderState`（`:62`）、挂 tooltip。1.21.1 同一个位置是
+`public final void render(GuiGraphics,int,int,float)`（那份源的 `AbstractWidget.java:66`）转
+`renderWidget`（`:73`）—— **两次的形状一字不差，所以这是纯改名**，收进门面一句就够。
+
+第五处 `NoteEditor:127` 本轮【没并进来】，因为它的接收者不是原版类型，见第四节。
+
+### 二、修饰键这一族：搬家的同时【macOS 那笔换键没搬过来】
+
+老三支问的是 `Screen` 上的三个静态方法（1.21.1 的 `Screen.java:425-431`、`:433-436`、`:438-441`），
+其中 Ctrl 那一个是带分支的：`Minecraft.ON_OSX` 为真时查 LEFT_SUPER / RIGHT_SUPER（343 / 347），
+否则查 LEFT_CONTROL / RIGHT_CONTROL（341 / 345）。26.x 把这三个查询搬成 `Minecraft` 的实例方法
+（`Minecraft.java:778`、`:782`、`:786`），搬过来的那一份**只查普通 Ctrl**：
+`isKeyDown(224) || isKeyDown(228)`，没有 `ON_OSX` 分支。
+
+于是照搬 `mc.hasControlDown()` 是【行为变化】而不是改名：macOS 上「按住 Ctrl 滚轮调悬浮 HUD 大小」
+（`PhoneScreen`）与「浏览器页 Ctrl+滚轮缩放」（`BrowserScreen`）会都不触发。所以 26.3 那份自己把这条补上：
+
+```java
+InputQuirks.REPLACE_CTRL_KEY_WITH_CMD_KEY
+        ? InputConstants.isKeyDown(SDLScancode.SDL_SCANCODE_LGUI)
+                || InputConstants.isKeyDown(SDLScancode.SDL_SCANCODE_RGUI)
+        : Minecraft.getInstance().hasControlDown();
+```
+
+三条取证：
+
+1. 这条规矩在 26.x 是现成的、不是我们发明的：`InputQuirks.java:14` `ON_OSX`、`:15`
+   `REPLACE_CTRL_KEY_WITH_CMD_KEY = ON_OSX`、`:16` `EDIT_SHORTCUT_KEY_MODIFIER`（macOS 上是 3072 =
+   左右 GUI 两个修饰位）；事件那一侧 `InputWithModifiers#hasControlDown()`（`:61-63`，`& 192`）与
+   `#hasControlDownWithQuirk()`（`:65-67`，用上面那个常量）就是同一件事。我们这查询的是【此刻的键盘状态】
+   而不是【这个事件带没带】—— 滚轮回调里没有事件对象，所以只能查状态。
+2. `InputConstants.isKeyDown(int)`（`InputConstants.java:220-223`）读的是
+   `SDL_GetKeyboardState().get(key)`：这一支的窗口后端是 SDL，参数是 **scancode**（1.21.1 那个同名方法
+   还收 window 句柄 + GLFW 键号）。
+3. `Minecraft.hasControlDown` 用的 224 / 228 正是 `SDL_SCANCODE_LCTRL` / `SDL_SCANCODE_RCTRL`
+   （javap 过 lwjgl-sdl 3.4.3：`LCTRL=224、LSHIFT=225、LALT=226、LGUI=227、RCTRL=228、RSHIFT=229、
+   RALT=230、RGUI=231`）。这条对得上，Command 才敢取 `LGUI` / `RGUI`，并且用的是常量而不是抄数。
+
+Shift 与 Alt 两边语义本来就相同（1.21.1 查 340/344、342/346；26.x 查 225/229、226/230，同一对物理键），
+所以那两个方法就是转调。
+
+### 三、第五处修饰键查询是补查出来的
+
+`TerminalApp:103` 那句写的是限定的 `Screen.hasShiftDown()`。第一次按符号分组时我只盯了裸调用
+（`hasControlDown()` 这种继承来的），漏掉这一组，所以这一步实际是 11 条不是 10 条。它同时是这个文件
+唯一用到 `Screen` 的地方，改完把那条 import 删了。
+
+### 四、第五处 `render` 为什么不并进来：`PhoneMultiLineEditBox` 在 26.x 断了继承这条路
+
+`NoteEditor` 画的那个框是我们自己的 `api/client/ui/PhoneMultiLineEditBox`，它存在的唯一理由是
+「原版那句裁剪不看 PoseStack」（见它自己的类注释与 §十九）。这一轮查下来两件事：
+
+- **原版那句裁剪已经认 pose 了**：`GuiGraphicsExtractor#enableScissor`（`GuiGraphicsExtractor.java:151-153`）
+  把 `new ScreenRectangle(x0, y0, x1-x0, y1-y0).transformAxisAligned(this.pose)` 之后再压栈。
+  也就是说这个补丁类要修的东西在 26.x 上游已经修好。
+- **但它连「继承」都做不到了**：26.3 的 `MultiLineEditBox` 只剩一个 13 参的 `private` 构造
+  （`MultiLineEditBox.java:35`），公开入口换成 `builder()`（`:276`，`Builder` 在 `:280`，
+  `:331` 才 new 出来）。子类没有可调的父构造，`extends MultiLineEditBox` 在 26.x 上是死路。
+- 它整段抄过来那份父类正文，在 26.x 对应的是 `AbstractTextAreaWidget#extractWidgetRenderState`
+  （`:64-81`），裁剪那对在 `:70` 与 `:75`，中间夹着 pose 的 push/translate/pop。
+
+这三条合起来是一个方案问题（要不要 AT 打开那个构造、还是改继承 `AbstractTextAreaWidget` 自己带一个
+`MultilineTextField`、还是让它不再 is-a），不是改名能顺手带过的，所以单列一步做，本轮宁可留着
+`NoteEditor:127` 那一条错误。
+
+### 五、实测
+
+- 26.3 `:compileJava` **173 → 162**（`BUILD FAILED in 4m 44s`）：多重集比对掉的正是上表那 11 条，
+  **新增 0 条**。
+- 动了 `shared/`，老三支全跑：`1.21.1-neoforge` 6s、`1.21.1-fabric` 8s、`1.20.1-forge` 32s，
+  均 `BUILD SUCCESSFUL`。1.20.1 那一支顺带当了裁判：`Screen` 上那三个静态方法、
+  `AbstractWidget#render(GuiGraphics,int,int,float)` 在本支存在，是编译器说的，不是我推的。
+- 老三支 `assertTests --continue`：三支都仍是 `assertTestEconomyDataTest` 与 `assertTestScriptEngineTest`
+  两条已知环境红，与第 19 / 21 步基线逐条一致。
+- 双胞胎：**118 对不变，6,135 → 6,154 行**。涨在两处：`EditBoxes.java` 20 → 26、
+  `KeyModifiers.java` 6 → 19。老三支这三份的新方法【代码逐字相同】（1.20.1 那份差的只有注释，
+  注释不计分），加分只来自 26.3 那一份独有的方法体。
+- `updateSeamsDoc`：四支的接缝清单**没变** —— 这一步只往已有接缝类型里加方法，没引入新的接缝类。
+- 十道配置闸全绿；CI 矩阵、目标声明、改名表未动。
+
+### 六、还欠着的
+
+- 这五处【一次都没进游戏看过】：四个输入框画得对不对（画控件那一句现在多绕一层，行为应等价）、
+  `BookList` 搜索框的键盘与输入法、终端 App 的 Shift 行为、`PhoneScreen` 的 Ctrl+滚轮调 HUD、
+  浏览器页的 Ctrl+滚轮缩放。
+- macOS 那条分支【从没在这台机器上跑过】（本机 Windows）。本轮做的是「保持 1.21.1 已有的语义」，
+  取证在注释里；真机上按 Command 滚一下才算验过。
+- `PhoneMultiLineEditBox` 的方案还没定（第四节那三条证据是它的起点），定了之后 `NoteEditor:127`
+  那一条才有着落。
+- 下一簇按数排：`setColor` 8 条（真实落点在 `GuiUtil` 的贴图绘制，26.3 是 `blit(..., int color)`
+  逐次带色）、`getMainRenderTarget` 3 条（`mc.gameRenderer.mainRenderTarget()`，且 `Screenshot.grab`
+  变五参会冒出 arity 新错）、`MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，
+  再往后是真缺 jar 那一堆（refinedstorage 13、Patchouli 11、AE2/RS/Tom 6、MCEF 5、Waystones 2）。

@@ -596,7 +596,7 @@ public final class ChatConversation {
             box.setY(textY);
             box.setWidth(textW);
         }
-        box.render(g, mouseX, mouseY, partialTick);
+        EditBoxes.render(box, g, mouseX, mouseY, partialTick);
 
         int sendX = x + w - sendW;
         sendHovered = mouseX >= sendX && mouseX <= x + w

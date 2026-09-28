@@ -10,8 +10,8 @@ import com.november.mcphone.feature.terminal.integration.ae2.Ae2Integration;
 import com.november.mcphone.feature.terminal.integration.refinedstorage.RefinedStorageIntegration;
 import com.november.mcphone.feature.terminal.integration.toms.TomsStorageIntegration;
 import com.november.mcphone.feature.terminal.net.TerminalActionPacket;
+import com.november.mcphone.platform.client.KeyModifiers;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.language.I18n;
 
@@ -100,7 +100,7 @@ public final class TerminalApp extends PhoneApp {
     @Override
     public void onPress() {
         MCphoneNetwork.sendToServer(new TerminalActionPacket(
-                Screen.hasShiftDown() || !hasInstalledTerminal()
+                KeyModifiers.shift() || !hasInstalledTerminal()
                         ? TerminalActionPacket.Action.OPEN_SLOT_MENU
                         : TerminalActionPacket.Action.OPEN_TERMINAL));
     }

@@ -10,6 +10,7 @@ import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneItemData;
 import com.november.mcphone.core.PhoneLocation;
 import com.november.mcphone.platform.client.Draw;
+import com.november.mcphone.platform.client.KeyModifiers;
 import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.feature.chat.client.ChatAddContact;
 import com.november.mcphone.feature.chat.client.ChatConversation;
@@ -1445,9 +1446,9 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 跟着变小，光标很容易在半途落到手机外面，若还要求"必须停在某块区域上"，
         // 一次连续的缩小会滚到一半突然不动了。
         //
-        // Ctrl 用原版的 hasControlDown()：它在 macOS 上认的是 Command，与本模组别处
+        // Ctrl 走 KeyModifiers.ctrl()：它在 macOS 上认的是 Command，与本模组别处
         // 对修饰键的约定一致（见 ClientConfig 里 appHotkeys 那段注释）。
-        if (scrollY != 0 && hudMode && hasControlDown()) {
+        if (scrollY != 0 && hudMode && KeyModifiers.ctrl()) {
             PhoneHudPlacement.setPercent(PhoneHudPlacement.percent()
                     + (scrollY > 0 ? PhoneHudPlacement.STEP_PERCENT
                                    : -PhoneHudPlacement.STEP_PERCENT));
