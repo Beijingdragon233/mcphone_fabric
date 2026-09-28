@@ -2311,3 +2311,110 @@ public static void setHidden(Minecraft mc, boolean hidden);
   变成 `final`（只能走那个五参构造），这几条得连着做；`setColor` 那 8 条的真实落点在
   `GuiUtil` 的贴图绘制上（现在每一对 `setColor/还原` 中间都只夹着一次 `PhoneSkin.draw`，
   26.3 是 `blit(..., int color)` 那种逐次带色，不是全局调制）。
+## 三十五、1d 第 21 步：容器界面那一族 19 条 —— 26.x 把 `renderBg`【整个删了】，背板改挂 `extractBackground`。192 → 173
+
+三个共用容器界面（末影箱 `PhoneContainerScreen`、唱片仓 `DiscBayScreen`、终端卡槽
+`TerminalSlotScreen`）这一步一次过，**19 条清零、新增 0 条**，净 **192 → 173**。
+它们撞的是三件事，逐组对上：
+
+| 条数 | 报的是 | 26.x 上成了什么 |
+|---|---|---|
+| 6 | `无法为 final 变量 imageWidth / imageHeight 分配值` | 两个字段是 `protected final`（`AbstractContainerScreen.java:38`、`:39`），唯一入口那个五参构造（`:64`） |
+| 3 | `方法不会覆盖`（`renderBg`） | **`renderBg` 整个没了**，原版这一支不再画面板，见第二节 |
+| 3 | `方法不会覆盖`（`render`） | → `extractRenderState`（`:91`） |
+| 1 | `方法不会覆盖`（`renderLabels`） | → `extractLabels`（`protected`，`:194`） |
+| 3 | `找不到符号 方法 render(GuiGraphicsExtractor,int,int,float)` | 就是 `super.render(...)`，那一支不叫这个名字 |
+| 3 | `找不到符号 方法 renderTooltip(GuiGraphicsExtractor,int,int)` | → `extractTooltip`（`protected`，`:169`） |
+
+### 一、还是那一层：门面挡得住调用，挡不住【被谁覆写】
+
+与 §九 的 `PhoneScreenBase` 同一条道理。子类照 1.21.1 的名字写 `@Override render(...)`，在 26.x 上
+【连编译错都不报】（那一支根本没有这个名的父方法），只会永远不被调到，界面整个不画。所以这一步新增
+第四组每平台一份的接缝类 `platform/client/PhoneContainerScreenBase`，四个平台目录各一份；
+`shared/` 里那三个界面只动两处 —— `extends` 换成它，尺寸从「super 之后赋字段」换成「递进构造」。
+
+26.3 那一份把四个原版入口转回老名字，另外【补一个这一支已经不存在的方法】：
+
+```text
+extractRenderState -> render(中立)              render 的默认实现 = super.extractRenderState
+extractBackground  -> extractTransparentBackground + renderBg(中立)   renderBg 默认空
+extractLabels      -> renderLabels(中立)        -> super.extractLabels
+extractTooltip     -> renderTooltip(中立)       -> super.extractTooltip
+```
+
+老三支那三份【一个方法都不覆写】：`render` / `renderBg` / `renderLabels` / `renderTooltip` 在那三支
+全是原版自己的方法，`render → renderBackground（:196-198 = renderTransparentBackground + renderBg）`
+这条链原版已经串好了，中间插一层只会多一次转发。它们只需要有那个【四支同签名】的五参构造
+（三参 `super` ＋ 两行赋值）。
+
+### 二、`renderBg` 挂在 `extractBackground` 上 —— 这一支原版自己就是这么挂的
+
+不是这层自创的位置。26.3 的 `AbstractContainerScreen` 全类只有三处绘制：`:159` 与 `:165` 那两条
+`blitSprite`（悬停格子的前后高光）、`:232` 燃料图标、`:239` 一格 `-2130706433` 的底 ——
+【没有一处画面板】，`INVENTORY_LOCATION`（`:31`）与 `BACKGROUND_TEXTURE_WIDTH`（`:34`）只剩常量。
+背板成了子类自己的事，而 `InventoryScreen` 就是这么干的：它覆写 `extractBackground`
+（`InventoryScreen.java:99-103`），先 `super.extractBackground(...)`，再 `graphics.blit(
+RenderPipelines.GUI_TEXTURED, INVENTORY_LOCATION, leftPos, topPos, 0, 0, imageWidth, imageHeight, 256, 256)`。
+
+挂点的次序也照 1.21.1 那条链摆：26.x 的驱动方是 `Screen#extractRenderStateWithTooltipAndSubtitles`
+（final，`Screen.java:108-118`）—— `nextStratum()` → `extractBackground`（`:110`）→
+`ScreenEvent.Render.Background` → `nextStratum()` → `extractRenderState`（`:113`）；容器类在 `:93`
+自己发 Foreground，所以 `:114` 那一处显式不给它再发一遍。透明底那两层两边同形（1.21.1
+`Screen#renderTransparentBackground` `:417` 与 26.3 `Screen#extractTransparentBackground` `:434`
+都是那一条 `fillGradient(0, 0, w, h, -1072689136, -804253680)`）。
+
+有一笔账要说在前面：子类自己那句 `Draw.screenBackground(this, ...)` 在 26.3 上叫的是
+`Screen#extractBackground`，而那正是【这层覆写过的方法】—— 于是它也会带上背板。这不是本轮引入的：
+1.21.1 上 `Draw.screenBackground` 叫 `Screen#renderBackground`，虚分派同样落到
+`AbstractContainerScreen#renderBackground`，背板同样画两遍。每帧抽取两次、背板各跟着画一次，
+是现支本来的行为，本轮只求对上，不顺手改。
+
+### 三、尺寸进构造，`inventoryLabelY` 那一笔
+
+26.3 五参构造里 `this.inventoryLabelY = imageHeight - 94`（`:74`），用的是【真实尺寸】；
+1.21.1 只有三参（`:106`），同一个式子（`:114`）用的是当时的 166。本仓三个界面都在构造里自己写了
+`titleLabelX/Y` 与 `inventoryLabelX/Y`，所以「先 super 再覆盖尺寸」与「把尺寸递进构造」落到最后的值相同
+—— 这就是老三支不改行为的前提，也写进了那三份的注释里。顺带一条：26.3 【仍然留着】那个三参构造
+（`:60`，转 `this(menu, inventory, title, 176, 166)`），但字段是 final，靠它进不去自定义尺寸，
+所以四支统一走五参。
+
+### 四、1.20.1 那一份【一个行号都不写】
+
+`platforms/1.20.1-forge/` 那一份与另两支不是逐字相同，差的只有注释：本仓没有 1.20.1 的官方源可查，
+而 `:41` / `:45` / `:106` / `:114` 那四个行号是对着 1.21.1 量的，把它们抄进 1.20.1 的文件里就是假证。
+那一份只讲道理，并把三件事（三参构造在、两个字段可写、赋值不撞 final）挂在本支 `:compileJava`
+编过这条证据上。这是本仓既有做法 —— §十九 那条 `ServerPlayer.server` 一样写着「1.20.1 本地编过
+就是这条替换式能不能用的裁判」。
+
+### 五、实测
+
+- 26.3 `:compileJava` **192 → 173**：按（文件, 信息, 符号）多重集比对，消失的 19 条正是上表那六组
+  （`TerminalSlotScreen` 7、`PhoneContainerScreen` 6、`DiscBayScreen` 6），**新增 0 条**。
+- 动了 `shared/`，老三支全跑：`1.21.1-neoforge` `BUILD SUCCESSFUL in 11s`、`1.21.1-fabric`
+  `BUILD SUCCESSFUL in 39s`、`1.20.1-forge` `BUILD SUCCESSFUL in 1m 7s`（最后一支就是第四节那三件事的裁判）。
+- 老三支 `assertTests --continue`：三支都是 `assertTestEconomyDataTest` 与 `assertTestScriptEngineTest`
+  两条红，与第 19 步的 `at19_{neo,fab,forge}.log` 逐条一致（POSIX 脚本权限、zh-CN locale 那两个已知环境红）。
+  1.20.1 第一次跑撞在 ForgeGradle 校验 `libraries.minecraft.net` 证书失败 —— 那是插件应用阶段的网络问题，
+  与本轮改动无关，重跑即与基线相同。
+- 双胞胎：**117 对 → 118 对，6,103 → 6,135 行**，全涨在新增那一组 `PhoneContainerScreenBase`（32）。
+  拆开：1.21.1-neoforge 与 1.21.1-fabric 两份逐字相同；去注释后 1.20.1 那一份与它们也是 0 分
+  （注释不计分，第四节那段自我说明不占分）；那 32 行全是 26.3 那一份多出来的代码行。
+- `updateSeamsDoc`：四个平台的「共用代码引用了的」各 +1 —— 26.3-neoforge 36 → **37**、
+  1.21.1-neoforge 41 → 42、1.21.1-fabric 43 → 44、1.20.1-forge 81 → 82。
+- 十道配置闸全绿；CI 矩阵、目标声明、改名表一个字节没动。
+
+### 六、还欠着的
+
+- 这三个界面【一次都没进游戏看过】。要复核的：背板与逐格底板画没画、标题与物品栏两行字的位置、
+  终端卡槽那三行字（走 `FontPalette`）、光标下物品的 tooltip、shift 搬运与双击整理（这层没碰输入，
+  应仍归原版）、`TerminalSlotScreen` 那个按钮的位置与 `containerTick` 的显隐、关掉回手机那条
+  `onClose`（本轮未动）、以及「背板每帧被抽取两次」在 26.3 上会不会露出重影。
+- 附属模组那条线：`renderBg` 在 26.3 上是这层【补出来的名字】，覆写它的代码在四支都照样被调到，
+  这是「对外 API 与行为不变」那一档里新添的一处，进游戏时顺手验一下。
+- 下一簇按数排：控件与界面的 `render` 一族还剩 9 条「不会覆盖」＋ 5 条 `render(...)` 调用点。
+  `PhoneMultiLineEditBox.java:59` 撞的是 26.3 把 `AbstractWidget#extractRenderState` 做成 final
+  （`:59`）再转发到 `extractWidgetRenderState`（`:62`）；`DeviceNameEditor` / `ChatConversation` /
+  `NoteEditor` / `BookList` / `BrowserScreen` 那五处是要 EditBox 的绘制入口。再往后是
+  `setColor` 8 条（真实落点在 `GuiUtil` 的贴图绘制，26.3 是 `blit(..., int color)` 逐次带色）、
+  `getMainRenderTarget` 3 条（26.3 走 `mc.gameRenderer.mainRenderTarget()`，而且 `Screenshot.grab`
+  变成五参，符号修好后会冒出 arity 新错）、`MetadataSectionSerializer` 3 条、以及真缺 jar 那一堆。
