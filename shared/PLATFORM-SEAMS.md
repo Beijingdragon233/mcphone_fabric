@@ -223,7 +223,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-neoforge -->
 
-#### 共用代码引用了的（47）
+#### 共用代码引用了的（48）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -266,6 +266,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
 - `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
 - `platform.client.PlayerSkins`
 - `platform.client.Screens`
 - `platform.client.SystemFiles`
@@ -305,7 +306,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（87）
+#### 共用代码引用了的（88）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -388,6 +389,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
 - `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
 - `platform.client.PlayerSkins`
 - `platform.client.Screens`
 - `platform.client.SystemFiles`
@@ -439,7 +441,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-fabric -->
 
-#### 共用代码引用了的（49）
+#### 共用代码引用了的（50）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -484,6 +486,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
 - `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
 - `platform.client.PlayerSkins`
 - `platform.client.Screens`
 - `platform.client.SystemFiles`
@@ -530,7 +533,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
 
-#### 共用代码引用了的（42）
+#### 共用代码引用了的（44）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -562,6 +565,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.StackCodecs`
 - `platform.client.CameraGui`
 - `platform.client.ClientMessages`
+- `platform.client.DiscSongs`
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
 - `platform.client.ImageTextures`
@@ -569,6 +573,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
 - `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
 - `platform.client.PlayerSkins`
 - `platform.client.Screens`
 - `platform.client.SystemFiles`

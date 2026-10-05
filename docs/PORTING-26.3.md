@@ -2893,3 +2893,10 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
   分簇迁移。
 - `PhoneSkin` 中超过 1.0 的悬停提亮仍不能直接映射到 26.3 的 8 位颜色参数，暂不以静默
   no-op 或错误的半透明结果代替。
+
+## 四十三、头像与唱片标题门面：120 → 待验证
+
+- 26.3 的 `PlayerFaceRenderer` 已改为 `PlayerFaceExtractor`。新增 `PlayerFaces` 平台门面，
+  26.3 使用 `extractRenderState`，保留头部、帽子层和不透明颜色；旧三支继续调用原入口。
+- 26.3 的 `JukeboxSong.fromStack` 不再需要注册表访问，新增 26.3 `DiscSongs` 实现，仍然
+  优先显示唱片曲目描述，缺失时回退物品显示名。
