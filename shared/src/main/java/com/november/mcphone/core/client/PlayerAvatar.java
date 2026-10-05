@@ -1,8 +1,8 @@
 package com.november.mcphone.core.client;
 
 import net.minecraft.client.gui.GuiGraphics;
+import com.november.mcphone.platform.client.PlayerFaces;
 import com.november.mcphone.platform.client.PlayerSkins;
-import net.minecraft.client.gui.components.PlayerFaceRenderer;
 
 import java.util.UUID;
 
@@ -45,7 +45,7 @@ public final class PlayerAvatar {
 
     /** 画头像 */
     public static void draw(GuiGraphics g, UUID player, int x, int y, int size) {
-        PlayerFaceRenderer.draw(g, PlayerSkins.faceTexture(player), x, y, size);
+        PlayerFaces.draw(g, PlayerSkins.faceTexture(player), x, y, size);
     }
 
     /**

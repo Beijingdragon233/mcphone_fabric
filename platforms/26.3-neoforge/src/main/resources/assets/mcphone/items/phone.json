@@ -1,0 +1,13 @@
+{
+  "model": {
+    "type": "minecraft:range_dispatch",
+    "property": { "type": "mcphone:screen_on" },
+    "entries": [
+      {
+        "threshold": 1.0,
+        "model": { "type": "minecraft:model", "model": "mcphone:item/phone_white" }
+      }
+    ],
+    "fallback": { "type": "minecraft:model", "model": "mcphone:item/phone_black" }
+  }
+}

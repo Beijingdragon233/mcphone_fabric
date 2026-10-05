@@ -5,6 +5,7 @@ import com.november.mcphone.core.client.PhoneScreen;
 import com.november.mcphone.feature.reader.BookRef;
 import com.november.mcphone.feature.reader.client.ShelfStore;
 import com.november.mcphone.feature.reader.client.TxtLibrary;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -117,7 +118,7 @@ public final class TxtBookSource implements BookSource {
             return;
         }
 
-        if (Minecraft.getInstance().screen instanceof PhoneScreen phone) {
+        if (Screens.current(Minecraft.getInstance()) instanceof PhoneScreen phone) {
             phone.openTxtBook(entry);
         }
     }

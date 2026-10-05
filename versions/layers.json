@@ -69,6 +69,11 @@
     "populated": true,
     "note": "1.21（数据包格式 48）把数据包的目录名从复数改成单数：recipes→recipe、advancements→advancement、loot_tables→loot_table、tags/items→tags/item、functions→function。这条边界与 1.20.5+ 那条【不是同一条】，所以是单独一层 —— 塞进 1.20.5+ 的话，一个 1.20.6 的目标挂上那层就会拿到单数目录名，而它那儿要的是复数，而且不报错：那条配方/进度只是静默地不存在。"
   },
+  "26.3+": {
+    "since": "26.3",
+    "populated": true,
+    "note": "26.3 将 Item.use 的返回类型从 InteractionResultHolder<ItemStack> 改为 InteractionResult，并调整 tooltip 回调。只把 PhoneItem 拆到这一层，1.21+ 的其余代码继续共用。"
+  },
   "forge": {
     "loader": "Forge",
     "populated": true,

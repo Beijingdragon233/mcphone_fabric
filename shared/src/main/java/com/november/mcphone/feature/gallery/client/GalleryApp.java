@@ -2,6 +2,7 @@ package com.november.mcphone.feature.gallery.client;
 
 import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.core.client.PhoneScreen;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -18,7 +19,7 @@ public final class GalleryApp extends PhoneApp {
     @Override
     public void onPress() {
         // 相册是手机内的一个模式、不另开 Screen；navigateTo 进入时会重扫目录，刚拍的照片立刻可见
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
+        if (Screens.current(Minecraft.getInstance()) instanceof PhoneScreen ps) {
             ps.navigateTo(PhoneScreen.Mode.GALLERY);
         }
     }

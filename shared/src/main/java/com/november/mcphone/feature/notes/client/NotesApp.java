@@ -2,6 +2,7 @@ package com.november.mcphone.feature.notes.client;
 
 import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.core.client.PhoneScreen;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 
 /** 记事本 App，手机内的一个模式。贴图: assets/mcphone/textures/app/notes.png (20×20) */
@@ -13,7 +14,7 @@ public final class NotesApp extends PhoneApp {
 
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
+        if (Screens.current(Minecraft.getInstance()) instanceof PhoneScreen ps) {
             ps.navigateTo(PhoneScreen.Mode.NOTES);
         }
     }

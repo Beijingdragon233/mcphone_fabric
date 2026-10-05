@@ -5,9 +5,11 @@ import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import org.lwjgl.opengl.GL11;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
 /**
@@ -89,5 +91,30 @@ public final class Draw {
      */
     public static boolean scissorLeaked(GuiGraphics g) {
         return GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
+    }
+
+    /**
+     * 画一张贴图（或它的一块），带一个【整体不透明度】。共用代码里所有画贴图的动作都从这里过。
+     *
+     * <p>这一支上它就是从前那三句 GL 状态加一句 blit，外加 alpha 不是 1 时那对成 setColor：
+     * 那句 {@code GuiGraphics#setColor(float,float,float,float)} 是一段【全局】着色器颜色，
+     * 用完必须当场还原。26.x 把它删了、颜色改成每次绘制各带一个，
+     * 于是同一个意思在两支上没有一行写得一样 —— 这就是它待在这一层的全部理由。
+     * （行号一个不写：本仓没有 1.20.1 的官方源，下面这三句能不能编过就是它的证据。）
+     *
+     * <p>为什么还要自己开混合：{@code blit(ResourceLocation, ...)} 这条路从头到尾没碰过混合状态，
+     * 而 GUI 里每画完一次 fill 或一行字，收尾都会 disableBlend —— 半透明贴图于是被当成不透明画。
+     * 收尾关掉而不是恢复原状：原版自己那条带色的 blit 就是 enable → 画 → disable。
+     */
+    public static void textured(GuiGraphics g, ResourceLocation tex,
+                                int x, int y, int w, int h,
+                                float u, float v, int srcW, int srcH, int texW, int texH,
+                                float alpha) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        if (alpha != 1.0F) g.setColor(1.0F, 1.0F, 1.0F, alpha);
+        g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
+        if (alpha != 1.0F) g.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.disableBlend();
     }
 }

@@ -223,7 +223,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-neoforge -->
 
-#### 共用代码引用了的（34）
+#### 共用代码引用了的（48）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -231,7 +231,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `api.client.ui.PhoneMultiLineEditBox`
 - `compat.WaystonesCompat`
 - `core.ModDataComponents`　—— 1.20.5+ 原版、加载器导入
-- `core.ModItems`　—— 加载器导入
 - `core.ModSounds`　—— 加载器导入
 - `core.PhonePlayerData`　—— 注入的方法
 - `core.PhoneSavedData`
@@ -250,19 +249,34 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.terminal.integration.refinedstorage.RefinedStorageIntegration`
 - `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
+- `platform.Nbt`
+- `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.CameraGui`
+- `platform.client.ClientMessages`
 - `platform.client.DiscSongs`
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
+- `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
 - `platform.client.KeyModifiers`　—— 加载器导入
+- `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
+- `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
 - `platform.client.PlayerSkins`
+- `platform.client.Screens`
 - `platform.client.SystemFiles`
+- `platform.client.Toasts`
+- `platform.client.Transforms`
 - `platform.client.VanillaAudio`
+- `platform.client.WeatherValues`
+- `platform.client.WorldTime`
 
-#### 平台内部的（14）
+#### 平台内部的（16）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -271,6 +285,8 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `compat.IntegratedDynamicsCompat`　—— 加载器导入
 - `core.ModAttachments`　—— 加载器导入
 - `core.ModCreativeTabs`　—— 加载器导入
+- `core.ModItems`　—— 加载器导入
+- `core.client.PhoneItemProperties`
 - `core.script.net.ScriptNetworking`　—— 加载器导入
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.net.ChatNetworking`　—— 加载器导入
@@ -292,14 +308,13 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（74）
+#### 共用代码引用了的（88）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
 - `MCphone`　—— 加载器导入
 - `api.client.ui.PhoneMultiLineEditBox`
 - `compat.WaystonesCompat`
-- `core.ModItems`　—— 加载器导入
 - `core.ModSounds`　—— 加载器导入
 - `core.PhoneItem`
 - `core.PhoneItemData`
@@ -359,19 +374,34 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.waystone.net.OpenWaystoneSelectionPacket`
 - `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
+- `platform.Nbt`
+- `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.CameraGui`
+- `platform.client.ClientMessages`
 - `platform.client.DiscSongs`
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
+- `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
 - `platform.client.KeyModifiers`　—— 加载器导入
+- `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
+- `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
 - `platform.client.PlayerSkins`
+- `platform.client.Screens`
 - `platform.client.SystemFiles`
+- `platform.client.Toasts`
+- `platform.client.Transforms`
 - `platform.client.VanillaAudio`
+- `platform.client.WeatherValues`
+- `platform.client.WorldTime`
 
-#### 平台内部的（33）
+#### 平台内部的（35）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -381,7 +411,9 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `compat.WaystonesWarpItemModule`　—— 加载器导入
 - `core.ModCapabilities`　—— 加载器导入、注入的方法
 - `core.ModCreativeTabs`　—— 加载器导入
+- `core.ModItems`　—— 加载器导入
 - `core.PhoneScreenOnCleanup`　—— 加载器导入
+- `core.client.PhoneItemProperties`
 - `core.script.net.ScriptNetworking`
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.MessageBody`
@@ -413,7 +445,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-fabric -->
 
-#### 共用代码引用了的（36）
+#### 共用代码引用了的（50）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -421,7 +453,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `api.client.ui.PhoneMultiLineEditBox`
 - `compat.WaystonesCompat`
 - `core.ModDataComponents`　—— 1.20.5+ 原版
-- `core.ModItems`
 - `core.ModSounds`
 - `core.PhonePlayerData`
 - `core.PhoneSavedData`
@@ -442,19 +473,34 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.terminal.integration.refinedstorage.RefinedStorageIntegration`
 - `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
+- `platform.Nbt`
+- `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.CameraGui`
+- `platform.client.ClientMessages`
 - `platform.client.DiscSongs`
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
+- `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
 - `platform.client.KeyModifiers`
+- `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
+- `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
 - `platform.client.PlayerSkins`
+- `platform.client.Screens`
 - `platform.client.SystemFiles`
+- `platform.client.Toasts`
+- `platform.client.Transforms`
 - `platform.client.VanillaAudio`
+- `platform.client.WeatherValues`
+- `platform.client.WorldTime`
 
-#### 平台内部的（28）
+#### 平台内部的（30）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -463,10 +509,12 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `compat.CompatModules`
 - `core.ModAttachments`　—— 加载器导入
 - `core.ModCreativeTabs`
+- `core.ModItems`
 - `core.client.AppHotkeyHandler`
 - `core.client.ClientNetworking`　—— 1.20.5+ 原版、加载器导入
 - `core.client.KeyModifier`
 - `core.client.MCphoneKeyBindings`　—— 加载器导入
+- `core.client.PhoneItemProperties`
 - `core.net.RequestThrottle`
 - `core.net.SyncPhoneTerminalPacket`　—— 1.20.5+ 原版
 - `core.net.SyncServerConfigPacket`　—— 1.20.5+ 原版
@@ -488,3 +536,73 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.ClientTicks`　—— 加载器导入
 
 <!-- 1.21.1-fabric 结束 -->
+
+<!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
+
+#### 共用代码引用了的（44）
+
+**新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
+
+- `MCphone`　—— 加载器导入
+- `api.client.ui.PhoneMultiLineEditBox`
+- `core.ModDataComponents`　—— 1.20.5+ 原版、加载器导入
+- `core.ModSounds`　—— 加载器导入
+- `core.PhonePlayerData`　—— 注入的方法
+- `core.PhoneSavedData`
+- `core.ServerConfig`　—— 加载器导入
+- `core.client.AppHotkeys`　—— 加载器导入
+- `core.client.ClientConfig`　—— 加载器导入
+- `core.client.PhoneHud`　—— 加载器导入
+- `core.menu.ModMenus`　—— 加载器导入
+- `core.net.MCphoneNetwork`　—— 1.20.5+ 原版、加载器导入
+- `core.net.NetworkHandler`　—— 加载器导入
+- `feature.camera.client.CameraFlash`
+- `feature.music.DiscService`　—— 1.20.5+ 原版、加载器导入
+- `feature.music.net.MusicNetworking`　—— 加载器导入
+- `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
+- `platform.CuriosInventories`
+- `platform.ModPresence`　—— 加载器导入
+- `platform.Nbt`
+- `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
+- `platform.Slots`
+- `platform.StackCodecs`
+- `platform.client.CameraGui`
+- `platform.client.ClientMessages`
+- `platform.client.DiscSongs`
+- `platform.client.Draw`
+- `platform.client.EditBoxes`
+- `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
+- `platform.client.KeyModifiers`　—— 加载器导入
+- `platform.client.PhoneContainerScreenBase`
+- `platform.client.PhoneScreenBase`
+- `platform.client.PhoneToastBase`
+- `platform.client.PlayerFaces`
+- `platform.client.PlayerSkins`
+- `platform.client.Screens`
+- `platform.client.SystemFiles`
+- `platform.client.Toasts`
+- `platform.client.Transforms`
+- `platform.client.WeatherValues`
+- `platform.client.WorldTime`
+
+#### 平台内部的（12）
+
+只在这个平台自己的代码里用到。新平台不必提供同名类型。
+
+- `MCphoneClient`　—— 加载器导入
+- `core.ModAttachments`　—— 加载器导入
+- `core.ModCreativeTabs`　—— 加载器导入
+- `core.ModItems`　—— 加载器导入
+- `core.client.PhoneItemProperties`　—— 加载器导入
+- `core.script.net.ScriptNetworking`　—— 加载器导入
+- `feature.camera.client.CameraHandler`　—— 加载器导入
+- `feature.chat.net.ChatNetworking`　—— 加载器导入
+- `feature.notes.net.NotesNetworking`　—— 加载器导入
+- `feature.store.net.StoreNetworking`　—— 加载器导入
+- `feature.terminal.net.TerminalNetworking`　—— 加载器导入
+- `platform.client.ClientTicks`　—— 加载器导入
+
+<!-- 26.3-neoforge 结束 -->

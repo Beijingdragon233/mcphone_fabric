@@ -3,6 +3,7 @@ package com.november.mcphone.core.client;
 import com.november.mcphone.core.PhoneLocation;
 import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.core.net.PhoneScreenOnPacket;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
@@ -27,7 +28,7 @@ public final class PhoneScreenOnSync {
     }
 
     private static PhoneScreen fullscreenPhone() {
-        return Minecraft.getInstance().screen instanceof PhoneScreen screen ? screen : null;
+        return Screens.current(Minecraft.getInstance()) instanceof PhoneScreen screen ? screen : null;
     }
 
     private static int handBit(PhoneScreen screen) {
