@@ -2,6 +2,7 @@ package com.november.mcphone.feature.clock.client;
 
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.platform.client.Transforms;
+import com.november.mcphone.platform.client.WorldTime;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.feature.clock.WorldClock;
@@ -94,7 +95,7 @@ public final class ClockPage {
             return;
         }
 
-        final long dayTime = level.getDayTime();
+        final long dayTime = WorldTime.dayTime(level);
         final boolean frozen = updateFrozen(dayTime);
 
         // ---- 标题 ----

@@ -31,6 +31,7 @@ import com.november.mcphone.feature.store.net.StoreClientCache;
 import com.november.mcphone.feature.clock.client.PlayTime;
 import com.november.mcphone.feature.terminal.client.TerminalSlotScreen;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
@@ -41,7 +42,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
-import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
@@ -156,8 +157,9 @@ public class MCphoneClient {
      * App 包里的图片一并还回去：它们是 DynamicTexture，重载之后未必还在。
      */
     @SubscribeEvent
-    static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
-        event.registerReloadListener((ResourceManagerReloadListener) manager -> {
+    static void onRegisterReloadListeners(AddClientReloadListenersEvent event) {
+        event.addListener(Identifier.fromNamespaceAndPath(MCphone.MODID, "client_reload"),
+                (ResourceManagerReloadListener) manager -> {
             PhoneSkin.clearCache();
             AppTextures.clearCache();
             CameraFlash.dispose();

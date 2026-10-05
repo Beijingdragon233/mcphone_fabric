@@ -2863,3 +2863,33 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
 
 - 26.3 的 `RegisterClientReloadListenersEvent`、外部联动 jar、音频/渲染和其余原版 API 仍未处理。
 - 本步只完成版本边界与 `PhoneItem` 签名迁移，没有改变 `shared/api` 的公开接口。
+
+## 四十二、资源重载、动态贴图与天气取值：129 → 120
+
+### 一、这一轮处理的内容
+
+- 26.3 NeoForge 已移除 `RegisterClientReloadListenersEvent`，替代事件是
+  `AddClientReloadListenersEvent`。它要求每个监听器提供稳定的 `Identifier`，因此使用
+  `mcphone:client_reload` 注册同一个清理器，继续清空换肤贴图、App 动态贴图和相机闪光资源。
+- `DynamicTexture` 在 26.3 要求 `(Supplier<String>, NativeImage)`，`NativeImage#setPixelRGBA`
+  变为 `setPixel`。新增平台门面 `ImageTextures`，shared 侧继续保留原有调用语义，26.3 只在
+  平台实现中承载签名差异；旧三支的构造和像素写入保持原样。
+- 26.3 的客户端世界时间入口改为 `getGameTime()`，天气降水通过
+  `ClientLevel#getPrecipitationAt(BlockPos)` 读取。`WorldTime` 与 `WeatherValues` 把这些差异
+  留在平台侧，天气页和时钟页的业务判断不变。
+
+### 二、实测
+
+- 26.3 `:compileJava`：**129 → 127 → 120**，新增 0 条。
+- 1.21.1 NeoForge：`BUILD SUCCESSFUL`。
+- 1.21.1 Fabric：`BUILD SUCCESSFUL`。
+- 1.20.1 Forge：`BUILD SUCCESSFUL`。
+- `shared/api` 未修改；外部联动依赖仍未伪造，AE2、Refined Storage、Tom's Storage、Waystones、
+  Patchouli、MCEF、NetMusic 等缺失构件继续以显式编译错误保留。
+
+### 三、还欠着的
+
+- 26.3 的 `BakedModel`/物品模型属性、玩家头像、浏览器渲染、音频库 API 和其余原版入口仍待
+  分簇迁移。
+- `PhoneSkin` 中超过 1.0 的悬停提亮仍不能直接映射到 26.3 的 8 位颜色参数，暂不以静默
+  no-op 或错误的半透明结果代替。
