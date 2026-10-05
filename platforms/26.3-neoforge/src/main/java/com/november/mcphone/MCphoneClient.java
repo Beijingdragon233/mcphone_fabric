@@ -44,6 +44,7 @@ import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
+import net.neoforged.neoforge.client.event.RegisterRangeSelectItemModelPropertyEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.common.NeoForge;
@@ -60,6 +61,7 @@ public class MCphoneClient {
         container.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
 
         modEventBus.addListener(MCphoneKeyBindings::register);
+        modEventBus.addListener(PhoneItemProperties::register);
 
         // 副手 HUD 那一层。插在原版战利品条之后：玩法 HUD 之上，F3 与聊天框之下
         modEventBus.addListener(PhoneHud::onRegisterLayers);
@@ -176,10 +178,6 @@ public class MCphoneClient {
 
     @SubscribeEvent
     static void onClientSetup(FMLClientSetupEvent event) {
-        // 手机物品的黑屏/白屏切换。enqueueWork 是必须的：ItemProperties 后面是普通 HashMap，
-        // 而这个事件和别的模组并行跑，见 PhoneItemProperties
-        event.enqueueWork(com.november.mcphone.core.client.PhoneItemProperties::register);
-
         // 必须在 App 目录构建之前：BrowserApp 登记时会问后端在不在
         com.november.mcphone.feature.browser.client.BrowserBackends.installDefault();
 

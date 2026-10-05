@@ -2,10 +2,9 @@ package com.november.mcphone.core.client;
 
 import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.platform.client.Draw;
-import net.minecraft.client.Minecraft;
+import com.november.mcphone.platform.client.ItemIcons;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
@@ -362,17 +361,7 @@ public final class GuiUtil {
     public static boolean canDrawItemIcon(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return false;
 
-        Minecraft mc = Minecraft.getInstance();
-        if (mc == null) return false;
-
-        try {
-            BakedModel model = mc.getItemRenderer().getModel(stack, mc.level, mc.player, 0);
-            return model != null && !model.isCustomRenderer();
-        } catch (Throwable t) {
-            // 取模型这一步就抛了的物品，更不该让它去画。兜 Throwable 不是 Exception：
-            // 模组的模型代码抛 NoClassDefFoundError / AbstractMethodError 都见过
-            return false;
-        }
+        return ItemIcons.canDraw(stack);
     }
 
     /**
@@ -388,7 +377,7 @@ public final class GuiUtil {
         Transforms.push(g);
         Transforms.translate(g, x, y);
         if (size != 16) Transforms.scale(g, size / 16f, size / 16f);
-        g.renderItem(stack, 0, 0);
+        ItemIcons.draw(g, stack, 0, 0);
         Transforms.pop(g);
         return true;
     }

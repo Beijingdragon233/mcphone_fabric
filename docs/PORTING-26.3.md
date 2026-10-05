@@ -2894,6 +2894,33 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
 - `PhoneSkin` 中超过 1.0 的悬停提亮仍不能直接映射到 26.3 的 8 位颜色参数，暂不以静默
   no-op 或错误的半透明结果代替。
 
+## 四十四、物品图标与屏幕属性平台化：112 → 109
+
+### 一、这一轮处理的内容
+
+- `GuiUtil` 不再直接引用 26.3 已移除的 `BakedModel`、`Minecraft#getItemRenderer` 和
+  `GuiGraphics#renderItem`。新增 `platform.client.ItemIcons` 门面，shared 保留原有
+  `canDrawItemIcon`/`drawItemIcon` 调用语义。
+- 旧三支继续通过 `BakedModel.isCustomRenderer()` 拦截可能破坏 GUI 状态的特殊物品；26.3
+  改用 `ItemModelResolver` + `TrackingItemStackRenderState`，检测 `SpecialModelWrapper`
+  后再通过 `GuiGraphicsExtractor.item` 提交物品图标。
+- 手机和平板的旧版物品属性注册移到各平台；26.3 改为 `range_dispatch` item model property，
+  使用 `RegisterRangeSelectItemModelPropertyEvent` 和物品组件读取屏幕亮起状态。对外 API
+  与亮屏/黑屏行为保持不变。
+
+### 二、实测
+
+- 26.3 `:compileJava` **112 → 109**，本轮没有新增错误；`GuiUtil` 的 26.3 API 错误已消失。
+- 1.20.1 Forge、1.21.1 Fabric、1.21.1 NeoForge 的 `:compileJava` 均 `BUILD SUCCESSFUL`。
+- `verifySharedIsTargetNeutral`、`verifyPlatformTwins`、`verifySeamsDocCurrent` 全部通过；
+  当前双胞胎基线为 126 对、差异合计 6405 行，26.3 接缝 56 个。
+
+### 三、还欠着的
+
+- 26.3 仍有 109 个编译错误，主要集中在外部联动依赖、输入事件、`SavedData`、唱片服务、
+  网络 buffer、音频库和浏览器渲染；外部联动缺失仍保留显式编译错误，未添加 no-op 类型。
+- `MusicPage` 还有一处直接调用旧的 `renderItem`，下一轮与音乐/唱片渲染接缝一起处理。
+
 ## 四十三、头像与唱片标题门面：120 → 待验证
 
 - 26.3 的 `PlayerFaceRenderer` 已改为 `PlayerFaceExtractor`。新增 `PlayerFaces` 平台门面，

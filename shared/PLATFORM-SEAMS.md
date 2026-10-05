@@ -231,7 +231,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `api.client.ui.PhoneMultiLineEditBox`
 - `compat.WaystonesCompat`
 - `core.ModDataComponents`　—— 1.20.5+ 原版、加载器导入
-- `core.ModItems`　—— 加载器导入
 - `core.ModSounds`　—— 加载器导入
 - `core.PhonePlayerData`　—— 注入的方法
 - `core.PhoneSavedData`
@@ -262,6 +261,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
 - `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
 - `platform.client.KeyModifiers`　—— 加载器导入
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
@@ -276,7 +276,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.WeatherValues`
 - `platform.client.WorldTime`
 
-#### 平台内部的（14）
+#### 平台内部的（16）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -285,6 +285,8 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `compat.IntegratedDynamicsCompat`　—— 加载器导入
 - `core.ModAttachments`　—— 加载器导入
 - `core.ModCreativeTabs`　—— 加载器导入
+- `core.ModItems`　—— 加载器导入
+- `core.client.PhoneItemProperties`
 - `core.script.net.ScriptNetworking`　—— 加载器导入
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.net.ChatNetworking`　—— 加载器导入
@@ -313,7 +315,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `MCphone`　—— 加载器导入
 - `api.client.ui.PhoneMultiLineEditBox`
 - `compat.WaystonesCompat`
-- `core.ModItems`　—— 加载器导入
 - `core.ModSounds`　—— 加载器导入
 - `core.PhoneItem`
 - `core.PhoneItemData`
@@ -385,6 +386,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
 - `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
 - `platform.client.KeyModifiers`　—— 加载器导入
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
@@ -399,7 +401,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.WeatherValues`
 - `platform.client.WorldTime`
 
-#### 平台内部的（33）
+#### 平台内部的（35）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -409,7 +411,9 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `compat.WaystonesWarpItemModule`　—— 加载器导入
 - `core.ModCapabilities`　—— 加载器导入、注入的方法
 - `core.ModCreativeTabs`　—— 加载器导入
+- `core.ModItems`　—— 加载器导入
 - `core.PhoneScreenOnCleanup`　—— 加载器导入
+- `core.client.PhoneItemProperties`
 - `core.script.net.ScriptNetworking`
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.MessageBody`
@@ -449,7 +453,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `api.client.ui.PhoneMultiLineEditBox`
 - `compat.WaystonesCompat`
 - `core.ModDataComponents`　—— 1.20.5+ 原版
-- `core.ModItems`
 - `core.ModSounds`
 - `core.PhonePlayerData`
 - `core.PhoneSavedData`
@@ -482,6 +485,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
 - `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
 - `platform.client.KeyModifiers`
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
@@ -496,7 +500,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.WeatherValues`
 - `platform.client.WorldTime`
 
-#### 平台内部的（28）
+#### 平台内部的（30）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -505,10 +509,12 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `compat.CompatModules`
 - `core.ModAttachments`　—— 加载器导入
 - `core.ModCreativeTabs`
+- `core.ModItems`
 - `core.client.AppHotkeyHandler`
 - `core.client.ClientNetworking`　—— 1.20.5+ 原版、加载器导入
 - `core.client.KeyModifier`
 - `core.client.MCphoneKeyBindings`　—— 加载器导入
+- `core.client.PhoneItemProperties`
 - `core.net.RequestThrottle`
 - `core.net.SyncPhoneTerminalPacket`　—— 1.20.5+ 原版
 - `core.net.SyncServerConfigPacket`　—— 1.20.5+ 原版
@@ -540,7 +546,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `MCphone`　—— 加载器导入
 - `api.client.ui.PhoneMultiLineEditBox`
 - `core.ModDataComponents`　—— 1.20.5+ 原版、加载器导入
-- `core.ModItems`　—— 加载器导入
 - `core.ModSounds`　—— 加载器导入
 - `core.PhonePlayerData`　—— 注入的方法
 - `core.PhoneSavedData`
@@ -569,6 +574,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.Draw`
 - `platform.client.EditBoxes`
 - `platform.client.ImageTextures`
+- `platform.client.ItemIcons`
 - `platform.client.KeyModifiers`　—— 加载器导入
 - `platform.client.PhoneContainerScreenBase`
 - `platform.client.PhoneScreenBase`
@@ -582,13 +588,15 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.WeatherValues`
 - `platform.client.WorldTime`
 
-#### 平台内部的（10）
+#### 平台内部的（12）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
 - `MCphoneClient`　—— 加载器导入
 - `core.ModAttachments`　—— 加载器导入
 - `core.ModCreativeTabs`　—— 加载器导入
+- `core.ModItems`　—— 加载器导入
+- `core.client.PhoneItemProperties`　—— 加载器导入
 - `core.script.net.ScriptNetworking`　—— 加载器导入
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.net.ChatNetworking`　—— 加载器导入
