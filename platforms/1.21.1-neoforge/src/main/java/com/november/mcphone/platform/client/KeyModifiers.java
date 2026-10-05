@@ -2,6 +2,7 @@ package com.november.mcphone.platform.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.KeyMapping;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 
 /**
@@ -31,6 +32,18 @@ import net.neoforged.neoforge.client.settings.KeyModifier;
 public final class KeyModifiers {
 
     private KeyModifiers() {}
+
+    public static InputConstants.Type keyboardType() {
+        return InputConstants.Type.KEYSYM;
+    }
+
+    public static InputConstants.Key fromKeyCodes(int key, int scanCode) {
+        return InputConstants.getKey(key, scanCode);
+    }
+
+    public static boolean matches(KeyMapping mapping, int key, int scanCode) {
+        return mapping.matches(key, scanCode);
+    }
 
     /** 这个键本身是不是一个修饰键（Ctrl / Shift / Alt）。 */
     public static boolean isModifierKey(InputConstants.Key key) {

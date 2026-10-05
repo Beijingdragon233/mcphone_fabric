@@ -427,7 +427,7 @@ public final class PhoneHud {
         if (value < 0) return false;
 
         return switch (key.getType()) {
-            case KEYSYM -> InputConstants.isKeyDown(value);
+            case KEYBOARD -> InputConstants.isKeyDown(value);
             case MOUSE -> (SDLMouse.SDL_GetMouseState(null, null) & (1 << (value - 1))) != 0;
             // SCANCODE：原版按键设置绑不出这一类，真出现了就当没按
             default -> false;
@@ -457,6 +457,6 @@ public final class PhoneHud {
         int w = mc.getWindow().getGuiScaledWidth();
         int h = mc.getWindow().getGuiScaledHeight();
         if (phone.width == w && phone.height == h) return;
-        phone.init(mc, w, h);
+        phone.init();
     }
 }

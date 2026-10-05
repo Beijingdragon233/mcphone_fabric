@@ -188,7 +188,7 @@ public final class DiscService {
         Set<UUID> ids = LISTENERS.get(player.getUUID());
         if (ids == null) return nearbyPlayers(player);
 
-        var server = player.getServer();
+        var server = player.level().getServer();
         if (server == null) return List.of();
 
         List<ServerPlayer> out = new ArrayList<>(ids.size());
@@ -202,7 +202,7 @@ public final class DiscService {
     /** 这个物品能不能放进唱片仓。唱片格与主手放入两处共用这一个判据，不许各写各的 */
     public static boolean isPlayableDisc(RegistryAccess registries, ItemStack stack) {
         if (stack.isEmpty()) return false;
-        return JukeboxSong.fromStack(registries, stack).isPresent()
+        return JukeboxSong.fromStack(stack).isPresent()
                 || NetMusicCompat.songOf(stack).isPresent();
     }
 
@@ -255,7 +255,7 @@ public final class DiscService {
         if (vanilla.isPresent()) {
             SoundEvent sound = vanilla.get().value().soundEvent().value();
             ClientboundStopSoundPacket packet =
-                    new ClientboundStopSoundPacket(sound.getLocation(), SoundSource.RECORDS);
+                    new ClientboundStopSoundPacket(sound.location(), SoundSource.RECORDS);
 
             for (ServerPlayer p : audience) p.connection.send(packet);
             return;
@@ -270,6 +270,6 @@ public final class DiscService {
     /** 这个物品是唱片吗；是的话给出曲子定义。查 JUKEBOX_PLAYABLE 组件而不是物品类型，别的模组/数据包的唱片也认得 */
     private static Optional<Holder<JukeboxSong>> songOf(ServerPlayer player, ItemStack stack) {
         if (stack.isEmpty()) return Optional.empty();
-        return JukeboxSong.fromStack(player.level().registryAccess(), stack);
+        return JukeboxSong.fromStack(stack);
     }
 }

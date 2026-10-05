@@ -110,4 +110,33 @@ public final class Draw {
         if (alpha != 1.0F) g.setColor(1.0F, 1.0F, 1.0F, 1.0F);
         RenderSystem.disableBlend();
     }
+
+    public static void tinted(GuiGraphics g, ResourceLocation tex,
+                              int x, int y, int w, int h, float u, float v,
+                              int srcW, int srcH, int texW, int texH, int argb) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        g.setColor((argb >> 16 & 0xFF) / 255f, (argb >> 8 & 0xFF) / 255f,
+                (argb & 0xFF) / 255f, (argb >>> 24) / 255f);
+        try {
+            g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
+        } finally {
+            g.setColor(1f, 1f, 1f, 1f);
+            RenderSystem.disableBlend();
+        }
+    }
+
+    public static void highlighted(GuiGraphics g, ResourceLocation tex,
+                                   int x, int y, int w, int h, float u, float v,
+                                   int srcW, int srcH, int texW, int texH, float brightness) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        g.setColor(brightness, brightness, brightness, 1f);
+        try {
+            g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
+        } finally {
+            g.setColor(1f, 1f, 1f, 1f);
+            RenderSystem.disableBlend();
+        }
+    }
 }

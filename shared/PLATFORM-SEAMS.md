@@ -223,7 +223,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-neoforge -->
 
-#### 共用代码引用了的（48）
+#### 共用代码引用了的（53）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -247,14 +247,19 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
 - `feature.terminal.integration.ae2.Ae2Integration`
 - `feature.terminal.integration.refinedstorage.RefinedStorageIntegration`
+- `platform.CommandPermissions`
 - `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
+- `platform.PacketIds`
 - `platform.Profiles`
 - `platform.RegistryItems`
+- `platform.ServerTeleports`
 - `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
+- `platform.WorldIds`
+- `platform.WorldVersions`
 - `platform.client.CameraGui`
 - `platform.client.ClientMessages`
 - `platform.client.DiscSongs`
@@ -308,7 +313,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（88）
+#### 共用代码引用了的（92）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -372,14 +377,18 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.terminal.integration.refinedstorage.RefinedStorageIntegration`　—— 加载器导入
 - `feature.terminal.net.TerminalActionPacket`
 - `feature.waystone.net.OpenWaystoneSelectionPacket`
+- `platform.CommandPermissions`
 - `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
 - `platform.Profiles`
 - `platform.RegistryItems`
+- `platform.ServerTeleports`
 - `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
+- `platform.WorldIds`
+- `platform.WorldVersions`
 - `platform.client.CameraGui`
 - `platform.client.ClientMessages`
 - `platform.client.DiscSongs`
@@ -401,7 +410,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.WeatherValues`
 - `platform.client.WorldTime`
 
-#### 平台内部的（35）
+#### 平台内部的（36）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -439,13 +448,14 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.terminal.integration.ae2.TerminalSlotLocator`
 - `feature.terminal.net.SyncTerminalSlotPacket`
 - `feature.terminal.net.TerminalNetworking`
+- `platform.PacketIds`
 - `platform.client.ClientTicks`　—— 加载器导入
 
 <!-- 1.20.1-forge 结束 -->
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-fabric -->
 
-#### 共用代码引用了的（50）
+#### 共用代码引用了的（55）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -471,14 +481,19 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.terminal.integration.Terminals`
 - `feature.terminal.integration.ae2.Ae2Integration`
 - `feature.terminal.integration.refinedstorage.RefinedStorageIntegration`
+- `platform.CommandPermissions`
 - `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
+- `platform.PacketIds`
 - `platform.Profiles`
 - `platform.RegistryItems`
+- `platform.ServerTeleports`
 - `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
+- `platform.WorldIds`
+- `platform.WorldVersions`
 - `platform.client.CameraGui`
 - `platform.client.ClientMessages`
 - `platform.client.DiscSongs`
@@ -539,7 +554,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
 
-#### 共用代码引用了的（44）
+#### 共用代码引用了的（50）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -560,14 +575,19 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.music.DiscService`　—— 1.20.5+ 原版、加载器导入
 - `feature.music.net.MusicNetworking`　—— 加载器导入
 - `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
+- `platform.CommandPermissions`
 - `platform.CuriosInventories`
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
+- `platform.PacketIds`
 - `platform.Profiles`
 - `platform.RegistryItems`
+- `platform.ServerTeleports`
 - `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
+- `platform.WorldIds`
+- `platform.WorldVersions`
 - `platform.client.CameraGui`
 - `platform.client.ClientMessages`
 - `platform.client.DiscSongs`
@@ -585,6 +605,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.SystemFiles`
 - `platform.client.Toasts`
 - `platform.client.Transforms`
+- `platform.client.VanillaAudio`
 - `platform.client.WeatherValues`
 - `platform.client.WorldTime`
 

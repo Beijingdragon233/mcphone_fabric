@@ -4,6 +4,7 @@ import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.server.PlayerSnapshot;
 import com.november.mcphone.core.script.server.ScriptPipeline;
 import com.november.mcphone.platform.Profiles;
+import com.november.mcphone.platform.WorldIds;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -46,7 +47,7 @@ public final class ScriptRpcHandler {
         PlayerSnapshot snapshot = new PlayerSnapshot(
                 player.getUUID(),
                 Profiles.name(player.getGameProfile()),
-                player.level().dimension().location().toString(),
+                WorldIds.dimension(player.level()),
                 player.gameMode.getGameModeForPlayer().getName(),
                 0L);
         p.accept(rpc, snapshot, result -> send(player, result));

@@ -253,6 +253,22 @@ public final class PhoneSkin {
         return draw(g, element, x, y, w, h, 1.0F);
     }
 
+    /** Draw a skin texture with the hover brightness used by the old global color state. */
+    public static boolean drawHighlight(GuiGraphics g, Element element,
+                                        int x, int y, int w, int h) {
+        if (w <= 0 || h <= 0) return false;
+        SkinTexture tex = resolve(element).orElse(null);
+        if (tex == null) return false;
+        if (tex.border() > 0) {
+            GuiUtil.drawNineSliceHighlight(g, tex.location(), x, y, w, h,
+                    tex.width(), tex.height(), tex.border(), PhoneTheme.SKIN_HOVER_BRIGHTNESS);
+        } else {
+            GuiUtil.drawHighlight(g, tex.location(), x, y, w, h,
+                    tex.width(), tex.height(), PhoneTheme.SKIN_HOVER_BRIGHTNESS);
+        }
+        return true;
+    }
+
     /**
      * 同上，外加【整体不透明度】：0.35 就是「禁用」那一档，进度动画就传当前那一帧的进度。
      *
@@ -357,13 +373,9 @@ public final class PhoneSkin {
     public static void drawOrFill(GuiGraphics g, Element element,
                                   int x, int y, int w, int h, int fallbackColor,
                                   boolean highlight) {
-        if (highlight) {
-            float b = PhoneTheme.SKIN_HOVER_BRIGHTNESS;
-            g.setColor(b, b, b, 1.0F);
-        }
-        boolean drawn = draw(g, element, x, y, w, h);
-        // 必须在画兜底色之前还原：setColor 会一路乘到后面画的每一样东西上
-        if (highlight) g.setColor(1.0F, 1.0F, 1.0F, 1.0F);
+        boolean drawn = highlight
+                ? drawHighlight(g, element, x, y, w, h)
+                : draw(g, element, x, y, w, h);
 
         if (!drawn) g.fill(x, y, x + w, y + h, fallbackColor);
     }

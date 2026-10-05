@@ -10,7 +10,7 @@ import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.platform.ModPresence;
-import net.minecraft.SharedConstants;
+import com.november.mcphone.platform.WorldVersions;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -101,7 +101,7 @@ public final class AboutPage {
 
         y = row(g, font, x, y, w, "mcphone.about.author", "november521");
         y = row(g, font, x, y, w, "mcphone.about.game",
-                SharedConstants.getCurrentVersion().getName());
+                WorldVersions.currentName());
         y = row(g, font, x, y, w, "mcphone.about.apps",
                 String.valueOf(PhoneScreenRegistry.getAppCount()));
 

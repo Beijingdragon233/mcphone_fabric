@@ -5,6 +5,7 @@ import com.november.mcphone.core.client.AppHotkeyHandler;
 import com.november.mcphone.core.client.ClientConfig;
 import com.november.mcphone.core.client.MCphoneKeyBindings;
 import com.november.mcphone.core.client.PhoneHud;
+import com.november.mcphone.core.client.PhoneItemProperties;
 import com.november.mcphone.core.client.PhoneContainerScreen;
 import com.november.mcphone.core.client.PhoneKeyHandler;
 import com.november.mcphone.core.client.PhoneScreenOnSync;

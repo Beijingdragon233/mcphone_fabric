@@ -5,6 +5,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
+import com.november.mcphone.platform.CommandPermissions;
 
 import java.util.Set;
 
@@ -23,7 +24,7 @@ public final class EconomyCommand {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("mcphone")
                 .then(Commands.literal("economy")
-                        .requires(src -> src.hasPermission(3))
+                        .requires(CommandPermissions::canAuditEconomy)
                         .then(Commands.literal("audit").executes(ctx -> audit(ctx.getSource())))));
     }
 

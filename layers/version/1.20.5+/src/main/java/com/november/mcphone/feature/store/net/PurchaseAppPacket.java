@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.store.net;
 
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.PacketIds;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -26,11 +27,11 @@ public record PurchaseAppPacket(ResourceLocation appId) implements CustomPacketP
             StreamCodec.of((buf, msg) -> encode(msg, buf), PurchaseAppPacket::decode);
 
     public static void encode(PurchaseAppPacket msg, FriendlyByteBuf buf) {
-        buf.writeResourceLocation(msg.appId());
+        PacketIds.write(buf, msg.appId());
     }
 
     public static PurchaseAppPacket decode(FriendlyByteBuf buf) {
-        return new PurchaseAppPacket(buf.readResourceLocation());
+        return new PurchaseAppPacket(PacketIds.read(buf));
     }
 
     @Override

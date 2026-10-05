@@ -271,10 +271,6 @@ public final class PhoneChassis {
             // 悬停时整张贴图按倍数提亮。贴图改不了颜色，只能这么亮——
             // 用倍数而不是换成白色：资源包画的是什么颜色，亮起来还是那个颜色。
             // 设了就必须还原，否则后面画的东西跟着变亮
-            if (isHovered) {
-                float b = PhoneTheme.SKIN_HOVER_BRIGHTNESS;
-                g.setColor(b, b, b, 1f);
-            }
             // 按键图标可换肤；没有贴图就画原来的字符符号。
             //
             // 图标按它自己的【设计尺寸 40×14】画、在这一格里居中，而不是撑满整格：手机上
@@ -286,8 +282,9 @@ public final class PhoneChassis {
             int iconH = metrics.navThickness();
             int iconX = cx + (cw - iconW) / 2;
             int iconY = cy + (ch - iconH) / 2;
-            boolean drawn = PhoneSkin.draw(g, NAV_ICONS[i], iconX, iconY, iconW, iconH);
-            if (isHovered) g.setColor(1f, 1f, 1f, 1f);
+            boolean drawn = isHovered
+                    ? PhoneSkin.drawHighlight(g, NAV_ICONS[i], iconX, iconY, iconW, iconH)
+                    : PhoneSkin.draw(g, NAV_ICONS[i], iconX, iconY, iconW, iconH);
 
             if (!drawn) {
                 int bw = font.width(NAV_GLYPHS[i]);

@@ -136,4 +136,21 @@ public final class Draw {
         g.blit(RenderPipelines.GUI_TEXTURED, tex, x, y, u, v, w, h, srcW, srcH, texW, texH,
                 ARGB.white(alpha));
     }
+
+    public static void tinted(GuiGraphicsExtractor g, Identifier tex,
+                              int x, int y, int w, int h, float u, float v,
+                              int srcW, int srcH, int texW, int texH, int argb) {
+        g.blit(RenderPipelines.GUI_TEXTURED, tex, x, y, u, v, w, h,
+                srcW, srcH, texW, texH, argb);
+    }
+
+    /** Additive overlay approximates the former 1.8x shader-color highlight without global state. */
+    public static void highlighted(GuiGraphicsExtractor g, Identifier tex,
+                                   int x, int y, int w, int h, float u, float v,
+                                   int srcW, int srcH, int texW, int texH, float brightness) {
+        int alpha = Math.max(0, Math.min(255, (int) ((brightness - 1.0F) * 255.0F)));
+        int color = ARGB.color(alpha, 255, 255, 255);
+        g.blit(RenderPipelines.GUI_NAUSEA_OVERLAY, tex, x, y, u, v, w, h,
+                srcW, srcH, texW, texH, color);
+    }
 }

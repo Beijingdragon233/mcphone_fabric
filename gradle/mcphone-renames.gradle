@@ -143,7 +143,12 @@ abstract class NameRenamedMountTask extends DefaultTask {
         // intentionally replace a same-path source from an earlier layer.
         def rootList = mounts.get().collect { k, v -> [k, new File(v).path.replace('\\', '/')] }
                 .withIndex().collect { entry, index -> [entry[0], entry[1], index] }
-                .sort { -it[1].length() }
+                // More specific roots win; for equal roots, a later layer is the
+                // intentional override for the same relative source path.
+                .sort { a, b ->
+                    int lengthOrder = b[1].length() <=> a[1].length()
+                    lengthOrder != 0 ? lengthOrder : b[2] <=> a[2]
+                }
         def selected = [:]
         javaFiles.asFileTree.matching { include '**/*.java' }.each { f ->
             def abs = f.path.replace('\\', '/')

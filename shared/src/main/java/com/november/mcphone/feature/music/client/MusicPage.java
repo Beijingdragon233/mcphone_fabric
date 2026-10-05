@@ -186,7 +186,7 @@ public final class MusicPage {
         }
 
         ItemStack disc = DiscClientCache.getDisc();
-        g.renderItem(disc, x + 1, y + 1);
+        GuiUtil.drawItemIcon(g, disc, x + 1, y + 1, ITEM_SIZE);
 
         boolean playing = DiscClientCache.isPlaying(gameTime());
 

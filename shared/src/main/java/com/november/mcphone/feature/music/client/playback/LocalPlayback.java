@@ -3,6 +3,7 @@ package com.november.mcphone.feature.music.client.playback;
 import com.mojang.blaze3d.audio.Channel;
 import com.mojang.blaze3d.audio.Library;
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.client.VanillaAudio;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.sounds.SoundSource;
@@ -261,7 +262,7 @@ public final class LocalPlayback {
         try {
             Library lib = new Library();
             // 设备名 null ＝ 跟随系统默认；不开 HRTF，「耳机」不做空间化
-            lib.init(null, false);
+            VanillaAudio.initialize(lib);
 
             ourContext = ALC10.alcGetCurrentContext();
             ourCaps = AL.getCapabilities();

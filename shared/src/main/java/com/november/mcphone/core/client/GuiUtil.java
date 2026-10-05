@@ -112,6 +112,40 @@ public final class GuiUtil {
         Draw.textured(g, tex, x, y, w, h, u, v, srcW, srcH, texW, texH, alpha);
     }
 
+    /** Draw a skin texture with the hover highlight, keeping the blend behavior platform-local. */
+    public static void drawHighlight(GuiGraphics g, ResourceLocation tex,
+                                     int x, int y, int w, int h,
+                                     int texW, int texH, float brightness) {
+        Draw.highlighted(g, tex, x, y, w, h, 0, 0, texW, texH, texW, texH, brightness);
+    }
+
+    public static void drawNineSliceHighlight(GuiGraphics g, ResourceLocation tex,
+                                              int x, int y, int w, int h,
+                                              int texW, int texH, int border, float brightness) {
+        if (w <= 0 || h <= 0) return;
+        if (border <= 0 || border > (Math.min(texW, texH) - 1) / 2) {
+            drawHighlight(g, tex, x, y, w, h, texW, texH, brightness);
+            return;
+        }
+        int bx = Math.min(border, w / 2);
+        int by = Math.min(border, h / 2);
+        int[] dx = {x, x + bx, x + w - bx, x + w};
+        int[] dy = {y, y + by, y + h - by, y + h};
+        int[] sx = {0, border, texW - border, texW};
+        int[] sy = {0, border, texH - border, texH};
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 3; col++) {
+                int dw = dx[col + 1] - dx[col];
+                int dh = dy[row + 1] - dy[row];
+                if (dw > 0 && dh > 0) {
+                    Draw.highlighted(g, tex, dx[col], dy[row], dw, dh,
+                            sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row],
+                            texW, texH, brightness);
+                }
+            }
+        }
+    }
+
     /**
      * 九宫格拉伸：把贴图切成"四角 + 四边 + 中央"九块，四角按源图尺寸原样画，只有边和中央被拉伸。
      *

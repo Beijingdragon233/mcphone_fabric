@@ -2,7 +2,9 @@ package com.november.mcphone.platform.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.input.InputQuirks;
+import net.minecraft.client.input.KeyEvent;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 import org.lwjgl.sdl.SDLScancode;
 
@@ -33,6 +35,18 @@ import org.lwjgl.sdl.SDLScancode;
 public final class KeyModifiers {
 
     private KeyModifiers() {}
+
+    public static InputConstants.Type keyboardType() {
+        return InputConstants.Type.KEYBOARD;
+    }
+
+    public static InputConstants.Key fromKeyCodes(int key, int keycode) {
+        return InputConstants.getKey(new KeyEvent(key, keycode, 0));
+    }
+
+    public static boolean matches(KeyMapping mapping, int key, int keycode) {
+        return mapping.matches(new KeyEvent(key, keycode, 0));
+    }
 
     /** 这个键本身是不是一个修饰键（Ctrl / Shift / Alt）。 */
     public static boolean isModifierKey(InputConstants.Key key) {

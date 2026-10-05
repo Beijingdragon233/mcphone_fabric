@@ -1530,7 +1530,7 @@ public final class PhoneScreen extends PhoneScreenBase {
             return true;
         }
 
-        if (minecraft != null && minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+        if (minecraft != null && KeyModifiers.matches(minecraft.options.keyInventory, keyCode, scanCode)) {
             if (mode != Mode.MAIN) back();
             else onClose();
             return true;

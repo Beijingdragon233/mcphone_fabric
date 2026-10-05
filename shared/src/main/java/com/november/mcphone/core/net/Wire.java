@@ -82,7 +82,8 @@ public final class Wire {
         if (values.size() > max) {
             throw new EncoderException("要发的列表超过上限 " + max + ": " + values.size());
         }
-        buf.writeCollection(values, (b, v) -> encoder.accept(v, b));
+        buf.writeVarInt(values.size());
+        for (T value : values) encoder.accept(value, buf);
     }
 
     /**

@@ -2894,6 +2894,58 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
 - `PhoneSkin` 中超过 1.0 的悬停提亮仍不能直接映射到 26.3 的 8 位颜色参数，暂不以静默
   no-op 或错误的半透明结果代替。
 
+## 四十五、权限、音频与带色贴图接缝：75 → 68
+
+### 一、这一轮处理的内容
+
+- 命令权限从 shared 下沉到 `platform.CommandPermissions`。旧目标继续使用 OP 3；26.3
+  使用 `PermissionSet.hasPermission(new Permission.HasCommandLevel(PermissionLevel.ADMINS))`，
+  保持 `/mcphone economy audit` 的权限边界不变。
+- `LocalPlayback` 的 OpenAL 初始化下沉到 `platform.client.VanillaAudio`。26.3 使用
+  `Library.init(null, DeviceList.query(), false)`；旧目标保留原来的两参数调用。
+- 图集颜色从 `RenderSystem.setShaderColor` 下沉到 `platform.client.Draw.tinted`，26.3
+  使用 `GuiGraphicsExtractor.blit(..., argb)`，旧目标仍在绘制期间设置并恢复全局颜色。
+- 皮肤悬停提亮下沉到 `Draw.highlighted`，并保留带 `border` 皮肤的九宫格切片。26.3
+  使用 GUI 加法 pipeline 叠加 `(brightness - 1) * 255` 的白色层，避免把 1.8 倍提亮
+  错误编码成半透明颜色；旧目标继续使用原来的浮点 shader-color 乘法。
+
+### 二、实测
+
+- 26.3 `:compileJava`：`75 → 74 → 72 → 68`，本轮新增 0 条。
+- 本轮结束时 `PhoneSkin`、`PhoneChassis`、`IconAtlas`、权限判断和音频初始化的本体 API
+  错误已消失。
+- 26.3 仍然保持显式失败：浏览器的 MCEF/旧顶点渲染链，以及 AE2、Refined Storage、
+  Tom's Storage、Waystones、Patchouli、NetMusic 等缺少 26.3 构建的联动依赖未用 no-op
+  类型掩盖。
+
+### 三、还欠着的
+
+- 仍需处理浏览器 render-state/GpuTextureView 接入，前提是 MCEF 提供 26.3 构建。
+- 外部联动需分别确认 26.3 依赖版本和 API 后再接入；没有依赖证据时保持编译错误。
+- 需完成旧三目标回归、结构闸门、提交和 GitHub Actions 验证。
+
+## 四十六、26.3+ 覆盖层优先级修正：70 → 68
+
+### 一、这一轮处理的内容
+
+- 旧目标回归发现 26.3 专用的 `Prediction`、按键事件和 `KeyMapping` 写法误落在
+  `1.20.5+`/NeoForge 通用层，会让 1.21.1 Fabric 与 NeoForge 不能编译。
+- 将这些同路径覆盖文件放入 `layers/version/26.3+/`，通用层恢复 1.21.1 兼容实现，
+  并把 `26.3+` 放到 26.3 目标层列表末尾。
+- 修正 `mcphone-renames.gradle` 的同路径选择规则：路径更具体者优先；路径同样具体时，
+  后声明的窄版本层覆盖先声明的通用层。这样版本层覆盖不会只生成、却没有进入最终 javac 源集。
+
+### 二、实测
+
+- 26.3 `:compileJava`：`70 → 68`，剩余错误全部落在已知外部联动和浏览器渲染阻塞。
+- 1.20.1 Forge、1.21.1 Fabric、1.21.1 NeoForge：均 `BUILD SUCCESSFUL`。
+- 26.3 的 `PhoneItem`、按键、笔记掉落仍使用 26.3 API；旧三目标继续使用各自原 API。
+
+### 三、还欠着的
+
+- 需重新刷新并验证平台孪生/接缝基线，然后提交并观察 GitHub Actions。
+- 外部联动与 MCEF 26.3 构建仍需真实依赖后再接，不添加占位类型。
+
 ## 四十四、物品图标与屏幕属性平台化：112 → 109
 
 ### 一、这一轮处理的内容
