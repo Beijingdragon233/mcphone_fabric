@@ -2837,3 +2837,29 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
 - 26.3 相机的 GPU `PostChain` 接入仍未完成，当前模糊选项是可见的白闪回退；截图保存路径已经恢复。
 - `PhoneSkin` 的 26.3 `Codec` 元数据与附属模组 API 尚未进游戏验收，但 shared API 目录本步没有改动。
 - 下一簇按编译日志顺序处理真正缺少的外部联动 jar 与 26.3 原版类迁移；那部分不能用平台空壳刷错误数。
+
+## 四十一、拆出 26.3+ 版本层：129 → 129（层边界修正）
+
+### 一、这一轮处理的不是“刷错误数”
+
+- `Item.use` 在 26.3 返回 `InteractionResult`，而 1.21.1 仍返回
+  `InteractionResultHolder<ItemStack>`；tooltip 回调也从旧版的列表参数改为
+  `TooltipDisplay` + `Consumer<Component>`。
+- 不能直接改 `layers/version/1.21+/PhoneItem.java`：这会让 1.21.1 NeoForge/Fabric 同时拿到
+  26.3 签名并回归失败。因此新增 `layers/version/26.3+/`，只把 26.3 的 `PhoneItem` 放入其中，
+  `1.21+` 的其余代码继续共用，26.3-neoforge 额外挂载该层。
+- 多个版本层现在允许同一路径由更窄、后声明的层覆盖。改名挂载任务按相对 Java 路径去重，选择最后一层，
+  同时把“应挂载文件数”闸门改为去重后的有效文件数；此前会把 `PhoneItem.java` 送进 javac 两次。
+
+### 二、实测
+
+- 干净编译确认：26.3 `:compileJava` **130 → 129**，`PhoneItem` 的 API 错误与重复类错误均消失，
+  新增 0 条。其余 129 条仍是下一批原版/外部联动问题。
+- 1.21.1-neoforge、1.21.1-fabric、1.20.1-forge `:compileJava` 均 `BUILD SUCCESSFUL`。
+- 十道配置闸全绿；`verifySharedIsTargetNeutral` 通过；`verifyPlatformTwins` 通过：120 对，
+  差异合计 6335 行（新版本层专属差异已记入基线）。`updateSeamsDoc` 显示接缝清单无需变化。
+
+### 三、还欠着的
+
+- 26.3 的 `RegisterClientReloadListenersEvent`、外部联动 jar、音频/渲染和其余原版 API 仍未处理。
+- 本步只完成版本边界与 `PhoneItem` 签名迁移，没有改变 `shared/api` 的公开接口。

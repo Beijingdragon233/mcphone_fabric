@@ -139,9 +139,12 @@ abstract class NameRenamedMountTask extends DefaultTask {
         def counter = new int[1]
         int n = 0
         int copied = 0
+        // Version layers are ordered from broad to narrow. A narrow later layer may
+        // intentionally replace a same-path source from an earlier layer.
         def rootList = mounts.get().collect { k, v -> [k, new File(v).path.replace('\\', '/')] }
+                .withIndex().collect { entry, index -> [entry[0], entry[1], index] }
                 .sort { -it[1].length() }
-
+        def selected = [:]
         javaFiles.asFileTree.matching { include '**/*.java' }.each { f ->
             def abs = f.path.replace('\\', '/')
             def owner = rootList.find { abs.startsWith(it[1] + '/') }
@@ -150,7 +153,16 @@ abstract class NameRenamedMountTask extends DefaultTask {
                         "挂载源里冒出一个不属于任何挂载目录的文件：${abs}\n" +
                         "说明 @InputFiles 与 mounts 这两份输入对不上了，产物路径没法算。")
             }
-            def where = owner[0] + '/' + abs.substring(owner[1].length() + 1)
+            def relative = abs.substring(owner[1].length() + 1)
+            def prior = selected[relative]
+            if (prior == null || owner[2] > prior[2]) {
+                selected[relative] = [f, owner[0], owner[2]]
+            }
+        }
+
+        selected.entrySet().toSorted { a, b -> a.key <=> b.key }.each { entry ->
+            def where = entry.value[1] + '/' + entry.key
+            def f = entry.value[0]
             copied++
             def src = f.getText('UTF-8')
 
@@ -237,7 +249,7 @@ abstract class NameRenamedMountTask extends DefaultTask {
         }
         // 不变量 5：【少挂了东西必须说话】。漏一个目录的症状是「少编了几个文件」——
         // 不报错、不红，只是那个类在游戏里不存在。
-        int expected = javaFiles.asFileTree.matching { include '**/*.java' }.files.size()
+        int expected = selected.size()
         if (expected == 0 || copied != expected) {
             throw new GradleException(
                     "挂载源应该有 ${expected} 个 java 文件，实际复制了 ${copied} 个" +
