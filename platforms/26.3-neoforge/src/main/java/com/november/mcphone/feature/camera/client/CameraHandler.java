@@ -29,7 +29,8 @@ public final class CameraHandler {
             // 水印关着时给 null，那就是原版自己的起名规矩
             Screenshot.grab(mc.gameDirectory,
                     CameraStamp.fileName(mc.gameDirectory, mc.player),
-                    mc.getMainRenderTarget(),
+                    mc.gameRenderer.mainRenderTarget(),
+                    1,
                     msg -> {
                         if (mc.player != null) ClientMessages.show(mc.player, msg, true);
                     });

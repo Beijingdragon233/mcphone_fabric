@@ -2804,3 +2804,36 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
 - 第 23 步那条 AT 运行期生效没有、第 24 步那条裁剪倍数，两条都还等进游戏。
 - 下一簇按数排（与上一步同）：`getMainRenderTarget` 3 条（`Screenshot.grab` 变五参会冒 arity 新错）、
   `MetadataSectionSerializer` 3 条、`Optional<Reference<Item>>` 4 条，后面还是真缺 jar 那一堆。
+
+## 四十、相机目标、资源元数据与注册表返回值：148 → 133
+
+### 一、这一轮收掉的错误
+
+- 26.3 的主渲染目标不再从 `Minecraft.getMainRenderTarget()` 取，改为
+  `mc.gameRenderer.mainRenderTarget()`；截图调用按 26.3 的五参
+  `Screenshot.grab(workDir, forceName, target, downscaleFactor, callback)` 补齐 `1`。
+- `MetadataSectionSerializer` 在 26.3 已变成 `MetadataSectionType<T>` + `Codec<T>`。
+  `PhoneSkin` 不再在 shared 层持有原版元数据类型，而是通过各平台的 `SkinMetadata` 门面读取同一个
+  `mcphone_skin.border` 字段；旧三支继续使用原来的 JSON 结构和默认值。
+- 26.3 的 `BuiltInRegistries.ITEM.get(Identifier)` 返回
+  `Optional<Reference<Item>>`，四支新增 `RegistryItems.get(...)` 门面，把未注册物品统一保留为
+  `Items.AIR`。`ItemRefs`、外部手册图标/标题、内建商店价格都改走该门面，未改变对外 API 签名。
+- 26.3 相机的 `PostChain` 已迁到 `FrameGraph`、`GraphicsResourceAllocator` 和新的 GPU 投影入口，
+  旧版的直接构造、`setUniform`、`process(float)`、`bindWrite` 和 `resize` 均不再存在。
+  本轮恢复截图本身，并让 26.3 的模糊闪光选项明确回退到白闪；没有用空实现伪装成模糊仍可用。
+  后续单独接入新的渲染帧入口。
+
+### 二、实测
+
+- 26.3 `:compileJava` **148 → 133**，新增 0 条。目标、元数据、注册表三簇以及相机旧 API 的
+  连锁错误已从日志中消失。
+- 1.21.1-neoforge、1.21.1-fabric、1.20.1-forge 的 `:compileJava` 均 `BUILD SUCCESSFUL`。
+- `verifySharedIsTargetNeutral` 通过：shared 364 个文件，无版本/加载器轴泄漏；十道配置闸全绿。
+- `verifyPlatformTwins` 通过：120 对，差异合计 6265 行（本步新增的版本接缝和 26.3 相机实现已
+  记入 `versions/platform-twins.json`）；`updateSeamsDoc` 已更新四个目标的接缝清单。
+
+### 三、还欠着的
+
+- 26.3 相机的 GPU `PostChain` 接入仍未完成，当前模糊选项是可见的白闪回退；截图保存路径已经恢复。
+- `PhoneSkin` 的 26.3 `Codec` 元数据与附属模组 API 尚未进游戏验收，但 shared API 目录本步没有改动。
+- 下一簇按编译日志顺序处理真正缺少的外部联动 jar 与 26.3 原版类迁移；那部分不能用平台空壳刷错误数。

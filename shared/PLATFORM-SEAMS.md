@@ -223,7 +223,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-neoforge -->
 
-#### 共用代码引用了的（42）
+#### 共用代码引用了的（44）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -252,6 +252,8 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
 - `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.CameraGui`
@@ -300,7 +302,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（82）
+#### 共用代码引用了的（84）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -369,6 +371,8 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
 - `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.CameraGui`
@@ -429,7 +433,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.21.1-fabric -->
 
-#### 共用代码引用了的（44）
+#### 共用代码引用了的（46）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -460,6 +464,8 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
 - `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.CameraGui`
@@ -515,7 +521,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-neoforge -->
 
-#### 共用代码引用了的（37）
+#### 共用代码引用了的（39）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -541,6 +547,8 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.ModPresence`　—— 加载器导入
 - `platform.Nbt`
 - `platform.Profiles`
+- `platform.RegistryItems`
+- `platform.SkinMetadata`
 - `platform.Slots`
 - `platform.StackCodecs`
 - `platform.client.CameraGui`

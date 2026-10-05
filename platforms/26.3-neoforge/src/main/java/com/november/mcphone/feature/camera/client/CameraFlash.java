@@ -1,13 +1,10 @@
 package com.november.mcphone.feature.camera.client;
 
-import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.AppOptions;
 import com.november.mcphone.core.client.ClientConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.PostChain;
-import net.minecraft.resources.Identifier;
 
 /**
  * 拍照那一下的反馈：默认是一片白闪，也可以换成【模糊一下】。
@@ -42,18 +39,8 @@ public final class CameraFlash {
     /** 最狠的那一帧用多大半径。原版菜单背景模糊的上限就是这个数 */
     private static final float MAX_RADIUS = GameRenderer.MAX_BLUR_RADIUS;
 
-    /** 原版那条链。我们只是再 new 一份，没有自带任何着色器文件 */
-    private static final Identifier BLUR =
-            Identifier.withDefaultNamespace("shaders/post/blur.json");
-
     /** true = 模糊，false = 白闪。值的真身在配置里，这里是渲染每帧要读的那一份 */
     private static boolean soft = false;
-
-    private static PostChain chain;
-    private static int chainW, chainH;
-
-    /** 建失败过就不再试。每帧重试一次只会把日志刷爆，而且照样没有模糊 */
-    private static boolean chainFailed = false;
 
     //  开关
 
@@ -63,7 +50,9 @@ public final class CameraFlash {
 
     /** 配置读进来时推给这里。渲染只读这个静态字段，一帧都不碰配置 */
     public static void setSoft(boolean value) {
-        soft = value;
+        // 26.3 的 PostChain 已迁到 FrameGraph/GPU allocator，不能从 GUI 提取阶段
+        // 安全地复用旧版入口。保留设置键，但明确回退到可见的白闪，不静默丢帧。
+        soft = false;
     }
 
     /** App 管理器里那一行的定义。由 {@link CameraApp} 在构造时登记 */
@@ -88,32 +77,10 @@ public final class CameraFlash {
      * 卡尺与准星得留在清楚的一层上，否则玩家会以为是自己眼花。
      */
     public static void renderBlur(GuiGraphicsExtractor g, float partialTick, long nowMs) {
-        if (!soft) return;
-
-        float t = progress(nowMs);
-        if (t <= 0.0F) return;
-
-        Minecraft mc = Minecraft.getInstance();
-        PostChain blur = chain(mc);
-        if (blur == null) return;
-
-        // GuiGraphicsExtractor 是攒一批再画的。不 flush 的话，这一帧的 HUD 还没落到目标上，
-        // 模糊处理的就是上一帧的内容，快门那一下会看起来慢半拍
-        g.flush();
-
-        // 半径跟着淡出往下收。收到 1 以下原版那个着色器等于没模糊，所以下限取 1
-        blur.setUniform("Radius", 1.0F + (MAX_RADIUS - 1.0F) * t);
-        blur.process(partialTick);
-
-        // 后处理链走完，主目标不再是当前写入目标。不绑回来的话，这之后画的取景框
-        // 会落到链里那张临时纹理上——屏幕上什么都看不见，也不报错
-        mc.getMainRenderTarget().bindWrite(false);
     }
 
     /** 白闪那一版。画在最上面，盖住取景框才像"闪了一下" */
     public static void renderWhite(GuiGraphicsExtractor g, int w, int h, long nowMs) {
-        if (soft) return;
-
         float t = progress(nowMs);
         if (t <= 0.0F) return;
 
@@ -122,12 +89,7 @@ public final class CameraFlash {
 
     /** 资源重载时扔掉这条链：着色器程序跟着资源走，留着旧的会画出黑屏且不报错 */
     public static void dispose() {
-        if (chain != null) {
-            chain.close();
-            chain = null;
-        }
-        // 重载之后允许再试一次：上次失败可能就是因为资源包里缺东西，而它刚被换掉
-        chainFailed = false;
+        // 26.3 暂无持有的 PostChain；保留生命周期入口供 GPU 版接入。
     }
 
     /** 这一刻闪到哪儿了：1 是刚按下快门，0 是结束。不在闪光期内返回 0 */
@@ -137,31 +99,4 @@ public final class CameraFlash {
         return 1.0F - (float) since / FLASH_MS;
     }
 
-    /** 拿到那条链，顺带跟着窗口尺寸走。建不出来就返回 null，调用方当作没有模糊 */
-    private static PostChain chain(Minecraft mc) {
-        var target = mc.getMainRenderTarget();
-
-        if (chain == null) {
-            if (chainFailed) return null;
-            try {
-                chain = new PostChain(mc.getTextureManager(), mc.getResourceManager(), target, BLUR);
-            } catch (Exception e) {
-                chainFailed = true;
-                MCphone.LOGGER.warn("[MCphone] 相机的模糊闪光建不起来，这次改用白闪: {}", e.toString());
-                return null;
-            }
-            chain.resize(target.width, target.height);
-            chainW = target.width;
-            chainH = target.height;
-            return chain;
-        }
-
-        // 窗口大小变了要跟着改，否则模糊出来的是拉伸错位的画面
-        if (chainW != target.width || chainH != target.height) {
-            chain.resize(target.width, target.height);
-            chainW = target.width;
-            chainH = target.height;
-        }
-        return chain;
-    }
 }

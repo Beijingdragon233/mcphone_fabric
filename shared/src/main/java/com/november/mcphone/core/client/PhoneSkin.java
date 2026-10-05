@@ -2,10 +2,10 @@ package com.november.mcphone.core.client;
 
 import com.google.gson.JsonObject;
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.SkinMetadata;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.metadata.MetadataSectionSerializer;
 import net.minecraft.server.packs.resources.Resource;
 import org.jetbrains.annotations.Nullable;
 
@@ -236,16 +236,6 @@ public final class PhoneSkin {
     private record SkinTexture(ResourceLocation location, int width, int height, int border) {}
 
     /** 可选的源像素边宽；未声明时沿用旧资源包的整张拉伸行为。 */
-    private static final MetadataSectionSerializer<Integer> SKIN_METADATA = new MetadataSectionSerializer<>() {
-        @Override
-        public String getMetadataSectionName() { return "mcphone_skin"; }
-
-        @Override
-        public Integer fromJson(JsonObject json) {
-            return json.has("border") ? json.get("border").getAsInt() : 0;
-        }
-    };
-
     /** 探测结果缓存；empty（没有这张贴图）也要缓存，否则缺贴图的元素每帧都要查一次资源管理器 */
     private static final Map<Element, Optional<SkinTexture>> CACHE = new HashMap<>();
 
@@ -415,7 +405,7 @@ public final class PhoneSkin {
             }
             int border = 0;
             try {
-                int requested = res.get().metadata().getSection(SKIN_METADATA).orElse(0);
+                int requested = SkinMetadata.border(res.get());
                 if (requested > 0 && requested <= (Math.min(size[0], size[1]) - 1) / 2) {
                     border = requested;
                 }
