@@ -12,9 +12,10 @@ final class ChatContextMenu {
     private List<ChatMessageAction> items = List.of();
     boolean isOpen() { return view.isOpen(); }
     ChatMessageTarget target() { return target; }
-    void open(ChatMessageTarget target,double x,double y) {
+    void open(ChatMessageTarget target,double x,double y) { open(target,x,y,false); }
+    void open(ChatMessageTarget target,double x,double y,boolean favorite) {
         this.target=target;
-        items=target.copyable()?List.of(ChatMessageAction.COPY,ChatMessageAction.DELETE):List.of(ChatMessageAction.DELETE);
+        items=target.copyable()?(favorite?List.of(ChatMessageAction.COPY,ChatMessageAction.FAVORITE,ChatMessageAction.DELETE):List.of(ChatMessageAction.COPY,ChatMessageAction.DELETE)):List.of(ChatMessageAction.DELETE);
         view.open(x,y);
     }
     boolean dismiss() { boolean wasOpen=view.dismiss(); target=null; items=List.of(); return wasOpen; }
@@ -25,8 +26,9 @@ final class ChatContextMenu {
         return items.stream().map(action -> new ChatContextMenuView.Entry(
                 "mcphone.chat.message_action."+switch(action) {
                     case COPY -> target.selectedText().isEmpty()?"copy_message":"copy_selection";
+                    case FAVORITE -> "favorite";
                     case DELETE -> pending?"deleting":"delete_message";
-                },action==ChatMessageAction.COPY?ChatContextMenuView.Icon.COPY:ChatContextMenuView.Icon.DELETE,
+                },switch(action) { case COPY -> ChatContextMenuView.Icon.COPY; case FAVORITE -> ChatContextMenuView.Icon.FAVORITE; case DELETE -> ChatContextMenuView.Icon.DELETE; },
                 !pending || action!=ChatMessageAction.DELETE)).toList();
     }
     void render(GuiGraphics g,Font font,int x,int y,int width,int height,int mx,int my,

@@ -187,6 +187,9 @@ public final class ChatImageCache {
      * 攒批与限流的理由见类注释。没有要的东西时一个包都不发。
      */
     public static void flushRequests(UUID peer) {
+        flushRequests(peer, false);
+    }
+    public static void flushRequests(UUID peer, boolean group) {
         if (peer == null || Minecraft.getInstance().getConnection() == null) return;
 
         long now = System.currentTimeMillis();
@@ -197,7 +200,8 @@ public final class ChatImageCache {
         if (wanted.isEmpty()) return;
 
         for (UUID id : wanted) ENTRIES.get(id).requestedAt = now;
-        MCphoneNetwork.sendToServer(new RequestChatImagePacket(peer, wanted));
+        if (group) GroupTransport.send(new com.november.mcphone.feature.chat.group.net.GroupCommand.Images(UUID.randomUUID(), peer, wanted));
+        else MCphoneNetwork.sendToServer(new RequestChatImagePacket(peer, wanted));
     }
 
     /**

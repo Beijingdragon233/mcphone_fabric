@@ -145,6 +145,7 @@ public final class ChatClientCache {
 
     /** 退出世界时清空，免得换服务器时闪出上一个服务器的数据 */
     public static void clear() {
+        com.november.mcphone.feature.chat.group.net.GroupClientCache.clear();
         conversations = List.of();
         onlinePlayers = List.of();
         totalOnline = 0;

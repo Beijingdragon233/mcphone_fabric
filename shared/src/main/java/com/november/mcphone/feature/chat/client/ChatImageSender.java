@@ -122,7 +122,7 @@ public final class ChatImageSender {
     private static final int MAX_QUEUED = 4;
 
     /** 排着等发的一张 */
-    private record Queued(UUID peer, Path photo) {}
+    private record Queued(UUID peer, Path photo, boolean group) {}
 
     /** 只有主线程碰它：点击、拖放、客户端 tick 都在主线程 */
     private static final Deque<Queued> QUEUE = new ArrayDeque<>();
@@ -146,6 +146,7 @@ public final class ChatImageSender {
 
     /** 刚发上去的那张图的字节，等回声带着 id 回来时塞进缓存，见 {@link #onNewMessage} */
     private static byte[] pendingPng;
+    private static UUID pendingGroup, pendingRequest;
 
     /** 这会儿有一张正在发，或者刚发完还在冷却。再点的会排队，见 {@link #send} */
     public static boolean isBusy() {
@@ -174,14 +175,18 @@ public final class ChatImageSender {
      * @param photo 相册或表情目录里那张图的路径
      */
     public static void send(UUID peer, Path photo) {
+        send(peer, photo, false);
+    }
+    public static void sendGroup(UUID group, Path photo) { send(group, photo, true); }
+    private static void send(UUID peer, Path photo, boolean group) {
         if (peer == null || photo == null) return;
 
         if (isBusy()) {
             if (isFull()) tell("mcphone.chat.image_too_fast");
-            else QUEUE.add(new Queued(peer, photo));
+            else QUEUE.add(new Queued(peer, photo, group));
             return;
         }
-        start(peer, photo);
+        start(peer, photo, group);
     }
 
     /**
@@ -199,16 +204,18 @@ public final class ChatImageSender {
         if (QUEUE.isEmpty() || isBusy()) return;
 
         Queued next = QUEUE.poll();
-        start(next.peer(), next.photo());
+        start(next.peer(), next.photo(), next.group());
     }
 
     /** 真的开始发这一张：压缩在后台，发包回渲染线程 */
-    private static void start(UUID peer, Path photo) {
+    private static void start(UUID peer, Path photo, boolean group) {
         var connection = Minecraft.getInstance().getConnection();
         if (connection == null) return;
         var ticket = SESSION.start(connection);
         sendingSince = System.currentTimeMillis();
         pendingPng = null;
+        pendingGroup = group ? peer : null;
+        pendingRequest = group ? UUID.randomUUID() : null;
 
         // 上限在这里取，不在后台线程里取：那是服主的配置（连上来时同步过来的），
         // 读它是主线程的事，而且一次上传从头到尾该按同一个数来
@@ -412,7 +419,9 @@ public final class ChatImageSender {
             byte[] chunk = new byte[to - from];
             System.arraycopy(png, from, chunk, 0, chunk.length);
 
-            MCphoneNetwork.sendToServer(new SendChatImagePacket(
+            if (pendingGroup != null) GroupTransport.send(new com.november.mcphone.feature.chat.group.net.GroupCommand.Upload(
+                    pendingRequest, pendingGroup, encoded.width(), encoded.height(), encoded.frames(), encoded.frameMs(), index, chunkCount, chunk));
+            else MCphoneNetwork.sendToServer(new SendChatImagePacket(
                     peer, encoded.width(), encoded.height(), encoded.frames(), encoded.frameMs(),
                     index, chunkCount, chunk));
         }
@@ -430,6 +439,7 @@ public final class ChatImageSender {
      * 由 {@link ChatClientEvents#onMessage} 转调，上传状态不依赖通知是否显示。
      */
     public static void onNewMessage(ChatMessage message) {
+        if (pendingGroup != null) return;
         if (pendingPng == null) return;
         if (!(message.body() instanceof ImageBody image)) return;
 
@@ -438,6 +448,18 @@ public final class ChatImageSender {
 
         ChatImageCache.seed(image.image(), pendingPng);
         finish();
+    }
+    public static void onGroupMessage(com.november.mcphone.feature.chat.group.net.GroupReply.Message reply) {
+        if (pendingPng == null || !java.util.Objects.equals(pendingGroup, reply.summary().id())
+                || !java.util.Objects.equals(pendingRequest, reply.request())) return;
+        var message = reply.summary().last().orElseThrow().message();
+        var player = Minecraft.getInstance().player;
+        if (player == null || !message.sender().equals(player.getUUID()) || !(message.body() instanceof ImageBody image)) return;
+        ChatImageCache.seed(image.image(), pendingPng); finish();
+    }
+    public static void onGroupResult(com.november.mcphone.feature.chat.group.net.GroupReply.Result reply) {
+        if (pendingRequest != null && pendingRequest.equals(reply.request())
+                && reply.status() != com.november.mcphone.feature.chat.group.GroupStatus.OK) { tell(reply.status().key()); finish(); }
     }
 
     /**
@@ -452,6 +474,7 @@ public final class ChatImageSender {
         pendingPng = null;
         readyAt = 0L;
         QUEUE.clear();
+        pendingGroup = pendingRequest = null;
     }
 
     /** 一次上传就此结束（成了、超时了、或者压根没发出去），并开始冷却 */
@@ -459,6 +482,7 @@ public final class ChatImageSender {
         SESSION.cancel();
         sendingSince = 0L;
         pendingPng = null;
+        pendingGroup = pendingRequest = null;
         readyAt = System.currentTimeMillis() + COOLDOWN_MS;
     }
 

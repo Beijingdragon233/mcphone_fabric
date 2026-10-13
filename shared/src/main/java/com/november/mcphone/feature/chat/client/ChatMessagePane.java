@@ -5,7 +5,6 @@ import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.core.client.PlayerAvatar;
 import com.november.mcphone.feature.chat.ChatMessage;
-import com.november.mcphone.feature.chat.net.ChatClientCache;
 import com.november.mcphone.feature.chat.client.ChatMessageLayout.Block;
 import com.november.mcphone.feature.chat.client.ChatMessageLayout.BlockType;
 
@@ -24,17 +23,18 @@ import static com.november.mcphone.feature.chat.client.ChatMessageLayout.STAMP_P
 /** 消息区拥有排版缓存、滚动量和可见图片命中区，状态跟随一个会话页实例。 */
 final class ChatMessagePane {
     private static final int AVATAR_SIZE = ChatLayout.AVATAR_SIZE;
-    private static final int AVATAR_GAP = 3;
     private static final int COLOR_TEXT_SELF = PhoneTheme.FONT_COLOR_CHAT_SELF;
     private static final int COLOR_TEXT_PEER = PhoneTheme.FONT_COLOR_CHAT_PEER;
     private static int colorStamp() { return FontPalette.timestamp(); }
     private static int colorEmpty() { return FontPalette.subtle(); }
     private UUID peer;
+    private java.util.function.Function<ChatMessage, String> senderName = message -> "";
     private UUID selfId;
     private UUID laidOutSelf;
     private Font laidOutFont;
     private List<ChatMessage> laidOutFrom;
     private int laidOutWidth = -1;
+    private boolean group, laidOutGroup;
     private List<Block> blocks = List.of();
     private final ChatScrollState scroll = new ChatScrollState();
     private final List<ImageHit> imageHits = new ArrayList<>();
@@ -46,12 +46,15 @@ final class ChatMessagePane {
     private double dragX, dragY;
     private record TextHit(Block block, int x, int y, int lineStep) {}
     private record ImageHit(UUID image, int x, int y, int w, int h) {}
+    private record Nickname(String text, float x, float y) {}
 
     void reset() {
         peer = selfId = laidOutSelf = null;
         laidOutFont = null;
         laidOutFrom = null;
         laidOutWidth = -1;
+        group = laidOutGroup = false;
+        senderName = message -> "";
         blocks = List.of();
         imageHits.clear();
         textHits.clear();
@@ -125,12 +128,11 @@ final class ChatMessagePane {
         return null;
     }
 
-    private void relayout(Font font, int width) {
-        List<ChatMessage> src = ChatClientCache.getMessages();
+    private void relayout(Font font, int width, List<ChatMessage> src, boolean group) {
         if (src == laidOutFrom && width == laidOutWidth && font == laidOutFont
-                && Objects.equals(selfId, laidOutSelf)) return;
+                && Objects.equals(selfId, laidOutSelf) && group == laidOutGroup) return;
         selection.reconcile(src);
-        blocks = ChatMessageLayout.build(font, src, width, selfId);
+        blocks = ChatMessageLayout.build(font, src, width, selfId, group);
         int total = 0;
         for (Block b : blocks) total += b.rowHeight() + BLOCK_GAP;
         scroll.contentChanged(total);
@@ -138,12 +140,16 @@ final class ChatMessagePane {
         laidOutWidth = width;
         laidOutFont = font;
         laidOutSelf = selfId;
+        laidOutGroup = group;
     }
 
-    void render(GuiGraphics g, Font font, int x, int top, int w, int bottom, UUID peer, UUID selfId) {
+    void render(GuiGraphics g, Font font, int x, int top, int w, int bottom, UUID peer, UUID selfId,
+                boolean group, List<ChatMessage> source, java.util.function.Function<ChatMessage, String> names) {
         this.peer = peer;
         this.selfId = selfId;
-        relayout(font, w);
+        this.senderName = names;
+        this.group = group;
+        relayout(font, w, source, group);
         // 每帧重建：滚一下、来一条新消息，位置就全变了
         imageHits.clear();
         textHits.clear();
@@ -172,17 +178,7 @@ final class ChatMessagePane {
         // 套在一层缩放里画的（界面大小 × 开机动画）。直接交本地坐标，界面大小一改字就被切
         GuiUtil.enableScissor(g, x, top, x + w, bottom);
         // 完整几何先算一遍，拖出可见区仍归原消息；滚动/新消息后不使用上一帧的命中区。
-        int rowY = y;
-        for (Block b : blocks) {
-            if (b.type() != BlockType.STAMP) messageHits.add(new MessageHit(b.message(), bubbleX(b, x, w),
-                    rowY + b.placement().contentY(), b.w(), b.h()));
-            if (b.type() == BlockType.TEXT) {
-                int bx = bubbleX(b, x, w);
-                textHits.add(new TextHit(b, bx, rowY + b.placement().contentY(),
-                        ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE)));
-            }
-            rowY += b.rowHeight() + BLOCK_GAP;
-        }
+        layoutHits(x, y, w, ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE));
         if (selection.dragging()) updateDrag();
         for (Block b : blocks) {
             if (y + b.rowHeight() > top && y < bottom) renderBlock(g, font, b, x, y, w);
@@ -198,13 +194,16 @@ final class ChatMessagePane {
             return;
         }
 
-        UUID avatar = b.self() ? selfId : peer;
+        UUID avatar = b.message().sender();
         int avatarY = y + b.placement().avatarY();
         int contentY = y + b.placement().contentY();
-        // placement 在上方保留昵称行，未来群聊可在这里放发送者名；当前不伪造群聊功能。
+        // 群聊头像与昵称从同一行开始；私聊沿用原来的短气泡底边对齐。
         if (avatar != null) PlayerAvatar.draw(g, avatar,
                 b.self() ? x + w - AVATAR_SIZE : x, avatarY, AVATAR_SIZE);
         int bx = bubbleX(b, x, w);
+        var nickname = nickname(font, b, x, y, w);
+        if (nickname != null) ChatUi.text(g, font, nickname.text(), nickname.x(), nickname.y(),
+                ChatLayout.GROUP_NAME_SCALE, FontPalette.subtle());
 
         // 图片不套气泡：真实的聊天软件里图片就是图片本身，没有底色也没有一圈留白，
         // 谁发的靠左右对齐看得出来。套一层气泡等于在图周围多画一圈没有意义的色块，
@@ -227,7 +226,28 @@ final class ChatMessagePane {
     }
 
     private static int bubbleX(Block b, int x, int w) {
-        return b.self() ? x + w - AVATAR_SIZE - AVATAR_GAP - b.w() : x + AVATAR_SIZE + AVATAR_GAP;
+        return x + ChatLayout.messageContentX(w, b.w(), b.self());
+    }
+
+    private Nickname nickname(Font font, Block block, int x, int y, int width) {
+        if (!group || block.type() == BlockType.STAMP) return null;
+        String name = senderName.apply(block.message());
+        int available = ChatLayout.messageContentWidth(width);
+        if (name == null || name.isBlank() || available <= 0) return null;
+        name = ChatUi.truncate(font, name, available, ChatLayout.GROUP_NAME_SCALE);
+        var origin = ChatLayout.groupName(width, font.width(name), block.self());
+        return new Nickname(name, x + origin.x(), y + origin.y());
+    }
+
+    /** 命中区按本帧排版重建；昵称不属于正文选区或右键消息区域。 */
+    private void layoutHits(int x, int y, int width, int lineStep) {
+        textHits.clear(); messageHits.clear();
+        for (Block b : blocks) {
+            int bx = bubbleX(b, x, width), by = y + b.placement().contentY();
+            if (b.type() != BlockType.STAMP) messageHits.add(new MessageHit(b.message(), bx, by, b.w(), b.h()));
+            if (b.type() == BlockType.TEXT) textHits.add(new TextHit(b, bx, by, lineStep));
+            y += b.rowHeight() + BLOCK_GAP;
+        }
     }
 
     private void renderSelection(GuiGraphics g, Font font, Block b, int bx, int y) {

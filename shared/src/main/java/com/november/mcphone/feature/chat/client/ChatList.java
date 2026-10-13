@@ -11,6 +11,8 @@ import com.november.mcphone.feature.chat.net.ChatClientCache;
 import com.november.mcphone.feature.chat.net.ConversationSummary;
 import com.november.mcphone.feature.chat.net.RequestConversationsPacket;
 import com.november.mcphone.feature.chat.net.TeleportToFriendPacket;
+import com.november.mcphone.feature.chat.group.GroupSummary;
+import com.november.mcphone.feature.chat.group.net.GroupClientCache;
 import com.november.mcphone.core.client.GuiUtil;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -36,9 +38,9 @@ public final class ChatList {
 
     /** 改这个数要连贴图一起改：不做平滑缩放，尺寸对不上会抽像素 */
     private static final int TP_ICON_SIZE = ChatLayout.TELEPORT_ICON_SIZE;
-    private static final String[] TAB_KEYS = {"chats", "contacts", "discover", "profile"};
-    private static final ChatUi.Icon[] TAB_ICONS = {
-            ChatUi.Icon.CHAT, ChatUi.Icon.CONTACTS, ChatUi.Icon.DISCOVER, ChatUi.Icon.PROFILE};
+    private final ChatNavigationBar navigation = new ChatNavigationBar();
+    private final ChatContactSearch search = new ChatContactSearch();
+    private String rowQuery = "";
 
     private static int colorName() { return FontPalette.title(); }
     private static int colorPreview() { return FontPalette.preview(); }
@@ -46,8 +48,15 @@ public final class ChatList {
 
     private long lastRequestMs;
     private int scrollOffset;
-    private boolean addContactHovered;
-    private boolean contactsTabHovered;
+    private ChatLayout.Rect plusBounds;
+    private final ChatHomeMenu homeMenu = new ChatHomeMenu();
+    private boolean pendingCreate, hoveredGroup;
+    private UUID pendingGroup;
+    private record Row(ConversationSummary summary, GroupSummary group) {}
+    private List<ConversationSummary> rowFriends;
+    private List<GroupSummary> rowGroups;
+    private List<Row> cachedRows = List.of();
+    private boolean pendingContacts, pendingProfile;
 
     /** 鼠标停在谁那一行上，null 表示没有。记人不记下标，理由见类注释 */
     private UUID hoveredPeer;
@@ -61,20 +70,36 @@ public final class ChatList {
     private boolean pendingClose;
 
     public void open() {
+        close();
         scrollOffset = 0;
-        hoveredPeer = null;
         lastRequestMs = 0L;      // 置零＝下一帧立即请求
-        pendingOpen = null;
-        pendingAddContact = false;
-        teleportHoveredPeer = null;
-        pendingClose = false;
     }
 
     public void close() {
         hoveredPeer = null;
-        addContactHovered = false;
-        contactsTabHovered = false;
+        plusBounds = null;
+        navigation.clear();
+        pendingContacts = false; pendingProfile = false;
         teleportHoveredPeer = null;
+        pendingOpen = null;
+        pendingAddContact = false;
+        pendingClose = false;
+        homeMenu.dismiss();
+        pendingCreate = hoveredGroup = false; pendingGroup = null;
+        rowFriends = null; rowGroups = null; cachedRows = List.of();
+        search.reset(); rowQuery = ""; scrollOffset = 0;
+    }
+
+    public boolean hasContextMenu() { return homeMenu.isOpen(); }
+    public boolean dismissContextMenu() { return homeMenu.dismiss(); }
+
+    /** 机身外与导航栏的点击也先交到这里，只处理菜单，不让操作穿透。 */
+    public boolean contextMouseClicked(double x, double y, int button) {
+        if (!hasContextMenu()) return false;
+        var action = homeMenu.choose(x, y, button);
+        if (action == ChatHomeMenu.Action.ADD_CONTACT) pendingAddContact = true;
+        else if (action == ChatHomeMenu.Action.CREATE_GROUP) pendingCreate = true;
+        return true;
     }
 
     /** 取走"打开某个会话"的请求，没有则返回 null */
@@ -83,10 +108,19 @@ public final class ChatList {
         pendingOpen = null;
         return out;
     }
+    public UUID consumeGroupOpenRequest() { var out = pendingGroup; pendingGroup = null; return out; }
+    public boolean consumeCreateRequest() { boolean out = pendingCreate; pendingCreate = false; return out; }
 
     public boolean consumeAddContactRequest() {
         boolean out = pendingAddContact;
         pendingAddContact = false;
+        return out;
+    }
+
+    public boolean consumeProfileRequest() { boolean out=pendingProfile;pendingProfile=false;return out; }
+    public boolean consumeContactsRequest() {
+        boolean out = pendingContacts;
+        pendingContacts = false;
         return out;
     }
 
@@ -110,77 +144,44 @@ public final class ChatList {
         int y = phoneTop + statusH + ChatLayout.TOP_GAP;
 
         y = renderHeader(g, font, x, y, w, mouseX, mouseY);
-        renderTabs(g, font, x, tabsY, w, mouseX, mouseY);
+        navigation.render(g, font, x, tabsY, w, ChatNavigationBar.Page.CHATS);
 
-        List<ConversationSummary> list = ChatClientCache.getConversations();
+        List<Row> list = rows();
         if (list.isEmpty()) {
             renderEmpty(g, font, x, y, w);
             hoveredPeer = null;
             teleportHoveredPeer = null;
-            return;
+        } else {
+            clampScroll(list.size(), bottom - y, font);
+            renderRows(g, font, list, x, y, w, bottom, mouseX, mouseY);
         }
-
-        clampScroll(list.size(), bottom - y, font);
-        renderRows(g, font, list, x, y, w, bottom, mouseX, mouseY);
+        int menuTop = phoneTop + statusH;
+        homeMenu.render(g, font, x, menuTop, w, bottom - menuTop,
+                plusBounds.x() + plusBounds.width(), plusBounds.y() + plusBounds.height() + 3, mouseX, mouseY);
     }
 
     private int renderHeader(GuiGraphics g, Font font, int x, int y, int w,
                              int mouseX, int mouseY) {
         String title = Component.translatable("mcphone.app.chat").getString();
         title = ChatUi.truncate(font, title, w - 28, ChatLayout.TEXT_SCALE);
-        int headerTextY = y + (ChatLayout.HEADER_HEIGHT - ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE)) / 2;
-        ChatUi.centeredText(g, font, title, x + w / 2f,
-                headerTextY, ChatLayout.TEXT_SCALE, FontPalette.title());
+        ChatUi.buttonText(g, font, title, x + w / 2f,
+                y + ChatLayout.HEADER_HEIGHT / 2f, ChatLayout.TEXT_SCALE, FontPalette.title());
         int plusX = x + w - 10;
-        addContactHovered = ChatLayout.hit(mouseX, mouseY, plusX - 2, y,
-                12, ChatLayout.HEADER_HEIGHT);
+        plusBounds = new ChatLayout.Rect(plusX - 2, y, 12, ChatLayout.HEADER_HEIGHT);
+        boolean plusHovered = plusBounds.contains(mouseX, mouseY);
         // 恢复原来的透明图标入口，不给加号额外套框。
-        ChatUi.icon(g, ChatUi.Icon.PLUS, plusX,
-                y + (ChatLayout.HEADER_HEIGHT - ChatLayout.ICON_SIZE) / 2,
-                addContactHovered ? FontPalette.title() : FontPalette.link());
+        ChatUi.sizedIcon(g, ChatUi.Icon.ADD, plusBounds.x() + (plusBounds.width() - ChatLayout.ICON_SIZE) / 2f,
+                y + (ChatLayout.HEADER_HEIGHT - ChatLayout.ICON_SIZE) / 2f, ChatLayout.ICON_SIZE,
+                plusHovered || hasContextMenu() ? ChatUi.accent() : FontPalette.body());
         y += ChatLayout.HEADER_HEIGHT + ChatLayout.SECTION_GAP;
-        // 搜索仅预留外观位置，不接受输入，不过滤会话。
-        ChatUi.glass(g, ChatGlass.Surface.SEARCH, x, y, w, ChatLayout.SEARCH_HEIGHT, false);
-        String search = ChatUi.truncate(font, Component.translatable("mcphone.chat.layout.search").getString(),
-                w - ChatLayout.SEARCH_TEXT_X - ChatLayout.SEARCH_PAD_X, ChatLayout.META_SCALE);
-        ChatUi.sizedIcon(g, ChatUi.Icon.SEARCH, x + ChatLayout.SEARCH_PAD_X,
-                y + (ChatLayout.SEARCH_HEIGHT - ChatLayout.SEARCH_ICON_SIZE) / 2,
-                ChatLayout.SEARCH_ICON_SIZE, FontPalette.dim());
-        ChatUi.text(g, font, search, x + ChatLayout.SEARCH_TEXT_X,
-                y + (ChatLayout.SEARCH_HEIGHT - ChatUi.lineHeight(font, ChatLayout.META_SCALE)) / 2,
-                ChatLayout.META_SCALE, FontPalette.dim());
+        search.render(g, font, new ChatLayout.Rect(x, y, w, ChatLayout.SEARCH_HEIGHT), mouseX, mouseY, 0);
         return y + ChatLayout.SEARCH_HEIGHT + ChatLayout.SECTION_GAP;
     }
 
-    private void renderTabs(GuiGraphics g, Font font, int x, int y, int w, int mx, int my) {
-        ChatUi.glass(g, ChatGlass.Surface.NAVIGATION, x, y, w, ChatLayout.TAB_HEIGHT, false);
-        contactsTabHovered = ChatLayout.hit(mx, my, x + w / 4, y,
-                w * 2 / 4 - w / 4, ChatLayout.TAB_HEIGHT);
-        for (int i = 0; i < TAB_KEYS.length; i++) {
-            int left = x + w * i / 4;
-            int right = x + w * (i + 1) / 4;
-            float centerX = (left + right) / 2f;
-            int color = i == 0 ? ChatUi.accent()
-                    : (i == 1 ? FontPalette.body() : FontPalette.dim());
-            ChatUi.centeredIcon(g, TAB_ICONS[i], centerX,
-                    y + ChatLayout.TAB_ICON_TOP, color);
-            String label = ChatUi.truncate(font,
-                    Component.translatable("mcphone.chat.layout." + TAB_KEYS[i]).getString(),
-                    right - left - 2, ChatLayout.TAB_LABEL_SCALE);
-            ChatUi.centeredText(g, font, label, centerX,
-                    y + ChatLayout.TAB_LABEL_TOP, ChatLayout.TAB_LABEL_SCALE, color);
-            if (i == 0) {
-                int underlineW = Math.min(16, right - left - 4);
-                int underlineX = Math.round(centerX - underlineW / 2f);
-                g.fill(underlineX, y + ChatLayout.TAB_HEIGHT - 1,
-                        underlineX + underlineW, y + ChatLayout.TAB_HEIGHT, color);
-            }
-        }
-    }
-
     private void renderEmpty(GuiGraphics g, Font font, int x, int y, int w) {
-        ChatUi.text(g, font, Component.translatable("mcphone.chat.empty").getString(),
+        ChatUi.text(g, font, Component.translatable(search.query().isBlank() ? "mcphone.chat.empty" : "mcphone.chat.contacts.search_empty").getString(),
                 x, y, ChatLayout.TEXT_SCALE, FontPalette.subtle());
+        if (!search.query().isBlank()) return;
         y += ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE) + 2;
 
         for (var line : font.split(Component.translatable("mcphone.chat.empty_hint"),
@@ -190,27 +191,27 @@ public final class ChatList {
         }
     }
 
-    private void renderRows(GuiGraphics g, Font font, List<ConversationSummary> list,
+    private void renderRows(GuiGraphics g, Font font, List<Row> list,
                             int x, int y, int w, int bottom, int mouseX, int mouseY) {
         final int rowH = rowHeight(font);
-        hoveredPeer = null;
+        hoveredPeer = null; hoveredGroup = false;
         teleportHoveredPeer = null;
 
         for (int i = scrollOffset; i < list.size(); i++) {
             if (y + rowH > bottom) break;
 
-            ConversationSummary c = list.get(i);
-            boolean hovered = ChatLayout.hit(mouseX, mouseY, x, y, w, rowH);
-            if (hovered) hoveredPeer = c.id();
+            var row = list.get(i); ConversationSummary c = row.summary();
+            boolean hovered = !hasContextMenu() && ChatLayout.hit(mouseX, mouseY, x, y, w, rowH);
+            if (hovered) { hoveredPeer = c.id(); hoveredGroup = row.group() != null; }
             ChatUi.glass(g, ChatGlass.Surface.CARD, x, y, w, rowH, hovered);
 
-            if (renderRow(g, font, c, x, y, w, mouseX, mouseY)) teleportHoveredPeer = c.id();
+            if (renderRow(g, font, c, row.group(), x, y, w, mouseX, mouseY)) teleportHoveredPeer = c.id();
             y += rowH + ChatLayout.CARD_GAP;
         }
     }
 
     /** 返回鼠标是否停在这一行的传送图标上 */
-    private boolean renderRow(GuiGraphics g, Font font, ConversationSummary c,
+    private boolean renderRow(GuiGraphics g, Font font, ConversationSummary c, GroupSummary group,
                               int x, int y, int w, int mouseX, int mouseY) {
         // 时间在右上、未读在右下；头像不再被数字压住。
         String right = GuiUtil.formatTime(c.lastTime());
@@ -218,7 +219,7 @@ public final class ChatList {
         // 传送图标只给在线的人。这里读的是【服务端】的开关 —— 它读得到，靠的是加载器
         // 把 SERVER 档的配置推给客户端；哪些目标做得到，见 versions/targets.json 的
         // server_config_sync。读错了只是图标显隐不对，真正的拦截在 TeleportService。
-        boolean canTeleport = c.online() && ServerConfig.allowFriendTeleport();
+        boolean canTeleport = group == null && c.online() && ServerConfig.allowFriendTeleport();
         String unread = c.unread() > 0 ? unreadLabel(c.unread()) : "";
         int badgeW = unread.isEmpty() ? 0 : Math.max(ChatLayout.UNREAD_HEIGHT, UnreadBadge.width(font, unread));
         var layout = ChatLayout.card(w, ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE),
@@ -226,19 +227,21 @@ public final class ChatList {
         var frame = layout.avatarFrame();
         ChatUi.glass(g, ChatGlass.Surface.AVATAR, x + frame.x(), y + frame.y(),
                 frame.width(), frame.height(), false);
-        PlayerAvatar.draw(g, c.id(), x + frame.x() + ChatLayout.AVATAR_FRAME,
+        if (group == null) PlayerAvatar.draw(g, c.id(), x + frame.x() + ChatLayout.AVATAR_FRAME,
+                y + frame.y() + ChatLayout.AVATAR_FRAME, AVATAR_SIZE);
+        else ChatGroupAvatar.draw(g, group, x + frame.x() + ChatLayout.AVATAR_FRAME,
                 y + frame.y() + ChatLayout.AVATAR_FRAME, AVATAR_SIZE);
         // 小状态方点落在外框边角，不再用一大块黑色描边遮住脸部。
         int dot = ChatLayout.AVATAR_STATUS_SIZE;
         int dotX = x + frame.x() + frame.width() - dot;
         int dotY = y + frame.y() + frame.height() - dot;
-        g.fill(dotX, dotY, dotX + dot, dotY + dot,
+        if (group == null) g.fill(dotX, dotY, dotX + dot, dotY + dot,
                 c.online() ? PlayerAvatar.COLOR_ONLINE : PlayerAvatar.COLOR_OFFLINE);
 
         int nameX = x + layout.textX();
         String name = ChatUi.truncate(font, c.name(), layout.nameWidth(), ChatLayout.TEXT_SCALE);
         ChatUi.text(g, font, name, nameX, y + layout.nameY(), ChatLayout.TEXT_SCALE, colorName());
-        boolean tpHovered = canTeleport && layout.teleportHit().contains(mouseX - x, mouseY - y);
+        boolean tpHovered = !hasContextMenu() && canTeleport && layout.teleportHit().contains(mouseX - x, mouseY - y);
 
         if (!right.isEmpty()) {
             ChatUi.text(g, font, right, x + layout.timeX(), y + layout.timeY(), ChatLayout.META_SCALE, colorTime());
@@ -262,6 +265,7 @@ public final class ChatList {
             preview = c.last().isPresent()
                     ? c.last().get().preview().getString()
                     : Component.translatable("mcphone.chat.no_message").getString();
+            if (group != null && group.last().isPresent()) preview = group.last().get().senderName() + ": " + preview;
             previewColor = colorPreview();
         }
         ChatUi.preview(g, font, preview, nameX, y + layout.previewY(), layout.previewWidth(), previewColor);
@@ -272,10 +276,17 @@ public final class ChatList {
     }
 
     public boolean mouseClicked(double mx, double my, int button) {
+        if (contextMouseClicked(mx, my, button)) return true;
         if (button != 0) return false;
+        if (search.mouseClicked(mx, my, button)) return true;
 
-        if (addContactHovered || contactsTabHovered) {
-            pendingAddContact = true;
+        if (plusBounds != null && plusBounds.contains(mx, my)) {
+            homeMenu.open(plusBounds.x() + plusBounds.width(), plusBounds.y() + plusBounds.height() + 3);
+            return true;
+        }
+        if (navigation.click(mx, my, button) == ChatNavigationBar.Page.PROFILE) { pendingProfile=true;return true; }
+        if (navigation.click(mx, my, button) == ChatNavigationBar.Page.CONTACTS) {
+            pendingContacts = true;
             return true;
         }
 
@@ -287,30 +298,40 @@ public final class ChatList {
         }
 
         if (hoveredPeer != null) {
-            pendingOpen = hoveredPeer;
+            if (hoveredGroup) pendingGroup = hoveredPeer; else pendingOpen = hoveredPeer;
             return true;
         }
         return false;
     }
 
     public boolean mouseScrolled(double scrollY) {
+        if (dismissContextMenu()) return true;
         if (scrollY > 0 && scrollOffset > 0) {
             scrollOffset--;
             return true;
         }
-        if (scrollY < 0 && scrollOffset < ChatClientCache.getConversations().size() - 1) {
+        if (scrollY < 0 && scrollOffset < rows().size() - 1) {
             scrollOffset++;
             return true;
         }
         return false;
     }
 
+    public boolean keyPressed(int key, int scan, int modifiers) {
+        boolean handled = search.keyPressed(key, scan, modifiers); invalidateSearchHits(); return handled;
+    }
+    public boolean charTyped(char c, int modifiers) {
+        boolean handled = search.charTyped(c, modifiers); invalidateSearchHits(); return handled;
+    }
+    private void invalidateSearchHits() {
+        // 输入发生在两次绘制之间，旧行的悬停不能触发打开或传送。
+        if (!rowQuery.equals(search.query())) { hoveredPeer = teleportHoveredPeer = null; hoveredGroup = false; }
+    }
+
     /** 传送图标：悬停先铺高亮，再画贴图，没有贴图就画 → 字符兜底 */
     private static void renderTeleportIcon(GuiGraphics g, Font font,
                                            int x, int y, ChatLayout.Card layout, boolean hovered) {
-        var hit = layout.teleportHit();
-        // 操作底板和数字角标同高、同中心，不另画白色悬停块。
-        ChatUi.glass(g, ChatGlass.Surface.BUTTON, x + hit.x(), y + hit.y(), hit.width(), hit.height(), hovered);
+        // 图标保持透明底；点击区域继续使用原布局，去框后不缩小操作范围。
         g.pose().pushPose();
         try {
             g.pose().translate(x + layout.teleportX(), y + layout.teleportY(), 0);
@@ -329,6 +350,21 @@ public final class ChatList {
 
         lastRequestMs = now;
         MCphoneNetwork.sendToServer(new RequestConversationsPacket());
+        GroupTransport.directory();
+    }
+    private List<Row> rows() {
+        var friends = ChatClientCache.getConversations(); var groups = GroupClientCache.groups();
+        String query = search.query();
+        if (friends == rowFriends && groups == rowGroups && rowQuery.equals(query)) return cachedRows;
+        if (!rowQuery.equals(query)) scrollOffset = 0;
+        rowQuery = query;
+        rowFriends = friends; rowGroups = groups;
+        var out = new java.util.ArrayList<Row>();
+        friends.stream().filter(c -> ChatContactDirectory.matches(c.name(), query)).forEach(c -> out.add(new Row(c, null)));
+        groups.stream().filter(group -> ChatContactDirectory.matches(group.name(), query)).forEach(group -> out.add(new Row(new ConversationSummary(group.id(), group.name(), false,
+                group.last().map(m -> m.message().body()), group.lastTime(), group.unread()), group)));
+        out.sort(java.util.Comparator.comparingLong((Row row) -> row.summary().lastTime()).reversed());
+        cachedRows = List.copyOf(out); return cachedRows;
     }
 
     private static int rowHeight(Font font) {

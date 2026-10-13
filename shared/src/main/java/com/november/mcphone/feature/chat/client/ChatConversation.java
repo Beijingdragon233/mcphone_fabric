@@ -3,14 +3,7 @@ package com.november.mcphone.feature.chat.client;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneTheme;
-import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.feature.chat.ChatMessage;
-import com.november.mcphone.feature.chat.net.ChatClientCache;
-import com.november.mcphone.feature.chat.net.ConversationSummary;
-import com.november.mcphone.feature.chat.net.MarkReadPacket;
-import com.november.mcphone.feature.chat.net.RequestConversationsPacket;
-import com.november.mcphone.feature.chat.net.RequestMessagesPacket;
-import com.november.mcphone.feature.chat.net.SendChatMessagePacket;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -18,7 +11,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import com.november.mcphone.feature.chat.client.messageaction.ChatMessageActions;
 import com.november.mcphone.feature.chat.TextBody;
-import com.november.mcphone.feature.chat.net.DeleteChatMessagePacket;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
@@ -29,6 +21,7 @@ public final class ChatConversation {
     private static final int PAD = 4;
     private static final int INPUT_GAP = 2;
     private static final long REFRESH_INTERVAL_MS = 3000L;
+    private ChatConversationChannel channel;
     private final ChatMessagePane messages = new ChatMessagePane();
     private final ChatImageViewer viewer = new ChatImageViewer();
     private final ChatComposer composer = new ChatComposer(this::send,
@@ -38,32 +31,38 @@ public final class ChatConversation {
             (g, x, y, w, h) -> ChatUi.glass(g, ChatGlass.Surface.MENU, x, y, w, h, false),
             text -> Minecraft.getInstance().keyboardHandler.setClipboard(text),
             (target, message, request) -> {
-                ChatClientCache.beginDeletion(target, message, request);
-                MCphoneNetwork.sendToServer(new DeleteChatMessagePacket(target, message, request));
-            }, ChatClientCache::cancelDeletion,
+                if (channel != null) channel.delete(message, request);
+            }, request -> { if (channel != null) channel.cancelDelete(request); },
             key -> { var player = Minecraft.getInstance().player;
-                if (player != null) com.november.mcphone.platform.PlayerAccess.message(player, Component.translatable(key), true); });
+                if (player != null) com.november.mcphone.platform.PlayerAccess.message(player, Component.translatable(key), true); }, this::favorite);
     private UUID peer;
     private long lastRequestMs;
     private List<ChatMessage> markedFrom;
-    private boolean backHovered, pendingBack;
+    private boolean backHovered, pendingBack, moreHovered, pendingDetails;
 
     public void open(UUID peer) {
+        open(ChatConversationChannel.direct(peer));
+    }
+    public void openGroup(UUID group) { open(ChatConversationChannel.room(group)); }
+    private void open(ChatConversationChannel channel) {
+        close();
+        this.channel = channel;
+        UUID peer = channel.target();
         this.peer = peer;
         lastRequestMs = System.currentTimeMillis();
         resetComponents(true);
         // 先绑定对端再拉历史，否则抢先到达的推送会被缓存丢弃。
-        ChatClientCache.openConversation(peer);
-        markedFrom = ChatClientCache.getMessages();
-        MCphoneNetwork.sendToServer(new RequestMessagesPacket(peer));
+        channel.open();
+        markedFrom = channel.messages();
     }
 
     public void close() {
+        if (channel != null) channel.close();
+        channel = null;
         peer = null;
         markedFrom = null;
         resetComponents(false);
         ChatImageCache.beginFrame(null);
-        ChatClientCache.closeConversation();
     }
 
     private void resetComponents(boolean focused) {
@@ -71,10 +70,12 @@ public final class ChatConversation {
         messages.reset();
         viewer.dismiss();
         composer.reset(focused);
-        backHovered = pendingBack = false;
+        backHovered = pendingBack = moreHovered = pendingDetails = false;
     }
 
     public UUID peer() { return peer; }
+    public boolean isGroup() { return channel != null && channel.group(); }
+    public boolean consumeDetailsRequest() { boolean out = pendingDetails; pendingDetails = false; return out; }
     public boolean isViewing(UUID other) { return peer != null && peer.equals(other); }
     public boolean dismissViewer() { return viewer.dismiss(); }
     public boolean hasContextMenu() { return actions.isOpen() || composer.hasContextMenu(); }
@@ -93,23 +94,27 @@ public final class ChatConversation {
                        int screenW, int screenH, int statusH, int navH,
                        int mouseX, int mouseY, float partialTick, Font font) {
         if (peer == null) return;
-        var receipt = ChatClientCache.consumeDeleteResult();
+        if (channel.activate()) lastRequestMs = System.currentTimeMillis();
+        String error = channel.consumeError();
+        if (error != null && Minecraft.getInstance().player != null)
+            com.november.mcphone.platform.PlayerAccess.message(Minecraft.getInstance().player, Component.translatable(error), true);
+        var receipt = channel.receipt();
         if (receipt != null) actions.result(receipt.request(), receipt.result());
         actions.tick(System.currentTimeMillis());
-        actions.reconcile(ChatClientCache.getMessages());
+        actions.reconcile(channel.messages());
         maybeRefresh();
         maybeMarkRead();
         int x = phoneLeft + PAD, w = screenW - PAD * 2;
         int inputTop = phoneTop + screenH - navH - ChatLayout.INPUT_HEIGHT - INPUT_GAP;
         int top = renderHeader(g, font, x, phoneTop + statusH + ChatLayout.TOP_GAP, w, mouseX, mouseY);
         ChatImageCache.beginFrame(peer);
-        messages.render(g, font, x, top, w, inputTop - INPUT_GAP, peer, selfId());
+        messages.render(g, font, x, top, w, inputTop - INPUT_GAP, peer, selfId(), channel.group(), channel.messages(), channel::senderName);
         composer.render(g, font, x, inputTop, w, mouseX, mouseY, partialTick);
         if (viewer.isOpen()) ChatImageCache.beginFrame(peer);
         viewer.render(g, font, phoneLeft, phoneTop + statusH, screenW,
                 screenH - statusH - navH, mouseX, mouseY);
         // 查看器遮住消息区时只取放大图；最后统一按当前会话发请求。
-        ChatImageCache.flushRequests(peer);
+        ChatImageCache.flushRequests(peer, isGroup());
         int menuX = phoneLeft + PAD, menuY = phoneTop + statusH + ChatLayout.TOP_GAP;
         int menuW = screenW - PAD * 2, menuH = screenH - statusH - navH - ChatLayout.TOP_GAP * 2;
         actions.render(g, font, menuX, menuY, menuW, menuH, mouseX, mouseY);
@@ -134,6 +139,7 @@ public final class ChatConversation {
             return true;
         }
         if (button == 0 && backHovered) { pendingBack = true; return true; }
+        if (button == 0 && moreHovered && isGroup()) { pendingDetails = true; return true; }
         if (composer.mouseClicked(button)) { messages.clearSelection(); return true; }
         UUID image = button == 0 ? messages.imageAt(mx, my) : null;
         if (image != null) {
@@ -176,23 +182,24 @@ public final class ChatConversation {
     /** 服务端回声才插入消息，避免校验拒收后客户端还留下假消息。 */
     private void send(String text) {
         if (peer == null) return;
-        MCphoneNetwork.sendToServer(new SendChatMessagePacket(peer, text));
+        channel.send(text);
         messages.latest();
     }
 
     private int renderHeader(GuiGraphics g, Font font, int x, int y, int w, int mx, int my) {
-        ConversationSummary s = summary();
         backHovered = GuiUtil.hit(mx, my, x, y, 12, ChatLayout.HEADER_HEIGHT);
         int backSize = 7;
         ChatUi.sizedIcon(g, ChatUi.Icon.BACK, x + (12 - backSize) / 2f,
                 y + (ChatLayout.HEADER_HEIGHT - backSize) / 2f, backSize,
-                backHovered ? FontPalette.title() : FontPalette.link());
-        // 更多菜单只留位置；不挂点击动作，也不借用现有附件菜单。
-        ChatUi.sizedIcon(g, ChatUi.Icon.MORE, x + w - ChatLayout.ICON_SIZE,
-                y + (ChatLayout.HEADER_HEIGHT - ChatLayout.ICON_SIZE) / 2f, ChatLayout.ICON_SIZE, FontPalette.dim());
-        String name = ChatUi.truncate(font, peerName(s), w - 30, ChatLayout.TEXT_SCALE);
-        ChatUi.centeredText(g, font, name, x + w / 2f,
-                y + (ChatLayout.HEADER_HEIGHT - ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE)) / 2,
+                backHovered ? ChatUi.accent() : FontPalette.body());
+        moreHovered = isGroup() && GuiUtil.hit(mx, my, x + w - 12, y, 12, ChatLayout.HEADER_HEIGHT);
+        ChatUi.sizedIcon(g, ChatUi.Icon.MORE, x + w - 12 + (12 - ChatLayout.ICON_SIZE) / 2f,
+                y + (ChatLayout.HEADER_HEIGHT - ChatLayout.ICON_SIZE) / 2f, ChatLayout.ICON_SIZE,
+                moreHovered ? ChatUi.accent() : isGroup() ? FontPalette.body() : FontPalette.dim());
+        String suffix = channel.titleSuffix();
+        String name = ChatUi.truncate(font, channel.title(), w - 30 - ChatUi.width(font, suffix, ChatLayout.TEXT_SCALE), ChatLayout.TEXT_SCALE) + suffix;
+        ChatUi.buttonText(g, font, name, x + w / 2f,
+                y + ChatLayout.HEADER_HEIGHT / 2f,
                 ChatLayout.TEXT_SCALE, FontPalette.title());
         y += ChatLayout.HEADER_HEIGHT;
         g.fill(x, y, x + w, y + 1, PhoneTheme.COLOR_DIVIDER);
@@ -204,28 +211,40 @@ public final class ChatConversation {
         if (now - lastRequestMs < REFRESH_INTERVAL_MS) return;
 
         lastRequestMs = now;
-        MCphoneNetwork.sendToServer(new RequestConversationsPacket());
+        channel.refresh();
+        // 高速连发时已读请求可能被限流；周期性补发，未读不会一直残留。
+        if (!channel.messages().isEmpty()) channel.read();
     }
 
     private void maybeMarkRead() {
-        List<ChatMessage> src = ChatClientCache.getMessages();
+        List<ChatMessage> src = channel.messages();
         if (src == markedFrom || peer == null) return;
 
         markedFrom = src;
-        MCphoneNetwork.sendToServer(new MarkReadPacket(peer));
+        channel.read();
     }
 
-    private ConversationSummary summary() {
-        if (peer == null) return null;
-        for (ConversationSummary c : ChatClientCache.getConversations()) {
-            if (c.id().equals(peer)) return c;
-        }
-        return null;
+    private void favorite(UUID target, UUID message, String fullText) {
+        if (channel == null || !channel.target().equals(target)) return;
+        var source = channel.messages().stream().filter(m -> m.id().equals(message)).findFirst().orElse(null);
+        if (source == null || !(source.body() instanceof TextBody)) return;
+        String key;
+        try {
+            var result = com.november.mcphone.feature.chat.client.favorite.ChatFavorites.current().add(
+                new com.november.mcphone.feature.chat.client.favorite.FavoriteText(message,target,channel.group(),source.sender(),
+                    favoriteSender(source),channel.title(),fullText,source.time(),System.currentTimeMillis()));
+            key = "mcphone.chat.favorite." + result.name().toLowerCase(java.util.Locale.ROOT);
+        } catch (RuntimeException error) { key = "mcphone.chat.favorite.storage_error"; }
+        var player = Minecraft.getInstance().player;
+        if (player != null) com.november.mcphone.platform.PlayerAccess.message(player,Component.translatable(key),true);
     }
 
-    private String peerName(ConversationSummary s) {
-        if (s != null) return s.name();
-        return peer == null ? "" : peer.toString().substring(0, 8);
+    private String favoriteSender(ChatMessage message) {
+        var player = Minecraft.getInstance().player;
+        if (player != null && player.getUUID().equals(message.sender())) return player.getName().getString();
+        if (channel.group()) return channel.senderName(message);
+        return com.november.mcphone.feature.chat.net.ChatClientCache.getConversations().stream()
+            .filter(c -> c.id().equals(message.sender())).map(c -> c.name()).findFirst().orElse(message.sender().toString().substring(0,8));
     }
 
     private static UUID selfId() {

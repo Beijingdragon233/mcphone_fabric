@@ -83,11 +83,13 @@ public final class PhoneSession {
         // 这里点名一个别的目标没有的常量，那个目标连 shared/ 都编不过。所以调用方传进来的
         // 已经是"能续开的那一页"，见各目标 PhoneScreen 里调 save 的那一句。
         PhoneScreen.Mode saved = switch (mode) {
-            case CHAT_ADD_CONTACT -> PhoneScreen.Mode.CHAT;
+            case CHAT_ADD_CONTACT, CHAT_GROUP_CREATE -> PhoneScreen.Mode.CHAT;
+            case CHAT_GROUP_DETAILS -> PhoneScreen.Mode.CHAT_GROUP_CONVERSATION;
+            case CHAT_NEW_FRIENDS -> PhoneScreen.Mode.CHAT_CONTACTS;
             default -> mode;
         };
         SAVED.put(where, new Saved(saved,
-                saved == PhoneScreen.Mode.CHAT_CONVERSATION ? conversationPeer : null));
+                saved == PhoneScreen.Mode.CHAT_CONVERSATION || saved == PhoneScreen.Mode.CHAT_GROUP_CONVERSATION ? conversationPeer : null));
     }
 
     /**
@@ -105,7 +107,7 @@ public final class PhoneSession {
         }
 
         // 对端丢了就退回会话列表：进一个不知道是谁的会话没有意义
-        if (s.mode() == PhoneScreen.Mode.CHAT_CONVERSATION && s.peer() == null) {
+        if ((s.mode() == PhoneScreen.Mode.CHAT_CONVERSATION || s.mode() == PhoneScreen.Mode.CHAT_GROUP_CONVERSATION) && s.peer() == null) {
             s = new Saved(PhoneScreen.Mode.CHAT, null);
             SAVED.put(where, s);
         }
@@ -126,7 +128,7 @@ public final class PhoneSession {
     /** 这一页属于哪个 App；null 表示不属于任何可续开的 App（主屏、设置、商店……） */
     private static ResourceLocation appOf(PhoneScreen.Mode mode) {
         return switch (mode) {
-            case CHAT, CHAT_ADD_CONTACT, CHAT_CONVERSATION -> CHAT_APP;
+            case CHAT, CHAT_PROFILE, CHAT_CONTACTS, CHAT_NEW_FRIENDS, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION, CHAT_GROUP_CREATE, CHAT_GROUP_DETAILS -> CHAT_APP;
             case READER -> READER_APP;
             default -> null;
         };

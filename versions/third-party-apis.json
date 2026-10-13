@@ -54,6 +54,10 @@
     "vazkii.patchouli": {
       "mod": "Patchouli",
       "evidence": "PatchouliSource.java 在 1.20.1-forge 与 1.21.1-neoforge 上正文逐字相同（去注释后比对 origin/1.20.1-forge），vazkii.patchouli.* 的 4 条 import 两支完全一致：PatchouliAPI、BookIcon、Book、BookRegistry。同一份文本已在两个目标上各自编译通过。"
+    },
+    "com.ibm.icu": {
+      "mod": "ICU4J（Minecraft 自带库）",
+      "evidence": "Minecraft 1.20.1 使用 ICU4J 71.1，1.21.1 使用 73.2，26.1.2 使用 77.1。AlphabeticIndex(ULocale)、addLabels(Locale)、buildImmutableIndex、getCollator 与 ImmutableIndex.getBucketIndex/getBucket/getLabel 在三个依赖上以 Java 17 实际编译运行，英文、中文拼音、重音字母与数字/符号探测一致；四个平台还须通过真实 Minecraft classpath 的 ChatContactDirectoryTest。官方 API：https://unicode-org.github.io/icu-docs/apidoc/released/icu4j/com/ibm/icu/text/AlphabeticIndex.html。只使用已有库，不添加或嵌入另一份 ICU。"
     }
   },
   "banned_examples": {

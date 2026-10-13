@@ -53,6 +53,7 @@ public final class PhoneToast extends com.november.mcphone.platform.client.Phone
     private static final int COLOR_TEXT = PhoneTheme.FONT_COLOR_TOAST;
 
     private final UUID sender;
+    private final UUID avatar;
     private final String senderName;
 
     private String text;
@@ -66,7 +67,12 @@ public final class PhoneToast extends com.november.mcphone.platform.client.Phone
     private boolean changed = true;
 
     public PhoneToast(UUID sender, String senderName, String text) {
+        this(sender, sender, senderName, text);
+    }
+    /** 合并身份与头像分开：群通知按群合并，但绘制真实发送者的头像。 */
+    public PhoneToast(UUID sender, UUID avatar, String senderName, String text) {
         this.sender = sender;
+        this.avatar = avatar;
         this.senderName = senderName;
         this.text = text;
     }
@@ -121,7 +127,7 @@ public final class PhoneToast extends com.november.mcphone.platform.client.Phone
             g.renderOutline(0, 0, WIDTH, HEIGHT, COLOR_BORDER);
         }
 
-        PlayerAvatar.draw(g, sender, PAD, (HEIGHT - AVATAR_SIZE) / 2, AVATAR_SIZE);
+        PlayerAvatar.draw(g, avatar, PAD, (HEIGHT - AVATAR_SIZE) / 2, AVATAR_SIZE);
 
         int textX = PAD + AVATAR_SIZE + PAD;
         int textW = WIDTH - textX - PAD;
