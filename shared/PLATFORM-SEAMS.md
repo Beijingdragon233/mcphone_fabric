@@ -304,7 +304,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.20.1-forge -->
 
-#### 共用代码引用了的（80）
+#### 共用代码引用了的（83）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -332,6 +332,8 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.chat.ChatMessage`
 - `feature.chat.ImageBody`
 - `feature.chat.TextBody`
+- `feature.chat.group.net.GroupRequestPacket`
+- `feature.chat.net.ChatImageDataPacket`
 - `feature.chat.net.ConversationSummary`
 - `feature.chat.net.DeleteChatMessagePacket`
 - `feature.chat.net.FriendRequestPacket`
@@ -347,6 +349,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.chat.net.SendChatImagePacket`
 - `feature.chat.net.SendChatMessagePacket`
 - `feature.chat.net.TeleportToFriendPacket`
+- `feature.chat.profile.net.ProfileRequestPacket`
 - `feature.enderchest.net.OpenEnderChestPacket`
 - `feature.music.DiscService`　—— 加载器导入
 - `feature.music.NetSong`
@@ -389,7 +392,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.SystemFiles`
 - `platform.client.VanillaAudio`
 
-#### 平台内部的（41）
+#### 平台内部的（44）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -404,13 +407,16 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.chat.MessageBody`
 - `feature.chat.MessageKind`
-- `feature.chat.net.ChatImageDataPacket`
+- `feature.chat.group.net.GroupNetworking`
+- `feature.chat.group.net.GroupResponsePacket`
 - `feature.chat.net.ChatMessageDeleteResultPacket`
 - `feature.chat.net.ChatNetworking`
 - `feature.chat.net.NewMessagePacket`
 - `feature.chat.net.SyncConversationsPacket`
 - `feature.chat.net.SyncMessagesPacket`
 - `feature.chat.net.SyncOnlinePlayersPacket`
+- `feature.chat.profile.net.ProfileNetworking`
+- `feature.chat.profile.net.ProfileResponsePacket`
 - `feature.music.net.PlayNetSongPacket`
 - `feature.music.net.StopNetSongPacket`
 - `feature.music.net.SyncDiscStatePacket`
@@ -485,7 +491,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.SystemFiles`
 - `platform.client.VanillaAudio`
 
-#### 平台内部的（35）
+#### 平台内部的（37）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -504,7 +510,9 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.script.net.ScriptNetworking`
 - `feature.camera.client.CameraHandler`
 - `feature.chat.ChatImageUploads`
+- `feature.chat.group.net.GroupNetworking`
 - `feature.chat.net.ChatNetworking`
+- `feature.chat.profile.net.ProfileNetworking`　—— 加载器导入
 - `feature.notes.net.NotesNetworking`
 - `feature.store.net.StoreNetworking`
 - `feature.terminal.client.TerminalClientState`　—— 加载器导入

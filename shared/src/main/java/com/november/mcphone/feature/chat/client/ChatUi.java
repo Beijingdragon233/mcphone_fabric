@@ -12,7 +12,7 @@ import net.minecraft.util.FormattedCharSequence;
 final class ChatUi {
     private ChatUi() {}
 
-    enum Icon { BACK, MORE, VOICE, SMILE, PLUS, CHAT, CONTACTS, DISCOVER, PROFILE, SEARCH }
+    enum Icon { BACK, MORE, VOICE, SMILE, PLUS, ADD, CHECK, CHAT, CONTACTS, DISCOVER, PROFILE, SEARCH, ADD_CONTACT }
 
     static int accent() {
         return FontPalette.current().darkText() ? 0xFFA64A78 : 0xFFF3ACCE;
@@ -85,12 +85,25 @@ final class ChatUi {
         g.pose().popPose();
     }
 
-    /** 原版字体的行尾字间距与底部两像素留白不参与按钮文字的视觉居中。 */
+    /** 行尾字间距不参与水平居中；纵向复用已校准的默认字形指标。 */
     static void buttonText(GuiGraphics g, Font font, String text,
                            float centerX, float centerY, float scale, int color) {
-        float inkWidth = Math.max(0, font.width(text) - 1) * scale;
-        float inkHeight = Math.max(1, font.lineHeight - 2) * scale;
-        text(g, font, text, centerX - inkWidth / 2f, centerY - inkHeight / 2f, scale, color);
+        label(g, font, text, ChatLayout.labelLeft(font.width(text), scale, centerX), centerY, scale, color);
+    }
+
+    /** 左对齐的标签与图标共享纵向中心；不改变消息正文的绘制原点。 */
+    static void label(GuiGraphics g, Font font, String text,
+                      float x, float centerY, float scale, int color) {
+        text(g, font, text, x, ChatLayout.labelTop(font.lineHeight, scale, centerY), scale, color);
+    }
+
+    static void forwardIcon(GuiGraphics g, float centerX, float centerY, int size, int color) {
+        g.pose().pushPose();
+        try {
+            g.pose().translate(centerX, centerY, 0);
+            g.pose().scale(-1, 1, 1);
+            sizedIcon(g, Icon.BACK, -size / 2f, -size / 2f, size, color);
+        } finally { g.pose().popPose(); }
     }
 
     static void centeredIcon(GuiGraphics g, Icon icon, float centerX, int y, int color) {
@@ -135,6 +148,7 @@ final class ChatUi {
         PhoneSkin.Element texture = switch (icon) {
             case CHAT -> PhoneSkin.Element.CHAT_TAB_MESSAGE;
             case CONTACTS -> PhoneSkin.Element.CHAT_TAB_CONTACTS;
+            case ADD_CONTACT -> PhoneSkin.Element.CHAT_ADD_CONTACT;
             case DISCOVER -> PhoneSkin.Element.CHAT_TAB_DISCOVER;
             case PROFILE -> PhoneSkin.Element.CHAT_TAB_PROFILE;
             case SEARCH -> PhoneSkin.Element.CHAT_SEARCH;
@@ -143,6 +157,7 @@ final class ChatUi {
             case MORE -> PhoneSkin.Element.CHAT_MORE;
             case SMILE -> PhoneSkin.Element.CHAT_SMILE;
             case VOICE -> PhoneSkin.Element.CHAT_VOICE;
+            case ADD, CHECK -> null;
         };
         if (texture != null) {
             // 白色源图乘当前颜色，保留粉色强调色和禁用项灰色；画完必须还原，避免给后续文字染色。
@@ -157,6 +172,15 @@ final class ChatUi {
             if (drawn) return;
         }
         switch (icon) {
+            case ADD, CHECK -> {
+                // 原生几何标志不依赖字体中的 ✓ 字形，也不复用附件的圆圈加号。
+                g.pose().pushPose();
+                try {
+                    g.pose().translate(x, y, 0);
+                    g.pose().scale(ChatLayout.ICON_SIZE / 24f, ChatLayout.ICON_SIZE / 24f, 1f);
+                    mark(g::fill, icon, color);
+                } finally { g.pose().popPose(); }
+            }
             case BACK -> {
                 // 在 24 像素坐标中画细箭头再缩放，避免旧版 9 像素台阶过粗、重心贴左。
                 g.pose().pushPose();
@@ -199,11 +223,26 @@ final class ChatUi {
                 g.renderOutline(x, y + 1, 9, 6, color);
                 g.fill(x + 2, y + 7, x + 3, y + 9, color);
             }
-            case CONTACTS, PROFILE -> {
+            case CONTACTS, PROFILE, ADD_CONTACT -> {
                 g.renderOutline(x + 3, y, 3, 4, color);
                 g.renderOutline(x + 1, y + 5, 7, 4, color);
                 if (icon == Icon.CONTACTS) g.fill(x + 7, y + 2, x + 9, y + 3, color);
+                if (icon == Icon.ADD_CONTACT) {
+                    g.fill(x + 6, y + 5, x + 9, y + 6, color);
+                    g.fill(x + 7, y + 4, x + 8, y + 7, color);
+                }
             }
+        }
+    }
+
+    /** 24 像素局部坐标；两枚标志的可见轮廓都以 (12,12) 为中心。 */
+    static void mark(ChatGlass.Fill fill, Icon icon, int color) {
+        if (icon == Icon.ADD) {
+            fill.rectangle(3, 11, 21, 13, color);
+            fill.rectangle(11, 3, 13, 21, color);
+        } else if (icon == Icon.CHECK) {
+            for (int i = 0; i < 5; i++) fill.rectangle(3 + i, 13 + i, 5 + i, 15 + i, color);
+            for (int i = 0; i < 13; i++) fill.rectangle(7 + i, 17 - i, 9 + i, 19 - i, color);
         }
     }
 

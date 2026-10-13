@@ -124,9 +124,7 @@ public class MCphoneClient {
                     // S17 Stage 2：在飞的脚本调用一并丢掉（旧连接的迟到结果回来时已无主）
                     com.november.mcphone.core.script.client.ScriptCall.clear();
 
-                    ChatClientCache.clear();
-                    ChatImageCache.clear();
-                    ChatImageSender.clear();
+                    com.november.mcphone.feature.chat.client.ChatClientLifecycle.disconnect();
                     NotesClientCache.clear();
                     StoreClientCache.clear();
                     PhoneScreenRegistry.unloadWorld();
@@ -163,6 +161,7 @@ public class MCphoneClient {
                 PhoneScreenRegistry::enforcePurchases);
 
         ChatClientCache.setMessageListener(ChatClientEvents::onMessage);
+        com.november.mcphone.feature.chat.client.ChatGroupEvents.install();
         ChatClientCache.setImageListener(ChatImageCache::accept);
     }
 

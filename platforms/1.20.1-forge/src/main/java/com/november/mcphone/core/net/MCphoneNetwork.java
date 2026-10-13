@@ -67,7 +67,7 @@ public final class MCphoneNetwork {
     // approvedAt 两个 varlong。字段格式变了一样要抬：旧客户端会把批准轴当动作表长度解码，
     // 结果是"解不开 → 握手批次永远收不齐 → 本服看起来没部署"。宁可拒绝连接给人话。
     // "7"：聊天消息增加稳定 ID，并注册个人删除请求与确认。
-    private static final String PROTOCOL_VERSION = "7";
+    private static final String PROTOCOL_VERSION = "11"; // 个人资料协议要求两端同时更新。
 
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "main"),

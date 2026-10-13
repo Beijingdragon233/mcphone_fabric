@@ -7,9 +7,9 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import java.util.List;
 
-/** 消息和输入框共用的菜单视图；只负责显示与命中，不持有消息、EditBox、剪贴板或网络。 */
+/** 聊天首页、消息和输入框共用的菜单视图；只负责显示与命中，不持有业务数据或网络。 */
 public final class ChatContextMenuView {
-    public enum Icon { COPY, DELETE, PASTE }
+    public enum Icon { COPY, DELETE, PASTE, CREATE_GROUP, ADD_CONTACT, FAVORITE }
     public record Entry(String labelKey, Icon icon, boolean enabled) {}
     @FunctionalInterface public interface PanelPainter { void paint(GuiGraphics g, int x, int y, int width, int height); }
     private static final float SCALE = .75f;

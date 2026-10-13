@@ -125,6 +125,14 @@ public final class PhoneSkin {
         CHAT_COPY("chat/ui/copy"),
         CHAT_DELETE("chat/ui/delete"),
         CHAT_PASTE("chat/ui/paste"),
+        /** 首页加号菜单的手绘 96×96 透明图标，与菜单标签使用同一颜色。 */
+        CHAT_CREATE_GROUP("chat/ui/create_group"),
+        CHAT_ADD_CONTACT("chat/ui/add_contact"),
+        /** 「我」菜单的用户提供图标，白色源图随主题文字着色。 */
+        CHAT_FAVORITE("chat/ui/favorite"),
+        CHAT_GITHUB("chat/ui/github"),
+        CHAT_SPONSOR("chat/ui/sponsor"),
+        CHAT_SETTINGS("chat/ui/settings"),
 
         /** 收到消息的通知底。建议 160×32（原版通知槽位尺寸） */
         TOAST_BG("phone/toast", "toast_bg"),

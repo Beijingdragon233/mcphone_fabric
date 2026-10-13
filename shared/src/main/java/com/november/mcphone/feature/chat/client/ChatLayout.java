@@ -6,12 +6,16 @@ public final class ChatLayout {
 
     public static final float TEXT_SCALE = 0.75f;
     public static final float META_SCALE = 0.60f;
+    public static final float GROUP_NAME_SCALE = 0.50f;
     public static final float TAB_LABEL_SCALE = 0.45f;
     public static final float SEND_SCALE = 0.60f;
     public static final int ICON_SIZE = 9;
     public static final int AVATAR_SIZE = 12;
+    public static final int MESSAGE_AVATAR_GAP = 3;
+    private static final int GROUP_NAME_TOP = 1;
+    private static final int GROUP_NAME_GAP = 1;
     public static final int HEADER_HEIGHT = 12;
-    public static final int SEARCH_HEIGHT = 10;
+    public static final int SEARCH_HEIGHT = 12;
     public static final int SEARCH_ICON_SIZE = 6;
     public static final int SEARCH_PAD_X = 3;
     public static final int SEARCH_TEXT_X = SEARCH_PAD_X + SEARCH_ICON_SIZE + 3;
@@ -41,6 +45,16 @@ public final class ChatLayout {
     public static int scaledWidth(int width, float scale) {
         // 0.6f 的表示误差会把整像素的 42 算成 42.000002；不能因此多占一列。
         return (int) Math.ceil(width * (double) scale - 0.0001);
+    }
+
+    /** 沿用已校准的默认字形高度及半像素顶沿偏移；保留小数，不用七像素估算中文。 */
+    static float labelTop(int lineHeight, float scale, float centerY) {
+        return centerY - Math.max(1, lineHeight - 1) * scale / 2f - scale / 2f;
+    }
+
+    /** 默认字体末尾字间距不参与标签的视觉中心。 */
+    static float labelLeft(int advance, float scale, float centerX) {
+        return centerX - Math.max(0, advance - 1) * scale / 2f;
     }
 
     public static boolean hasText(String text) {
@@ -115,6 +129,28 @@ public final class ChatLayout {
     }
 
     public record MessageRow(int avatarY, int contentY, int height) {}
+
+    /** 群聊按头像、昵称、气泡组成一行；头像从行顶开始，昵称紧贴正文而不是悬在头像上方。 */
+    public static MessageRow groupMessageRow(int contentHeight, int nameLineHeight) {
+        int contentY = GROUP_NAME_TOP + nameLineHeight + GROUP_NAME_GAP;
+        return new MessageRow(0, contentY, Math.max(AVATAR_SIZE, contentY + contentHeight));
+    }
+
+    public static int messageContentWidth(int rowWidth) {
+        return Math.max(0, rowWidth - 2 * (AVATAR_SIZE + MESSAGE_AVATAR_GAP));
+    }
+
+    /** 正文绘制、选字与右键命中共用同一列坐标。 */
+    public static int messageContentX(int rowWidth, int contentWidth, boolean self) {
+        return self ? rowWidth - AVATAR_SIZE - MESSAGE_AVATAR_GAP - contentWidth : AVATAR_SIZE + MESSAGE_AVATAR_GAP;
+    }
+
+    /** 收到的昵称靠气泡左边，发出的昵称靠气泡右边；短消息不会强制把昵称截成气泡宽度。 */
+    public static TextOrigin groupName(int rowWidth, int nativeNameWidth, boolean self) {
+        float x = self ? rowWidth - AVATAR_SIZE - MESSAGE_AVATAR_GAP - nativeNameWidth * GROUP_NAME_SCALE
+                : AVATAR_SIZE + MESSAGE_AVATAR_GAP;
+        return new TextOrigin(x, GROUP_NAME_TOP);
+    }
 
     /**
      * 多行正文整体居中，各行仍左对齐。原版字宽包含行尾间距，中文字形又比旧的

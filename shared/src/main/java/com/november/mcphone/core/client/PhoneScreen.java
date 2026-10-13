@@ -16,6 +16,10 @@ import com.november.mcphone.core.ServerConfig;
 import com.november.mcphone.feature.chat.client.ChatImageCache;
 import com.november.mcphone.feature.chat.client.ChatImageSender;
 import com.november.mcphone.feature.chat.client.ChatList;
+import com.november.mcphone.feature.chat.client.ChatContacts;
+import com.november.mcphone.feature.chat.client.ChatProfile;
+import com.november.mcphone.feature.chat.client.ChatGroupCreate;
+import com.november.mcphone.feature.chat.client.ChatGroupDetails;
 import com.november.mcphone.feature.chat.client.ChatMediaPicker;
 import com.november.mcphone.feature.chat.client.StickerLibrary;
 import com.november.mcphone.feature.gallery.client.Gallery;
@@ -59,7 +63,7 @@ import java.util.UUID;
 /** 手机主屏幕 GUI：管理各页面之间的导航（{@link Mode}）、分发输入、兜住附属页面的异常 */
 public final class PhoneScreen extends PhoneScreenBase {
 
-    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT, AUTHOR_KEY }
+    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_PROFILE, CHAT_PLAYER_PROFILE, CHAT_CONTACTS, CHAT_NEW_FRIENDS, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION, CHAT_GROUP_CREATE, CHAT_GROUP_DETAILS, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT, AUTHOR_KEY }
 
     private final long openTimeMs;
     private boolean animationDone;
@@ -108,6 +112,17 @@ public final class PhoneScreen extends PhoneScreenBase {
     private final DeviceNameEditor deviceNameEditor = new DeviceNameEditor();
 
     private final ChatList chatList = new ChatList();
+    private final ChatProfile chatProfile=new ChatProfile();
+    private Mode profileReturnMode=Mode.CHAT;
+    private UUID profileTarget;
+    private void openPlayerProfile(UUID id) {
+        profileTarget=id;profileReturnMode=mode;navigateTo(Mode.CHAT_PLAYER_PROFILE);
+    }
+    private final ChatContacts chatContacts = new ChatContacts();
+    private final ChatGroupCreate chatGroupCreate = new ChatGroupCreate();
+    private final ChatGroupDetails chatGroupDetails = new ChatGroupDetails();
+    private final ChatAddContact chatNewFriends = ChatAddContact.newFriends();
+    private Mode chatReturnMode = Mode.CHAT;
     private final ChatAddContact chatAddContact = new ChatAddContact();
     private final ChatConversation chatConversation = new ChatConversation();
     /**
@@ -135,6 +150,9 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     /** 待打开的会话对端：navigateTo 不带参数，进会话前先存这里 */
     private UUID pendingConversationPeer;
+    private boolean pendingConversationIsGroup;
+    private boolean inConversation() { return mode == Mode.CHAT_CONVERSATION || mode == Mode.CHAT_GROUP_CONVERSATION; }
+    private Mode conversationMode() { return pendingConversationIsGroup ? Mode.CHAT_GROUP_CONVERSATION : Mode.CHAT_CONVERSATION; }
 
     /**
      * 手机在玩家身上的位置，设备名要写回这一部。
@@ -226,6 +244,11 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     public void navigateTo(Mode target) {
         if (this.mode == target) return;
+        // 临时聊天子页记住来源；附件页返回会话时保留原来源。
+        if ((target == Mode.CHAT_ADD_CONTACT || target == Mode.CHAT_CONVERSATION || target == Mode.CHAT_GROUP_CONVERSATION || target == Mode.CHAT_GROUP_CREATE)
+                && (mode == Mode.CHAT || mode == Mode.CHAT_CONTACTS || mode == Mode.MAIN)) {
+            chatReturnMode = mode == Mode.CHAT_CONTACTS ? Mode.CHAT_CONTACTS : Mode.CHAT;
+        }
 
         // 进详情页不算离开商店：reset 会清掉页码
         if (this.mode == Mode.APP_STORE
@@ -256,11 +279,25 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (this.mode == Mode.CHAT) chatList.close();
         if (target == Mode.CHAT) chatList.open();
 
+        if (this.mode == Mode.CHAT_PROFILE || this.mode == Mode.CHAT_PLAYER_PROFILE) chatProfile.close();
+        if (target == Mode.CHAT_PROFILE) chatProfile.open();
+        if (target == Mode.CHAT_PLAYER_PROFILE) chatProfile.openPlayer(profileTarget);
+        if (this.mode == Mode.CHAT_CONTACTS) chatContacts.close();
+        if (target == Mode.CHAT_CONTACTS) chatContacts.open();
+        if (this.mode == Mode.CHAT_NEW_FRIENDS) chatNewFriends.close();
+        if (target == Mode.CHAT_NEW_FRIENDS) chatNewFriends.open();
+
         if (this.mode == Mode.CHAT_ADD_CONTACT) chatAddContact.close();
         if (target == Mode.CHAT_ADD_CONTACT) chatAddContact.open();
 
-        if (this.mode == Mode.CHAT_CONVERSATION) chatConversation.close();
+        if (inConversation()) chatConversation.close();
         if (target == Mode.CHAT_CONVERSATION) chatConversation.open(pendingConversationPeer);
+        if (target == Mode.CHAT_GROUP_CONVERSATION) chatConversation.openGroup(pendingConversationPeer);
+        if (target == Mode.CHAT_CONVERSATION || target == Mode.CHAT_GROUP_CONVERSATION) pendingConversationIsGroup = target == Mode.CHAT_GROUP_CONVERSATION;
+        if (mode == Mode.CHAT_GROUP_CREATE) chatGroupCreate.close();
+        if (target == Mode.CHAT_GROUP_CREATE) chatGroupCreate.open();
+        if (mode == Mode.CHAT_GROUP_DETAILS) chatGroupDetails.close();
+        if (target == Mode.CHAT_GROUP_DETAILS) chatGroupDetails.open(pendingConversationPeer);
 
         if (this.mode == Mode.CHAT_PHOTO_PICKER) chatPhotoPicker.close();
         if (target == Mode.CHAT_PHOTO_PICKER) chatPhotoPicker.open();
@@ -346,7 +383,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         UUID target = switch (mode) {
-            case CHAT_CONVERSATION -> chatConversation.peer();
+            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> chatConversation.peer();
             // 选照片那一页也收：人已经在"挑一张"的语境里了，拖进来是同一个意思
             case CHAT_PHOTO_PICKER -> pendingConversationPeer;
             default -> null;
@@ -363,8 +400,8 @@ public final class PhoneScreen extends PhoneScreenBase {
             return;
         }
 
-        ChatImageSender.send(target, picture);
-        if (mode == Mode.CHAT_PHOTO_PICKER) navigateTo(Mode.CHAT_CONVERSATION);
+        if (pendingConversationIsGroup) ChatImageSender.sendGroup(target, picture); else ChatImageSender.send(target, picture);
+        if (mode == Mode.CHAT_PHOTO_PICKER) navigateTo(conversationMode());
     }
 
     /**
@@ -430,8 +467,8 @@ public final class PhoneScreen extends PhoneScreenBase {
      */
     private void sendPicked(Path picked) {
         if (picked == null) return;
-        ChatImageSender.send(pendingConversationPeer, picked);
-        navigateTo(Mode.CHAT_CONVERSATION);
+        if (pendingConversationIsGroup) ChatImageSender.sendGroup(pendingConversationPeer, picked); else ChatImageSender.send(pendingConversationPeer, picked);
+        navigateTo(conversationMode());
     }
 
     /**
@@ -457,6 +494,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     public boolean isViewingConversation(UUID peer) {
         return mode == Mode.CHAT_CONVERSATION && chatConversation.isViewing(peer);
     }
+    public boolean isViewingGroup(UUID group) { return mode == Mode.CHAT_GROUP_CONVERSATION && chatConversation.isViewing(group); }
 
     /**
      * 点开一个 App：先问 openPage()，没有就走 onPress() 由它自己跳出去。
@@ -653,17 +691,35 @@ public final class PhoneScreen extends PhoneScreenBase {
             return true;
         }
 
+        // 首页菜单先收起，第二次返回再离开聊天页。
+        if (mode == Mode.CHAT && chatList.dismissContextMenu()) return true;
+        if (mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) {
+            if (!chatProfile.back()) navigateTo(mode == Mode.CHAT_PLAYER_PROFILE ? profileReturnMode : Mode.CHAT);
+            return true;
+        }
+        if (mode == Mode.CHAT_CONTACTS) {
+            if (!chatContacts.back()) navigateTo(Mode.CHAT);
+            return true;
+        }
+        if (mode == Mode.CHAT_NEW_FRIENDS) {
+            navigateTo(Mode.CHAT_CONTACTS); return true;
+        }
+        if (mode == Mode.CHAT_GROUP_CREATE) { navigateTo(chatReturnMode); return true; }
+        if (mode == Mode.CHAT_GROUP_DETAILS) {
+            if (!chatGroupDetails.back()) navigateTo(Mode.CHAT_GROUP_CONVERSATION);
+            return true;
+        }
         // 放大看的那张图先关掉：那不是一页，但它盖住了整块内容区，返回键该先收它
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.dismissViewer()) return true;
+        if (inConversation() && chatConversation.dismissViewer()) return true;
 
         // 选照片、选表情都是从某个会话点进来的，返回自然回那个会话
         if (mode == Mode.CHAT_PHOTO_PICKER || mode == Mode.CHAT_STICKER_PICKER) {
-            navigateTo(Mode.CHAT_CONVERSATION);
+            navigateTo(conversationMode());
             return true;
         }
 
-        if (mode == Mode.CHAT_ADD_CONTACT || mode == Mode.CHAT_CONVERSATION) {
-            navigateTo(Mode.CHAT);
+        if (mode == Mode.CHAT_ADD_CONTACT || inConversation()) {
+            navigateTo(chatReturnMode);
             return true;
         }
 
@@ -924,12 +980,28 @@ public final class PhoneScreen extends PhoneScreenBase {
             case CHAT              -> chatList.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
+            case CHAT_GROUP_CREATE -> {
+                chatGroupCreate.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, font, partialTick);
+                UUID created = chatGroupCreate.consumeCreated();
+                if (created != null) { pendingConversationPeer = created; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
+            }
+            case CHAT_GROUP_DETAILS -> {
+                chatGroupDetails.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, font);
+                if (chatGroupDetails.consumeFinished()) navigateTo(chatReturnMode);
+            }
+            case CHAT_PROFILE, CHAT_PLAYER_PROFILE -> chatProfile.render(g,phoneLeft,phoneTop,sw,sh,statusH,navH,mouseX,mouseY,font,partialTick);
+            case CHAT_CONTACTS     -> chatContacts.render(g, phoneLeft, phoneTop,
+                    sw, sh, statusH, navH, mouseX, mouseY, font, partialTick);
+            case CHAT_NEW_FRIENDS  -> chatNewFriends.render(g, phoneLeft, phoneTop,
+                    sw, sh, statusH, navH, mouseX, mouseY, font);
             case CHAT_ADD_CONTACT  -> chatAddContact.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case CHAT_CONVERSATION -> chatConversation.render(g, phoneLeft, phoneTop,
-                    sw, sh, statusH, navH,
-                    mouseX, mouseY, partialTick, font);
+            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> {
+                if (mode == Mode.CHAT_GROUP_CONVERSATION && com.november.mcphone.feature.chat.group.net.GroupClientCache.removed(pendingConversationPeer)) {
+                    tellPlayer("mcphone.chat.group.removed"); navigateTo(chatReturnMode);
+                } else chatConversation.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, partialTick, font);
+            }
             case CHAT_PHOTO_PICKER -> chatPhotoPicker.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
@@ -1139,7 +1211,9 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (captureHotkeyMouse(button)) return true;
 
         // 菜单打开时先接管所有点击，点机身外或导航栏也只关闭菜单，不穿透。
-        if (mode == Mode.CHAT_CONVERSATION && (chatConversation.hasContextMenu()
+        if (mode == Mode.CHAT && dispatchChatHomeMenu(chatList, unscaledX(rawX), unscaledY(rawY), button, this::navigateTo))
+            return true;
+        if (inConversation() && (chatConversation.hasContextMenu()
                 || button == 1 && isInsidePhone(unscaledX(rawX), unscaledY(rawY))))
             return chatConversation.mouseClicked(unscaledX(rawX), unscaledY(rawY), button);
         if (button != 0) return super.mouseClicked(rawX, rawY, button);
@@ -1312,21 +1386,56 @@ public final class PhoneScreen extends PhoneScreenBase {
                     pendingConversationPeer = open;
                     navigateTo(Mode.CHAT_CONVERSATION);
                 }
-                if (chatList.consumeAddContactRequest()) {
-                    navigateTo(Mode.CHAT_ADD_CONTACT);
-                }
+                if (chatList.consumeContactsRequest()) navigateTo(Mode.CHAT_CONTACTS);
+                if (chatList.consumeProfileRequest()) navigateTo(Mode.CHAT_PROFILE);
+                UUID group = chatList.consumeGroupOpenRequest();
+                if (group != null) { pendingConversationPeer = group; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
+                yield true;
+            }
+            case CHAT_PROFILE, CHAT_PLAYER_PROFILE -> {
+                chatProfile.mouseClicked(mx,my,button);
+                var action=chatProfile.consumeAction();
+                if (action!=null) navigateTo(switch(action) {
+                    case CHATS -> Mode.CHAT;case CONTACTS -> Mode.CHAT_CONTACTS;
+                    case BACK -> mode==Mode.CHAT_PLAYER_PROFILE?profileReturnMode:Mode.CHAT;
+                });
+                yield true;
+            }
+            case CHAT_CONTACTS -> {
+                chatContacts.mouseClicked(mx, my, button);
+                UUID peer = chatContacts.consumeOpenRequest();
+                if (peer != null) { pendingConversationPeer = peer; navigateTo(Mode.CHAT_CONVERSATION); }
+                UUID group = chatContacts.consumeGroupOpenRequest();
+                if (group != null) { pendingConversationPeer = group; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
+                UUID profile=chatContacts.consumeProfileRequest();
+                if (profile!=null) openPlayerProfile(profile);
+                ChatContacts.Action action = chatContacts.consumeAction();
+                if (action != null) navigateTo(switch (action) {
+                    case CHATS -> Mode.CHAT;
+                    case ADD_CONTACT -> Mode.CHAT_ADD_CONTACT;
+                    case NEW_FRIENDS -> Mode.CHAT_NEW_FRIENDS;
+                    case PROFILE -> Mode.CHAT_PROFILE;
+                });
+                yield true;
+            }
+            case CHAT_NEW_FRIENDS -> { chatNewFriends.mouseClicked(mx, my, button); yield true; }
+            case CHAT_GROUP_CREATE -> { chatGroupCreate.mouseClicked(mx, my, button); yield true; }
+            case CHAT_GROUP_DETAILS -> {
+                chatGroupDetails.mouseClicked(mx,my,button);
+                UUID profile=chatGroupDetails.consumeProfileRequest();if (profile!=null) openPlayerProfile(profile);
                 yield true;
             }
             case CHAT_ADD_CONTACT -> {
                 chatAddContact.mouseClicked(mx, my, button);
                 yield true;
             }
-            case CHAT_CONVERSATION -> {
+            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> {
                 chatConversation.mouseClicked(mx, my, button);
                 if (chatConversation.consumeBackRequest()) {
-                    navigateTo(Mode.CHAT);
+                    navigateTo(chatReturnMode);
                     yield true;
                 }
+                if (chatConversation.consumeDetailsRequest()) { navigateTo(Mode.CHAT_GROUP_DETAILS); yield true; }
 
                 ChatAttachment attach = chatConversation.consumeAttachRequest();
                 if (attach != null) {
@@ -1369,8 +1478,20 @@ public final class PhoneScreen extends PhoneScreenBase {
         };
     }
 
+    /** 菜单点击与导航在同一事件内完成，不能把某个请求留给下一次普通点击。 */
+    private static boolean dispatchChatHomeMenu(ChatList list, double mx, double my, int button,
+                                                java.util.function.Consumer<Mode> navigate) {
+        if (!list.contextMouseClicked(mx, my, button)) return false;
+        boolean create = list.consumeCreateRequest();
+        boolean add = list.consumeAddContactRequest();
+        if (create) navigate.accept(Mode.CHAT_GROUP_CREATE);
+        else if (add) navigate.accept(Mode.CHAT_ADD_CONTACT);
+        return true;
+    }
+
     @Override
     public boolean mouseDragged(double rawX, double rawY, int button, double dx, double dy) {
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
         if (hudDragging) {
             dragHudTo(rawX, rawY, false);
             return true;
@@ -1393,7 +1514,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 书架页靠拖动排书
         if (mode == Mode.READER && bookList.mouseDragged(mx, my)) return true;
 
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.mouseDragged(mx, my, button)) return true;
+        if (inConversation() && chatConversation.mouseDragged(mx, my, button)) return true;
 
         // 多行输入框靠拖动选中文本，不转发的话选不了
         if (mode == Mode.NOTE_EDIT && noteEditor.mouseDragged(mx, my, button, ldx, ldy)) return true;
@@ -1403,13 +1524,14 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 松手才定性：主屏上这一下算"点开"还是"挪位置" */
     @Override
     public boolean mouseReleased(double rawX, double rawY, int button) {
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
         if (hudDragging) {
             hudDragging = false;
             dragHudTo(rawX, rawY, true);
             return true;
         }
 
-        if (mode == Mode.CHAT_CONVERSATION
+        if (inConversation()
                 && chatConversation.mouseReleased(unscaledX(rawX), unscaledY(rawY), button)) return true;
 
         if (mode == Mode.UI_SCALE) uiScalePage.mouseReleased();
@@ -1441,7 +1563,8 @@ public final class PhoneScreen extends PhoneScreenBase {
         final double my = unscaledY(rawY);
 
         // 菜单可见时滚轮只关闭菜单，不能绕过模态层缩放或滚动底下页面。
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.dismissContextMenu()) return true;
+        if (mode == Mode.CHAT && chatList.dismissContextMenu()) return true;
+        if (inConversation() && chatConversation.dismissContextMenu()) return true;
 
         // HUD 上 Ctrl+滚轮 ＝ 改大小。普通滚轮照旧翻这一页的内容——那是滚轮的本职，
         // 抢过来的话相册、聊天记录、便签在 HUD 上就翻不动了。
@@ -1467,8 +1590,13 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.MAIN && homeGrid.mouseScrolled(scrollY)) return true;
         if (mode == Mode.GALLERY && gallery.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT && chatList.mouseScrolled(scrollY)) return true;
+        if (mode == Mode.CHAT_CONTACTS && chatContacts.mouseScrolled(mx, my, scrollY)) return true;
+        if (mode == Mode.CHAT_GROUP_CREATE && chatGroupCreate.mouseScrolled(mx, my, scrollY)) return true;
+        if ((mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) && chatProfile.mouseScrolled(mx,my,scrollY)) return true;
+        if (mode == Mode.CHAT_GROUP_DETAILS && chatGroupDetails.mouseScrolled(mx, my, scrollY)) return true;
+        if (mode == Mode.CHAT_NEW_FRIENDS && chatNewFriends.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT_ADD_CONTACT && chatAddContact.mouseScrolled(scrollY)) return true;
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.mouseScrolled(scrollY)) return true;
+        if (inConversation() && chatConversation.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT_PHOTO_PICKER && chatPhotoPicker.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT_STICKER_PICKER && chatStickerPicker.mouseScrolled(scrollY)) return true;
         if (mode == Mode.NOTES && notesList.mouseScrolled(scrollY)) return true;
@@ -1496,7 +1624,11 @@ public final class PhoneScreen extends PhoneScreenBase {
             appManagerDetail.captureKey(keyCode, scanCode);
             return true;
         }
-        if (keyCode == 256 && mode == Mode.CHAT_CONVERSATION && chatConversation.dismissContextMenu()) return true;
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) {
+            if (keyCode == 256) chatList.dismissContextMenu();
+            return true;
+        }
+        if (keyCode == 256 && inConversation() && chatConversation.dismissContextMenu()) return true;
         if (keyCode == 256) { // ESC
             // ESC 一下直接关机，不退层；退层交给导航栏 ◁
             onClose();
@@ -1516,10 +1648,15 @@ public final class PhoneScreen extends PhoneScreenBase {
             if (vaultPage.consumeBackRequest()) navigateTo(Mode.SETTINGS);
             return true;
         }
-        if (mode == Mode.CHAT_CONVERSATION) {
+        if (inConversation()) {
             chatConversation.keyPressed(keyCode, scanCode, modifiers);
             return true;
         }
+        if (mode == Mode.CHAT && chatList.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (mode == Mode.CHAT_CONTACTS && chatContacts.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_CREATE && chatGroupCreate.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if ((mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) && chatProfile.keyPressed(keyCode,scanCode,modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_DETAILS && chatGroupDetails.keyPressed(keyCode, scanCode, modifiers)) return true;
         if (mode == Mode.NOTE_EDIT) {
             noteEditor.keyPressed(keyCode, scanCode, modifiers);
             return true;
@@ -1555,13 +1692,19 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 字符输入。EditBox 靠这个收字符（含输入法提交与粘贴），是所有文字进入界面的唯一通道 */
     @Override
     public boolean charTyped(char c, int modifiers) {
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
         if (mode == Mode.ADDON_PAGE
                 && callPage(p -> p.charTyped(c, modifiers))) return true;
         if (mode == Mode.DEVICE_NAME && deviceNameEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.VAULT && vaultPage.charTyped(c, modifiers)) return true;
         // 「作者密钥变了」那一档要抄指纹（§12.4）
         if (mode == Mode.APP_DETAIL && appDetail.charTyped(c, modifiers)) return true;
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.charTyped(c, modifiers)) return true;
+        if (inConversation() && chatConversation.charTyped(c, modifiers)) return true;
+        if (mode == Mode.CHAT && chatList.charTyped(c, modifiers)) return true;
+        if (mode == Mode.CHAT_CONTACTS && chatContacts.charTyped(c, modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_CREATE && chatGroupCreate.charTyped(c, modifiers)) return true;
+        if ((mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) && chatProfile.charTyped(c,modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_DETAILS && chatGroupDetails.charTyped(c, modifiers)) return true;
         if (mode == Mode.NOTE_EDIT && noteEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.READER && bookList.charTyped(c, modifiers)) return true;
         return super.charTyped(c, modifiers);
@@ -1595,12 +1738,19 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 正在读的那本 txt 记成书架：那一页攥着整本书的文本，关机时必须放掉
         // （见 TxtReaderPage.close），下次开机没有可续的东西，停在书架上最贴近。
         // 这一步在这里做而不在 PhoneSession 里：TXT_BOOK 这个常量只有本目标有
-        PhoneSession.save(location, mode == Mode.TXT_BOOK ? Mode.READER : mode, pendingConversationPeer);
+        PhoneSession.save(location, mode == Mode.TXT_BOOK ? Mode.READER
+                : (mode == Mode.CHAT_PLAYER_PROFILE ? profileReturnMode : mode == Mode.CHAT_ADD_CONTACT ? chatReturnMode : (mode == Mode.CHAT_PHOTO_PICKER || mode == Mode.CHAT_STICKER_PICKER ? conversationMode() : mode)), pendingConversationPeer);
 
         if (mode == Mode.GALLERY) gallery.close();
         if (mode == Mode.CHAT_PHOTO_PICKER) chatPhotoPicker.close();
         if (mode == Mode.CHAT_STICKER_PICKER) chatStickerPicker.close();
-        if (mode == Mode.CHAT_CONVERSATION) chatConversation.close();
+        if (inConversation()) chatConversation.close();
+        if (mode == Mode.CHAT) chatList.close();
+        if (mode == Mode.CHAT_CONTACTS) chatContacts.close();
+        if (mode == Mode.CHAT_NEW_FRIENDS) chatNewFriends.close();
+        if (mode == Mode.CHAT_GROUP_CREATE) chatGroupCreate.close();
+        if (mode == Mode.CHAT_GROUP_DETAILS) chatGroupDetails.close();
+        if (mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) chatProfile.close();
 
         // 图片消息的贴图只在手机开着时有用。留到关机才放，是因为"会话 → 列表 → 会话"
         // 是常有的来回，每次都放掉等于每次回来重下一遍

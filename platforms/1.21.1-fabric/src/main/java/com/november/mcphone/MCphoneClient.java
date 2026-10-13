@@ -105,9 +105,7 @@ public class MCphoneClient implements ClientModInitializer {
             // S17 Stage 2：在飞的脚本调用一并丢掉（旧连接的迟到结果回来时已无主）
             com.november.mcphone.core.script.client.ScriptCall.clear();
 
-            ChatClientCache.clear();
-            ChatImageCache.clear();
-            ChatImageSender.clear();
+            com.november.mcphone.feature.chat.client.ChatClientLifecycle.disconnect();
             NotesClientCache.clear();
             StoreClientCache.clear();
             PhoneScreenRegistry.unloadWorld();
@@ -126,8 +124,10 @@ public class MCphoneClient implements ClientModInitializer {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             if (net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
                     com.november.mcphone.feature.chat.net.RequestMessagesPacket.TYPE)
-                    && !net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
-                    com.november.mcphone.feature.chat.net.DeleteChatMessagePacket.TYPE)) {
+                    && (!net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
+                    com.november.mcphone.feature.chat.net.DeleteChatMessagePacket.TYPE)
+                    || !net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
+                    com.november.mcphone.feature.chat.group.net.GroupRequestPacket.TYPE))) {
                 handler.getConnection().disconnect(net.minecraft.network.chat.Component.translatable("mcphone.chat.protocol_mismatch"));
                 return;
             }
@@ -197,6 +197,7 @@ public class MCphoneClient implements ClientModInitializer {
         // 这两处走监听器而不是让网络层直接调：网络层在专用服务器上也会加载，碰不得客户端的类
         StoreClientCache.setSyncListener(PhoneScreenRegistry::enforcePurchases);
         ChatClientCache.setMessageListener(ChatClientEvents::onMessage);
+        com.november.mcphone.feature.chat.client.ChatGroupEvents.install();
         ChatClientCache.setImageListener(ChatImageCache::accept);
 
         MCphone.LOGGER.info("MCphone 客户端加载完成");

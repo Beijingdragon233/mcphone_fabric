@@ -160,9 +160,7 @@ public final class MCphoneClient {
                     // 被判成没变，那部手机在别人眼里就不亮
                     PhoneScreenOnSync.forget();
 
-                    ChatClientCache.clear();
-                    ChatImageCache.clear();
-                    ChatImageSender.clear();
+                    com.november.mcphone.feature.chat.client.ChatClientLifecycle.disconnect();
                     NotesClientCache.clear();
                     StoreClientCache.clear();
                     PhoneScreenRegistry.unloadWorld();
@@ -199,6 +197,7 @@ public final class MCphoneClient {
         StoreClientCache.setSyncListener(PhoneScreenRegistry::enforcePurchases);
 
         ChatClientCache.setMessageListener(ChatClientEvents::onMessage);
+        com.november.mcphone.feature.chat.client.ChatGroupEvents.install();
         ChatClientCache.setImageListener(ChatImageCache::accept);
     }
 

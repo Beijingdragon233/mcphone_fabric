@@ -27,7 +27,7 @@ final class ChatMessageLayout {
     private static final long STAMP_GAP_MS = 5 * 60 * 1000L;
     private static final int IMAGE_MAX_H = 56;
     private static final int AVATAR_SIZE = ChatLayout.AVATAR_SIZE;
-    private static final int AVATAR_GAP = 3;
+    private static final int AVATAR_GAP = ChatLayout.MESSAGE_AVATAR_GAP;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATE_TIME_FORMAT = DateTimeFormatter.ofPattern("MM-dd HH:mm");
 
@@ -58,11 +58,16 @@ final class ChatMessageLayout {
     }
 
     static List<Block> build(Font font, List<ChatMessage> src, int maxW, UUID selfId) {
+        return build(font, src, maxW, selfId, false);
+    }
+
+    static List<Block> build(Font font, List<ChatMessage> src, int maxW, UUID selfId, boolean group) {
         final int bubbleMaxW = Math.max(24, Math.min((int) (maxW * BUBBLE_MAX_RATIO),
                 maxW - AVATAR_SIZE - AVATAR_GAP - 12));
         final int textMaxW = ChatLayout.unscaledWidth(bubbleMaxW - BUBBLE_PAD_X * 2,
                 ChatLayout.TEXT_SCALE);
         final int nameLineHeight = ChatUi.lineHeight(font, ChatLayout.META_SCALE);
+        final int senderLineHeight = ChatUi.lineHeight(font, ChatLayout.GROUP_NAME_SCALE);
 
         List<Block> out = new ArrayList<>();
         long prevTime = 0L;
@@ -81,7 +86,7 @@ final class ChatMessageLayout {
             boolean self = selfId != null && selfId.equals(m.sender());
 
             if (m.body() instanceof ImageBody image) {
-                out.add(imageBlock(m, image, self, bubbleMaxW, nameLineHeight));
+                out.add(imageBlock(m, image, self, bubbleMaxW, nameLineHeight, senderLineHeight, group));
                 continue;
             }
 
@@ -94,14 +99,19 @@ final class ChatMessageLayout {
             int bubbleH = lines.size() * ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE) + BUBBLE_PAD_Y * 2;
             int bubbleW = ChatLayout.scaledWidth(textW, ChatLayout.TEXT_SCALE) + BUBBLE_PAD_X * 2;
             out.add(new Block(BlockType.TEXT, self, lines, null,
-                    bubbleW, bubbleH, 1, 0, ChatLayout.messageRow(bubbleH, nameLineHeight),
+                    bubbleW, bubbleH, 1, 0, placement(bubbleH, nameLineHeight, senderLineHeight, group),
                     ChatLayout.bubbleText(bubbleW, bubbleH, textW, font.lineHeight, lines.size()), m, selectable));
         }
 
         return List.copyOf(out);
     }
 
-    private static Block imageBlock(ChatMessage message, ImageBody image, boolean self, int bubbleMaxW, int nameLineHeight) {
+    private static ChatLayout.MessageRow placement(int height, int reservedNameHeight, int senderHeight, boolean group) {
+        return group ? ChatLayout.groupMessageRow(height, senderHeight) : ChatLayout.messageRow(height, reservedNameHeight);
+    }
+
+    private static Block imageBlock(ChatMessage message, ImageBody image, boolean self, int bubbleMaxW,
+                                    int nameLineHeight, int senderLineHeight, boolean group) {
         float scale = Math.min((float) bubbleMaxW / image.width(),
                                (float) IMAGE_MAX_H / image.height());
         // 比屏幕还小的图不放大：放大只会糊，而手机上的图本来就该小
@@ -111,7 +121,7 @@ final class ChatMessageLayout {
         int h = Math.max(1, Math.round(image.height() * scale));
 
         return new Block(BlockType.IMAGE, self, List.of(), image.image(), w, h,
-                image.frames(), image.frameMs(), ChatLayout.messageRow(h, nameLineHeight), null, message, null);
+                image.frames(), image.frameMs(), placement(h, nameLineHeight, senderLineHeight, group), null, message, null);
     }
 
     private static String formatStamp(long time) {
