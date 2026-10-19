@@ -39,6 +39,11 @@ public final class Draw {
 
     private Draw() {}
 
+    /** 26.1 将 PoseStack 的栈底判定从 clear 改名为 isEmpty。 */
+    public static boolean poseAtBase(com.mojang.blaze3d.vertex.PoseStack stack) {
+        return stack.clear();
+    }
+
     /**
      * 画一个铺满给定矩形的带贴图四边形，uv 走满 0..1，颜色纯白不透明。
      *

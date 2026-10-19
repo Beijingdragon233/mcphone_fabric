@@ -177,6 +177,7 @@ public final class PhoneHud {
         }
 
         boolean isScreen = mc.screen == phone;
+        if (!isScreen) phone.tick();
 
         // 全屏那副面孔正开着：人已经在正经操作手机了，Alt 在这儿没有意义
         if (isScreen && !phone.isHudMode()) return;

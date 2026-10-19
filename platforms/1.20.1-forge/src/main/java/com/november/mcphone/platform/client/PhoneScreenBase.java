@@ -47,5 +47,13 @@ public abstract class PhoneScreenBase extends Screen {
     protected boolean onScroll(double mouseX, double mouseY, double scrollX, double scrollY) {
         return false;
     }
+    /** 旧版字符事件是 UTF-16；中立码点入口不截断补充字符。 */
+    public boolean charTyped(int codePoint, int modifiers) {
+        if (!Character.isValidCodePoint(codePoint)) return false;
+        if (Character.isBmpCodePoint(codePoint)) return charTyped((char) codePoint, modifiers);
+        boolean first = charTyped(Character.highSurrogate(codePoint), modifiers);
+        return charTyped(Character.lowSurrogate(codePoint), modifiers) | first;
+    }
+
 }
 
