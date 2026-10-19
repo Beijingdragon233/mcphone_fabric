@@ -29,10 +29,13 @@ public abstract class PhoneScreenBase extends Screen {
     public boolean keyReleased(int key,int scan,int mods) { return super.keyReleased(new KeyEvent(key,scan,mods)); }
     @Override public boolean charTyped(CharacterEvent e) {
         var previous=PhoneInputs.character; PhoneInputs.character=e;
-        try { return charTyped((char)e.codepoint(),PhoneInputs.modifiers()); }
+        try { return charTyped(e.codepoint(),PhoneInputs.modifiers()); }
         finally { PhoneInputs.character=previous; }
     }
-    public boolean charTyped(char c,int mods) { return super.charTyped(PhoneInputs.character(c)); }
+    public boolean charTyped(int codePoint,int mods) {
+        return PhoneInputs.dispatchCharacter(codePoint, unit -> charTyped((char) unit,mods));
+    }
+    public boolean charTyped(char c,int mods) { return PhoneInputs.submitCharacter(c,e -> super.charTyped(e)); }
     @Override public boolean mouseClicked(MouseButtonEvent e,boolean twice) {
         var previous=PhoneInputs.mouse; boolean previousTwice=PhoneInputs.doubleClick;
         PhoneInputs.mouse=e; PhoneInputs.doubleClick=twice;

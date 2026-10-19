@@ -2,6 +2,7 @@ package com.november.mcphone.core.client;
 
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
+import com.november.mcphone.api.client.ui.PhoneViewport;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.ui.IPhonePage;
 import com.november.mcphone.api.client.ui.PhoneCanvas;
@@ -105,7 +106,9 @@ public final class PhoneScreen extends PhoneScreenBase {
      * 附属 App 当前打开的那一页，null 表示没有。
      * 每个回调都要兜 Throwable 而不是 Exception：引用没装的模组类抛的是 NoClassDefFoundError。
      */
-    private IPhonePage addonPage = null;
+    private PhoneViewport cachedAddonViewport;
+    private final PhonePageHost addonHost = new PhonePageHost((page, error) ->
+            MCphone.LOGGER.error("[MCphone] 附属页面 {} 回调失败", page.getClass().getName(), error));
 
     private final Gallery gallery = new Gallery();
 
@@ -222,6 +225,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         this.location = location;
         this.metrics = metricsAt(location);
         this.openTimeMs = System.currentTimeMillis();
+        this.nowMs = this.openTimeMs; // 初次渲染前的布局也必须使用有效动画时间
         this.animationDone = PhoneTheme.OPEN_ANIMATION_MS <= 0;
     }
 
@@ -258,7 +262,12 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         // ESC 关机、被顶掉、断线不经过 navigateTo，那几条由 removed() 兜住
-        if (this.mode == Mode.ADDON_PAGE && target != Mode.ADDON_PAGE) closeAddonPage();
+        if (this.mode == Mode.ADDON_PAGE && target != Mode.ADDON_PAGE) {
+            Mode leaving = this.mode;
+            closeAddonPage();
+            // 清理回调可发起另一次导航；不能再用旧目标覆盖新页面。
+            if (addonHost.page() != null || this.mode != leaving) return;
+        }
 
         if (this.mode == Mode.COMPANION_APPS) companionApps.reset();
         if (target == Mode.COMPANION_APPS) companionApps.refresh();
@@ -525,86 +534,70 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
     }
 
-    private void openAddonPage(IPhonePage page) {
-        closeAddonPage();
-        addonPage = page;
-        try {
-            page.onOpen();
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 的 onOpen() 抛异常",
-                    page.getClass().getName(), t);
-        }
-        navigateTo(Mode.ADDON_PAGE);
-    }
-
-    /** 先清字段再回调 onClose()：它里面可能又开一页，后清会把新页抹掉 */
-    private void closeAddonPage() {
-        IPhonePage page = addonPage;
-        addonPage = null;
-        if (page == null) return;
-        try {
-            page.onClose();
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 的 onClose() 抛异常",
-                    page.getClass().getName(), t);
-        }
-    }
-
-    /** 调一次页面回调；抛异常就当场关掉退回主屏，留着会每帧再抛。出异常时算没处理 */
-    private boolean callPage(java.util.function.Predicate<IPhonePage> call) {
-        IPhonePage page = addonPage;
-        if (page == null) return false;
-        try {
-            return call.test(page);
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 抛异常，已关闭该页",
-                    page.getClass().getName(), t);
-            closeAddonPage();
-            navigateTo(Mode.MAIN);
-            return false;
-        }
-    }
-
-    /** 这一页有没有输入框。问不出来就当没有——那是更安全的一侧 */
-    private boolean pageCapturesKeyboard() {
-        IPhonePage page = addonPage;
-        if (page == null) return false;
-        try {
-            return page.capturesKeyboard();
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 的 capturesKeyboard() 抛异常",
-                    page.getClass().getName(), t);
-            return false;
-        }
-    }
-
-    /** 画附属那一页，给它的是扣掉状态栏与导航栏的内容区 */
-    private void renderAddonPage(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        IPhonePage page = addonPage;
-        if (page == null) {
-            navigateTo(Mode.MAIN);
-            return;
-        }
-
+    private PhoneViewport addonViewport() {
+        computeLayout();
         int contentY = phoneTop + PhoneTheme.STATUS_BAR_HEIGHT;
+        int contentW = metrics.contentWidth(), contentH = metrics.contentHeight();
+        double scale = renderScale();
+        PhoneViewport previous = cachedAddonViewport;
+        if (previous == null || previous.x() != phoneLeft || previous.y() != contentY
+                || previous.width() != contentW || previous.height() != contentH || previous.scale() != scale) {
+            cachedAddonViewport = new PhoneViewport(phoneLeft, contentY, contentW, contentH, scale);
+        }
+        return cachedAddonViewport;
+    }
 
-        // 附属那一侧从来只认画布给的这个矩形，所以平板的宽高直接送进去就行，
-        // 它们一行代码都不用改 —— 这正是 PhoneCanvas 当初不摊开成十个参数的原因
+    private boolean addonInteractive() {
+        return minecraft != null && minecraft.screen == this && minecraft.isWindowActive();
+    }
+
+    private void openAddonPage(IPhonePage page) {
+        addonHost.open(page, addonViewport(), addonInteractive());
+        navigateTo(addonHost.page() != null ? Mode.ADDON_PAGE : Mode.MAIN);
+    }
+
+    private void closeAddonPage() { addonHost.close(); }
+
+    private void updateAddonContext() {
+        if (addonHost.page() == null) return;
+        addonHost.interactive(addonInteractive());
+        addonHost.layout(addonViewport());
+        leaveFailedAddon();
+    }
+
+    private void leaveFailedAddon() {
+        if (mode == Mode.ADDON_PAGE && addonHost.page() == null) navigateTo(Mode.MAIN);
+    }
+
+    private boolean callPage(java.util.function.Predicate<IPhonePage> call) {
+        boolean result = addonHost.invoke(call);
+        leaveFailedAddon();
+        return result;
+    }
+
+    private boolean pageCapturesKeyboard() { return callPage(IPhonePage::capturesKeyboard); }
+
+    private void renderAddonPage(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        updateAddonContext();
+        IPhonePage page = addonHost.page();
+        if (page == null) { leaveFailedAddon(); return; }
+        var viewport = addonViewport();
         PhoneCanvas canvas = new PhoneCanvas(g, font,
-                phoneLeft, contentY, metrics.contentWidth(), metrics.contentHeight(),
+                viewport.x(), viewport.y(), viewport.width(), viewport.height(),
                 mouseX, mouseY, partialTick, ThemeStyle.INSTANCE);
-
-        try {
-            page.render(canvas);
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 渲染抛异常，已关闭该页",
-                    page.getClass().getName(), t);
-            closeAddonPage();
-            navigateTo(Mode.MAIN);
+        try (var scope = new PhonePoseScope(g.pose())) {
+            canvas.clipped(viewport.x(), viewport.y(), viewport.width(), viewport.height(),
+                    () -> callPage(p -> { p.render(canvas); return true; }));
         } finally {
-            // 抛异常那条路更要收：附属很可能正是在开着裁剪的时候抛的
             healLeakedScissor(g, page);
         }
+    }
+
+    /** Screen 由原版 tick；后台 HUD 由 PhoneHud tick，二者互斥。 */
+    @Override public void tick() {
+        super.tick();
+        updateAddonContext();
+        if (addonHost.page() != null) callPage(p -> { p.tick(); return true; });
     }
 
     /** 已经因为裁剪没收干净警告过的页面，一个类只说一次，不刷屏 */
@@ -1216,6 +1209,16 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (inConversation() && (chatConversation.hasContextMenu()
                 || button == 1 && isInsidePhone(unscaledX(rawX), unscaledY(rawY))))
             return chatConversation.mouseClicked(unscaledX(rawX), unscaledY(rawY), button);
+        if (mode == Mode.ADDON_PAGE && button != 0) {
+            updateAddonContext();
+            double mx = unscaledX(rawX), my = unscaledY(rawY);
+            if (addonViewport().contains(mx, my)) {
+                addonHost.click(mx, my, button);
+                leaveFailedAddon();
+                return true;
+            }
+            return super.mouseClicked(rawX, rawY, button);
+        }
         if (button != 0) return super.mouseClicked(rawX, rawY, button);
 
         // 全屏读书这一帧没有机身，也就没有"点机身外＝关机"这回事；坐标也不必换算
@@ -1226,6 +1229,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         // 换算一次，下面全用它。super 那几句仍然给原始坐标：原版控件是按屏幕坐标摆的
+        if (mode == Mode.ADDON_PAGE) updateAddonContext();
         final double mx = unscaledX(rawX);
         final double my = unscaledY(rawY);
 
@@ -1239,6 +1243,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         // HUD 上抓着边框或状态栏 ＝ 挪位置，不是操作手机。必须在导航栏与各页分发之前：
         // 各页的 mouseClicked 一律把点击吞掉，放到后面就永远轮不到
         if (isOnHudHandle(mx, my)) {
+            if (mode == Mode.ADDON_PAGE) { addonHost.cancelInput(); leaveFailedAddon(); }
             hudDragging = true;
             hudGrabX = (int) Math.round(rawX) - PhoneHudPlacement.originX(metrics, this.width, this.height);
             hudGrabY = (int) Math.round(rawY) - PhoneHudPlacement.originY(metrics, this.width, this.height);
@@ -1334,8 +1339,9 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case ADDON_PAGE -> {
-                // 不看返回值：附属页里的空点击不该关机
-                callPage(p -> p.mouseClicked(mx, my, button));
+                // 是否消费决定捕获；空点击仍由手机屏蔽，不穿透。
+                addonHost.click(mx, my, button);
+                leaveFailedAddon();
                 yield true;
             }
             case ABOUT, CLOCK, WEATHER -> {
@@ -1489,12 +1495,30 @@ public final class PhoneScreen extends PhoneScreenBase {
         return true;
     }
 
+    @Override public void mouseMoved(double rawX, double rawY) {
+        if (mode == Mode.ADDON_PAGE && !hudDragging) {
+            updateAddonContext();
+            double mx = unscaledX(rawX), my = unscaledY(rawY);
+            addonHost.move(mx, my);
+            if (addonInteractive() && (addonHost.captured() || addonViewport().contains(mx, my)))
+                callPage(p -> { p.mouseMoved(mx, my); return true; });
+            leaveFailedAddon();
+        }
+        super.mouseMoved(rawX, rawY);
+    }
+
     @Override
     public boolean mouseDragged(double rawX, double rawY, int button, double dx, double dy) {
         if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
+        // 系统的机身拖动优先于附属内容拖动。
         if (hudDragging) {
             dragHudTo(rawX, rawY, false);
             return true;
+        }
+        // 附属拖动由 mouseMoved 产生，避免原版左键 drag 再发一遍。
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            return addonHost.captured();
         }
 
         final double mx = unscaledX(rawX);
@@ -1530,6 +1554,12 @@ public final class PhoneScreen extends PhoneScreenBase {
             dragHudTo(rawX, rawY, true);
             return true;
         }
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            boolean consumed = addonHost.release(unscaledX(rawX), unscaledY(rawY), button);
+            leaveFailedAddon();
+            return consumed;
+        }
 
         if (inConversation()
                 && chatConversation.mouseReleased(unscaledX(rawX), unscaledY(rawY), button)) return true;
@@ -1559,6 +1589,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 全屏读书：翻页，与坐标无关
         if (fullscreenReading() && txtReader.mouseScrolled(scrollY, font)) return true;
 
+        if (mode == Mode.ADDON_PAGE) updateAddonContext();
         final double mx = unscaledX(rawX);
         final double my = unscaledY(rawY);
 
@@ -1611,13 +1642,17 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.ABOUT && aboutPage.mouseScrolled(scrollY, font)) return true;
         if (mode == Mode.VAULT && vaultPage.mouseScrolled(scrollY, font)) return true;
         if (mode == Mode.AUTHOR_KEY && authorKeyPage.mouseScrolled(scrollY, font)) return true;
-        if (mode == Mode.ADDON_PAGE
-                && callPage(p -> p.mouseScrolled(mx, my, scrollY))) return true;
+        if (mode == Mode.ADDON_PAGE) {
+            boolean consumed = addonHost.scroll(mx, my, scrollX, scrollY);
+            leaveFailedAddon();
+            return consumed || addonViewport().contains(mx, my);
+        }
         return false;
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (mode == Mode.ADDON_PAGE) updateAddonContext();
         // App 管理页正等着玩家按一个键当快捷键。这一下不是在操作手机，是在绑键，
         // 所以要抢在下面 ESC 关机之前——在那一页上 ESC 的意思是"清除这个绑定"
         if (mode == Mode.APP_MANAGER_DETAIL && appManagerDetail.isCapturingKey()) {
@@ -1670,7 +1705,8 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
         // 附属页面自称有输入框时同样要抢在背包键之前
         if (mode == Mode.ADDON_PAGE && pageCapturesKeyboard()) {
-            callPage(p -> p.keyPressed(keyCode, scanCode, modifiers));
+            addonHost.keyPressed(keyCode, scanCode, modifiers, true);
+            leaveFailedAddon();
             return true;
         }
 
@@ -1683,18 +1719,42 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.GALLERY && gallery.keyPressed(keyCode)) return true;
         if (mode == Mode.CHAT_PHOTO_PICKER && chatPhotoPicker.keyPressed(keyCode)) return true;
         if (mode == Mode.CHAT_STICKER_PICKER && chatStickerPicker.keyPressed(keyCode)) return true;
-        if (mode == Mode.ADDON_PAGE
-                && callPage(p -> p.keyPressed(keyCode, scanCode, modifiers))) return true;
+        if (mode == Mode.ADDON_PAGE) {
+            boolean consumed = addonHost.keyPressed(keyCode, scanCode, modifiers, false);
+            leaveFailedAddon();
+            if (consumed) return true;
+        }
 
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    /** 字符输入。EditBox 靠这个收字符（含输入法提交与粘贴），是所有文字进入界面的唯一通道 */
+    @Override public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            boolean consumed = addonHost.keyReleased(keyCode, scanCode, modifiers);
+            leaveFailedAddon();
+            if (consumed) return true;
+        }
+        return super.keyReleased(keyCode, scanCode, modifiers);
+    }
+
+    /** 26.1 的码点事件直接走此入口；老目标继续经 char 重载送入页面。 */
+    public boolean charTyped(int codePoint, int modifiers) {
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            return addonInteractive() && callPage(p -> p.charTyped(codePoint, modifiers));
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+
+    /** 字符提交；粘贴快捷键由 keyPressed 和文本控件处理。 */
     @Override
     public boolean charTyped(char c, int modifiers) {
         if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
-        if (mode == Mode.ADDON_PAGE
-                && callPage(p -> p.charTyped(c, modifiers))) return true;
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            if (addonInteractive() && callPage(p -> p.charTyped((int) c, modifiers))) return true;
+        }
         if (mode == Mode.DEVICE_NAME && deviceNameEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.VAULT && vaultPage.charTyped(c, modifiers)) return true;
         // 「作者密钥变了」那一档要抄指纹（§12.4）
@@ -1715,6 +1775,9 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 用 removed() 而不是 onClose()：被别的界面顶掉时 onClose 不触发 */
     @Override
     public void removed() {
+        // HUD 暂时退出交互仍继续显示，但必须结束其按键与拖动会话。
+        addonHost.interactive(false);
+        hudDragging = false;
         // HUD 上那部手机是【一直开着】的：松开 Alt、或者从书架点开一本书把它顶掉，都只是
         // 它不再是 mc.screen —— 人还在副手上拿着，屏幕也还亮着。这时候真去拆，聊天会话、
         // 相册贴图、附属页面会全部收掉，下一帧 HUD 画出来的是一部刚开机的手机，玩家眼里

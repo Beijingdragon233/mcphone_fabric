@@ -26,4 +26,25 @@ public final class PhoneInputs {
         return new MouseButtonEvent(x,y,new MouseButtonInfo(button,mouse==null?modifiers():mouse.modifiers()));
     }
     public static CharacterEvent character(char c) { return character==null?new CharacterEvent(c):character; }
+    /**
+     * 原生 CharacterEvent 仍在上下文时只转交一次，原版控件会读取其完整码点；
+     * 不能把代理对各转一次，否则原生控件会插入同一码点两遍。
+     * 没有原生事件时按 UTF-16 兼容传统 char 回调。
+     */
+    public static boolean dispatchCharacter(int codePoint, java.util.function.IntPredicate typed) {
+        if (!Character.isValidCodePoint(codePoint)) return false;
+        if (character != null) return typed.test(Character.isSupplementaryCodePoint(codePoint)
+                ? Character.highSurrogate(codePoint) : (char) codePoint);
+        if (Character.isBmpCodePoint(codePoint)) return typed.test((char) codePoint);
+        boolean first = typed.test(Character.highSurrogate(codePoint));
+        return typed.test(Character.lowSurrogate(codePoint)) | first;
+    }
+
+    /** 旧附属会将补充字符拆成代理对；原生控件在高位那次已收到完整事件，低位不能再提交。 */
+    public static boolean submitCharacter(char unit, java.util.function.Predicate<CharacterEvent> receiver) {
+        if (character != null && Character.isSupplementaryCodePoint(character.codepoint())
+                && unit == Character.lowSurrogate(character.codepoint())) return false;
+        return receiver.test(character(unit));
+    }
+
 }

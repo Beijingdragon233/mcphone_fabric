@@ -11,7 +11,7 @@ public final class PhoneMultiLineEditBox  {
     public PhoneMultiLineEditBox(Font f,int x,int y,int w,int h,Component p,Component m) { box=MultiLineEditBox.builder().setX(x).setY(y).setPlaceholder(p).build(f,w,h,m); }
     public void render(PhoneGraphics g,int x,int y,float a) { box.extractRenderState(g.nativeGraphics(),x,y,a); }
     public boolean keyPressed(int key,int scan,int mods) { return box.keyPressed(new KeyEvent(key,scan,mods)); }
-    public boolean charTyped(char c,int mods) { return box.charTyped(PhoneInputs.character(c)); }
+    public boolean charTyped(char c,int mods) { return PhoneInputs.submitCharacter(c,box::charTyped); }
     public boolean mouseClicked(double x,double y,int b) { return box.mouseClicked(PhoneInputs.mouse(x,y,b),PhoneInputs.doubleClick); }
     public boolean mouseReleased(double x,double y,int b) { return box.mouseReleased(PhoneInputs.mouse(x,y,b)); }
     public boolean mouseDragged(double x,double y,int b,double dx,double dy) { return box.mouseDragged(PhoneInputs.mouse(x,y,b),dx,dy); }

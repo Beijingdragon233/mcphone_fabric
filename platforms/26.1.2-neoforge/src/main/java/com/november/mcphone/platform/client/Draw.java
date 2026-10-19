@@ -8,6 +8,11 @@ import net.minecraft.world.item.ItemStack;
 /** 26.1 使用原版 GUI 提取管线，不再调用已移除的即时 BufferUploader。 */
 public final class Draw {
     private Draw() {}
+
+    /** 26.1 将 PoseStack 的栈底判定从 clear 改名为 isEmpty。 */
+    public static boolean poseAtBase(com.mojang.blaze3d.vertex.PoseStack stack) {
+        return stack.isEmpty();
+    }
     /** 背景已由 Screen.extractBackground 在内容之前提取，不能在内容阶段再次模糊。 */
     public static void screenBackground(Screen s,PhoneGraphics g,int x,int y,float a) {}
     public static boolean scissorLeaked(PhoneGraphics g) { return !g.containsPointInScissor(0,0); }
