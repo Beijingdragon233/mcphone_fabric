@@ -142,6 +142,12 @@ sourceSets.main.resources {
 // overrides such as the new string-based recipe ingredients.
 tasks.named('processResources', ProcessResources).configure {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    // 1.21+ 层仍带着旧复数的 advancement/recipes/。26.3 读取整个 advancement
+    // 注册表，旧文件不会因为新单数文件存在就失效：它仍会被解析，并在
+    // recipe_unlocked 的旧字段 recipe 上直接让世界加载失败。这里按目录整族排除，
+    // 只保留平台目录里迁移过的 advancement/recipe/。
+    exclude 'data/mcphone/advancement/recipes/**'
 }
 
 repositories {

@@ -46,8 +46,9 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
  * 所以下面那个 {@code extractBackground} 覆写 = 「透明底 + 我们的背板」，与 1.21.1 那对
  * {@code renderBackground} 逐句同形（它也不叫 super，走的也是透明底那一支）。
  *
- * <p>于是每帧的抽取次数与 1.21.1 一致：子类自己那句 {@code Draw.screenBackground} 一次、
- * 原版入口一次，背板各跟着画两次 —— 那是<b>现支本来的行为</b>，本轮只求对上，不求顺手改。
+ * <p>共用代码里子类自己那句 {@code Draw.screenBackground} 在 26.3 上保持空实现：
+ * 原版入口已经先调过这里的 {@code extractBackground}，再调一次会让模糊背景重复提交并崩溃。
+ * 因此每帧只有原版入口这一次，背板也只画一次。
  */
 public abstract class PhoneContainerScreenBase<T extends AbstractContainerMenu>
         extends AbstractContainerScreen<T> {

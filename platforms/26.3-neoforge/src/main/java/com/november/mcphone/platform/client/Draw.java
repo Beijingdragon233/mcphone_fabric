@@ -56,14 +56,17 @@ public final class Draw {
     /**
      * 画屏幕背景。
      *
-     * <p>这一支上它叫 {@code Screen#extractBackground}（{@code Screen.java:393}），收的还是
-     * 【画布 + 鼠标 + partialTick】那四个：1.21.1 那个
-     * {@code renderBackground(GuiGraphics, int, int, float)} 在这支换了名字，方法体还是
-     * 那三件事 —— 游戏内 UI 走透明底、没有世界就画全景、其余画模糊与暗底。
+     * <p>26.3 的 {@code Screen#extractRenderStateWithTooltipAndSubtitles} 已经在调用
+     * {@code extractRenderState} 之前自动调过一次 {@code extractBackground}
+     * （{@code Screen.java:108-113}）。共用代码里的 {@code render} 仍按老版本形状主动调用
+     * 这一句；这里再转给原版就会在同一帧模糊两次，原版会直接抛
+     * {@code Can only blur once per frame}。
+     *
+     * <p>所以这一支保持空实现：背景不是漏画，而是已经由原版入口先画完。老版本没有这个
+     * 外层入口，各自的 {@code Draw.screenBackground} 仍照旧真正调用 {@code renderBackground}。
      */
     public static void screenBackground(Screen screen, GuiGraphicsExtractor g,
                                         int mouseX, int mouseY, float partialTick) {
-        screen.extractBackground(g, mouseX, mouseY, partialTick);
     }
 
     /**

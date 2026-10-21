@@ -2363,11 +2363,11 @@ RenderPipelines.GUI_TEXTURED, INVENTORY_LOCATION, leftPos, topPos, 0, 0, imageWi
 `Screen#renderTransparentBackground` `:417` 与 26.3 `Screen#extractTransparentBackground` `:434`
 都是那一条 `fillGradient(0, 0, w, h, -1072689136, -804253680)`）。
 
-有一笔账要说在前面：子类自己那句 `Draw.screenBackground(this, ...)` 在 26.3 上叫的是
-`Screen#extractBackground`，而那正是【这层覆写过的方法】—— 于是它也会带上背板。这不是本轮引入的：
-1.21.1 上 `Draw.screenBackground` 叫 `Screen#renderBackground`，虚分派同样落到
-`AbstractContainerScreen#renderBackground`，背板同样画两遍。每帧抽取两次、背板各跟着画一次，
-是现支本来的行为，本轮只求对上，不顺手改。
+有一笔账要说在前面：子类自己那句 `Draw.screenBackground(this, ...)` 在 26.3 上曾经继续调用
+`Screen#extractBackground`，而原版外层入口已经先调过一次，于是同一帧提交两次模糊背景。
+真实客户端打开手机时，原版直接抛 `Can only blur once per frame`。最终修法是让 26.3 的
+`Draw.screenBackground` 保持空实现：背景已经由原版入口先画完，共用代码的调用形状不变，
+老版本仍照旧真正调用 `renderBackground`。容器界面因此每帧只画一次背板。
 
 ### 三、尺寸进构造，`inventoryLabelY` 那一笔
 
@@ -3030,3 +3030,33 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
   提供对应版本；这不是静默降级。
 - 客户端只验证了启动、主菜单资源加载、App 注册和联动装载。手机界面内的逐页点击、
   输入法、裁剪、相机、聊天与附属 API 行为仍需后续进游戏逐项验收。
+
+## 四十八、真实进世界复测：背景与成就注册表两处运行期崩溃
+
+### 一、背景模糊只能提交一次
+
+- 26.3 的 `Screen#extractRenderStateWithTooltipAndSubtitles` 会在调用
+  `extractRenderState` 前先调用一次 `extractBackground`。共用代码仍按老版本形状在
+  `render` 里调用 `Draw.screenBackground`，于是同一帧提交两次模糊，打开手机时抛
+  `Can only blur once per frame`。
+- 26.3 的 `Draw.screenBackground` 改为空实现：背景已经由原版入口先画完，不是漏画；
+  老三支仍照旧调用 `renderBackground`。容器界面因此也从每帧两次背板降为一次。
+
+### 二、旧复数成就目录仍会被加载
+
+- 只把 26.3 成就放到 `data/mcphone/advancement/recipe/` 还不够。`1.21+` 层里的
+  `advancement/recipes/` 会一起进入 jar，26.3 会解析整个成就注册表，旧文件里的
+  `recipe_unlocked.conditions.recipe` 仍会让世界加载失败。
+- 26.3 的 `processResources` 现在排除 `data/mcphone/advancement/recipes/**`，
+  只保留迁移后的单数目录。
+
+### 三、验证
+
+- `clean build` 通过：74 个任务，42 份断言测试全部通过。jar 内只剩
+  `data/mcphone/advancement/recipe/`，旧复数目录已排除。
+- 把真实崩溃存档复制到开发运行目录后，客户端成功进入世界，服务端加载
+  2344 个成就、13 个客户端进度；给予手机并按 `H` 打开后，手机主屏、App 图标与
+  模糊背景正常显示。日志中没有 `Can only blur once per frame`、
+  `Registry loading errors` 或新的 crash report，客户端正常关闭。
+- 本轮 jar：3,076,716 字节，SHA256
+  `A8E18CB5615157517F07B3B2D13711E9912C8E622BE9149D76FC786E8099059A`。
