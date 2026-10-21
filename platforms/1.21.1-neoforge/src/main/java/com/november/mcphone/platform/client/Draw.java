@@ -59,6 +59,17 @@ public final class Draw {
         BufferUploader.drawWithShader(buffer.build());
     }
 
+    public static void browserTexture(GuiGraphics g, int texture,
+                                      int x, int y, int w, int h) {
+        if (texture <= 0) return;
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexColorShader);
+        RenderSystem.setShaderTexture(0, texture);
+        texturedQuad(g.pose().last().pose(), x, y, w, h);
+        RenderSystem.setShaderTexture(0, 0);
+        RenderSystem.enableDepthTest();
+    }
+
     /**
      * 画屏幕背景。
      *

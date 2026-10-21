@@ -112,11 +112,31 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 在、不在、看不到（没权限之类）：看不到的一律按"在"办 —— 当成不在就可能拿空账盖掉它，或者该挪开的旧快照没挪开还不报。 */
     private static boolean present(Path p) {
-        return !Files.notExists(p);
+        return pathCannotBeAbsent(p) || !Files.notExists(p);
+    }
+
+    /**
+     * 路径中间某一段已经是普通文件时，末尾当然"不存在"，但那不等于新世界。
+     *
+     * <p>Linux 上这种 ENOTDIR 会让 {@code Files.notExists} 返回 false；Windows
+     * 对同一种路径可能直接返回 true。把祖先链单独看一遍，两边才会得到同一个
+     * "看不到，按在办"的判断。</p>
+     */
+    private static boolean pathCannotBeAbsent(Path p) {
+        Path absolute = p.toAbsolutePath().normalize();
+        Path current = absolute.getRoot();
+        for (Path part : absolute) {
+            current = current == null ? part : current.resolve(part);
+            if (current.equals(absolute)) break;
+            if (Files.exists(current) && !Files.isDirectory(current)) return true;
+        }
+        return false;
     }
 
     private static String state(Path p, String ifThere) {
-        return Files.exists(p) ? ifThere : Files.notExists(p) ? " 不在" : " 看不到（权限或路径不对？）";
+        return Files.exists(p) ? ifThere
+                : pathCannotBeAbsent(p) ? " 看不到（权限或路径不对？）"
+                : Files.notExists(p) ? " 不在" : " 看不到（权限或路径不对？）";
     }
 
     /** 必须挂在主世界的 DataStorage：它按维度分，挂错了玩家去下界钱就「没了」且不报错。 */
@@ -175,7 +195,9 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     static EconomyData loadPreferring(CompoundTag saved, Path snapshot, LongSupplier clock) {
         CompoundTag snap = readSnapshot(snapshot);
         if (snap == null) {
-            if (Files.notExists(snapshot)) MCphone.LOGGER.info("[MCphone] 还没有货币的原子快照，用 SavedData 那份");
+            if (!pathCannotBeAbsent(snapshot) && Files.notExists(snapshot)) {
+                MCphone.LOGGER.info("[MCphone] 还没有货币的原子快照，用 SavedData 那份");
+            }
             // 说出快照的状态：否则服主只挪走 SavedData，开服就静默按新世界开了
             return load(saved, clock, SAVED_DATA + "（原子快照 " + snapshot + state(snapshot, " 读不出来") + "）");
         }
@@ -199,7 +221,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 没有返回 null；有但读不出来记一条并返回 null。 */
     private static CompoundTag readSnapshot(Path snapshot) {
-        if (Files.notExists(snapshot)) return null;
+        if (!pathCannotBeAbsent(snapshot) && Files.notExists(snapshot)) return null;
         try {
             return EconomySnapshot.read(snapshot);
         } catch (java.io.IOException e) {

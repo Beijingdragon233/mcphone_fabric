@@ -29,6 +29,16 @@ abstract class NameRenamedMountTask extends DefaultTask {
      * 所以这一档能安全地按整条换。
      */
     @Input abstract MapProperty<String, String> getPackagePairs()
+    /**
+     * 明确不进入目标源集的挂载文件，键是 mounts 里的目录名加相对路径。
+     *
+     * 可选第三方 API 缺失时不能只在 sourceSet 上 exclude：这个任务仍会遍历
+     * javaFiles 并复制文件。过滤必须发生在这里，产物里没有那个文件，javac 才真的
+     * 看不到它。
+     */
+    @Input abstract SetProperty<String> getExcludedMountPaths()
+    /** false 时允许某条改名规则在这批源码里没有命中（用于 docs 等子集）。 */
+    @Input abstract Property<Boolean> getRequireAllRulesHit()
     @InputFiles @PathSensitive(PathSensitivity.RELATIVE)
     abstract ConfigurableFileCollection getJavaFiles()
     @OutputDirectory abstract DirectoryProperty getGeneratedDir()
@@ -139,6 +149,8 @@ abstract class NameRenamedMountTask extends DefaultTask {
         def counter = new int[1]
         int n = 0
         int copied = 0
+        int skipped = 0
+        def excluded = excludedMountPaths.get()
         // Version layers are ordered from broad to narrow. A narrow later layer may
         // intentionally replace a same-path source from an earlier layer.
         def rootList = mounts.get().collect { k, v -> [k, new File(v).path.replace('\\', '/')] }
@@ -167,6 +179,10 @@ abstract class NameRenamedMountTask extends DefaultTask {
 
         selected.entrySet().toSorted { a, b -> a.key <=> b.key }.each { entry ->
             def where = entry.value[1] + '/' + entry.key
+            if (excluded.contains(where)) {
+                skipped++
+                return
+            }
             def f = entry.value[0]
             copied++
             def src = f.getText('UTF-8')
@@ -247,14 +263,17 @@ abstract class NameRenamedMountTask extends DefaultTask {
         }
         def dead = hits.findAll { k, v -> v == 0 }.keySet()
         if (dead) {
-            throw new GradleException(
-                    "versions/name-renames.json 里这几条规则一次都没命中：${dead.join('、')}。\n" +
-                    "空转的规则比没有规则更糟 —— 下一个人会以为这里管着这件事。" +
-                    "名字改回去了、或者本仓已经不用它了，就把那条删掉。")
+            if (requireAllRulesHit.get()) {
+                throw new GradleException(
+                        "versions/name-renames.json 里这几条规则一次都没命中：${dead.join('、')}。\n" +
+                        "空转的规则比没有规则更糟 —— 下一个人会以为这里管着这件事。" +
+                        "名字改回去了、或者本仓已经不用它了，就把那条删掉。")
+            }
+            logger.info("这批源码未命中的改名规则：${dead.join('、')}")
         }
         // 不变量 5：【少挂了东西必须说话】。漏一个目录的症状是「少编了几个文件」——
         // 不报错、不红，只是那个类在游戏里不存在。
-        int expected = selected.size()
+        int expected = selected.size() - skipped
         if (expected == 0 || copied != expected) {
             throw new GradleException(
                     "挂载源应该有 ${expected} 个 java 文件，实际复制了 ${copied} 个" +
@@ -270,6 +289,32 @@ abstract class NameRenamedMountTask extends DefaultTask {
 }
 
 /**
+ * 注册一个改名挂载任务。docs 这类非主源码集也走同一套规则，避免它们继续拿
+ * 旧名字直接对着 26.3 编译。
+ */
+ext.mcphoneRegisterRenamedMount = { String taskName, Map<String, File> sourceMounts,
+                                    Object outputDirectory, boolean requireAllRulesHit,
+                                    Collection<String> excludedMountPaths = List.of() ->
+    def table = ext.mcphoneNameRenames
+    def present = sourceMounts.findAll { name, dir -> dir != null && dir.isDirectory() }
+    if (present.isEmpty()) {
+        throw new GradleException("${taskName} 一个挂载目录都没收到。")
+    }
+    return tasks.register(taskName, NameRenamedMountTask) { task ->
+        present.each { name, dir ->
+            task.mounts.put(name, dir.absolutePath)
+            task.javaFiles.from(project.fileTree(dir) { include '**/*.java' })
+        }
+        table.typeRenames.each { o, nw -> task.typePairs.put(o, nw) }
+        table.methodRenames.each { o, nw -> task.methodPairs.put(o, nw) }
+        table.packageRenames.each { o, nw -> task.packagePairs.put(o, nw) }
+        task.excludedMountPaths.set(excludedMountPaths)
+        task.requireAllRulesHit.set(requireAllRulesHit)
+        task.generatedDir.set(outputDirectory)
+    }
+}
+
+/**
  * 把共用代码挂进一个 source set。
  *
  * 两张表都空（这支的 Minecraft 没到 since）→ 照旧直接把源目录加进 srcDirs，
@@ -278,12 +323,18 @@ abstract class NameRenamedMountTask extends DefaultTask {
  * @param javaSrc 目标 source set 的 java
  * @param mounts  挂载名（产物里的一层目录名，用源目录在仓库里的相对路径）→ 源目录
  */
-ext.mcphoneMountSharedJava = { SourceDirectorySet javaSrc, Map<String, File> mounts ->
+ext.mcphoneMountSharedJava = { SourceDirectorySet javaSrc, Map<String, File> mounts,
+                               Collection<String> excludedMountPaths = List.of() ->
     def table = ext.mcphoneNameRenames
     def tPairs = (table?.typeRenames ?: [:]) as LinkedHashMap
     def mPairs = (table?.methodRenames ?: [:]) as LinkedHashMap
     def pPairs = (table?.packageRenames ?: [:]) as LinkedHashMap
     if (tPairs.isEmpty() && mPairs.isEmpty() && pPairs.isEmpty()) {
+        if (!excludedMountPaths.isEmpty()) {
+            throw new GradleException(
+                    "这个目标没有启用改名挂载，却传入了 excludedMountPaths。\n" +
+                    "原样挂载无法按文件剔除可选联动；先补一条改名规则，或不要声明这些可选源码。")
+        }
         mounts.each { name, dir -> javaSrc.srcDir dir }
         logger.lifecycle("共用代码原样挂载：${mounts.size()} 个目录（改名表对这支的 Minecraft 不生效）")
         return
@@ -306,6 +357,8 @@ ext.mcphoneMountSharedJava = { SourceDirectorySet javaSrc, Map<String, File> mou
         tPairs.each { o, nw -> task.typePairs.put(o, nw) }
         mPairs.each { o, nw -> task.methodPairs.put(o, nw) }
         pPairs.each { o, nw -> task.packagePairs.put(o, nw) }
+        task.excludedMountPaths.set(excludedMountPaths)
+        task.requireAllRulesHit.set(true)
         task.generatedDir.set(layout.buildDirectory.dir('generated/name-renames'))
     }
     javaSrc.srcDir(t.map { it.generatedDir })

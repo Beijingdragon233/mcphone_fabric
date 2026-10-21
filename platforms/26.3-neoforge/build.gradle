@@ -100,11 +100,27 @@ apply from: "${projectDir}/../../gradle/mcphone-layers.gradle"
 apply from: "${projectDir}/../../gradle/mcphone-renames.gradle"
 
 if (mountSharedSources) {
+    def excludedOptionalSources = []
+
+    // These integrations have no 26.3 API artifact. Their original sources must
+    // not reach javac at all. Stable facades in layers/version/26.3+ keep the
+    // internal call sites compiling and report the capability as unavailable.
+    if (!project.hasProperty('mcef_version')) {
+        excludedOptionalSources +=
+                'shared/src/main/java/com/november/mcphone/feature/browser/client/McefBackend.java'
+    }
+    if (!project.hasProperty('refinedstorage_version')) {
+        excludedOptionalSources += [
+                'layers/version/1.20.5+/src/main/java/com/november/mcphone/feature/terminal/integration/refinedstorage/TerminalSlotReference.java',
+                'layers/version/1.20.5+/src/main/java/com/november/mcphone/feature/terminal/integration/refinedstorage/TerminalSlotReferenceFactory.java'
+        ]
+    }
+
     mcphoneMountSharedJava(sourceSets.main.java,
             (['shared/src/main/java': new File(repoRoot, 'shared/src/main/java')] +
              mcphoneLayers.collectEntries { layer ->
                  [("${layer.relDir}/src/main/java"): layer.javaDir]
-             }))
+             }), excludedOptionalSources)
 
     sourceSets.main.resources {
         srcDir('../../shared/src/main/resources')
@@ -122,9 +138,28 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache") // datagen cache files
 }
 
-// 【没有额外的仓库】。1.21.1 那支在这儿挂了 Modrinth（api.modrinth.com）与
-// modmaven 两个，只为取联动模组的构件；这一支一个联动都不挂（见 gradle.properties），
-// 所以不挂 —— 多挂一个仓库，每解析一个依赖就多问一次。
+// The platform resource directory is declared first, so it owns 26.3-only
+// overrides such as the new string-based recipe ingredients.
+tasks.named('processResources', ProcessResources).configure {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+repositories {
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup "maven.modrinth"
+        }
+    }
+    maven {
+        name = "modmaven"
+        url = "https://modmaven.dev"
+        content {
+            includeGroup "de.mari_023"
+        }
+    }
+}
 
 base {
     archivesName = mod_id
@@ -186,9 +221,25 @@ configurations {
 }
 
 dependencies {
-    // 【十个联动模组全部不写】。26.3 上它们一个构建都没有（取证见 gradle.properties）。
-    // 等哪家真出了 26.3 构建，对应的 compileOnly 与 compat/ 下那批代码一起回来，
-    // 那时候这一支还得把 repositories 里的 Modrinth 挂回去。
+    // Waystones + Balm：真实 26.3 联动，运行时仍是可选依赖。
+    compileOnly "maven.modrinth:waystones:${waystones_version}"
+    compileOnly "maven.modrinth:balm:${balm_version}"
+    localRuntime "maven.modrinth:waystones:${waystones_version}"
+    localRuntime "maven.modrinth:balm:${balm_version}"
+    localRuntime "maven.modrinth:shogi:${shogi_version}"
+
+    compileOnly "maven.modrinth:curios:${curios_version}"
+    localRuntime "maven.modrinth:curios:${curios_version}"
+
+    compileOnly "maven.modrinth:ae2:${ae2_version}"
+    compileOnly "maven.modrinth:guideme:${guideme_version}"
+    compileOnly "de.mari_023:ae2wtlib_api:${ae2wtlib_version}"
+    localRuntime "maven.modrinth:ae2:${ae2_version}"
+    localRuntime "maven.modrinth:guideme:${guideme_version}"
+    localRuntime "maven.modrinth:applied-energistics-2-wireless-terminals:${ae2wtlib_version}"
+
+    compileOnly "maven.modrinth:toms-storage:${toms_version}"
+    localRuntime "maven.modrinth:toms-storage:${toms_version}"
 
     // JavaMP3 与 Rhino 不是联动模组，是嵌进 jar 的库，跟 MC 版本无关，留着它们
     // 顺带把 jarJar 这条路一起验了。
@@ -250,4 +301,28 @@ idea {
 // 骨架阶段不挂 —— 理由在文件头，那是一段【必须一起删掉】的注释。
 if (mountSharedSources) {
     apply from: "${projectDir}/../../gradle/mcphone-checks.gradle"
+}
+
+if (mountSharedSources) {
+    def assertDocMounts = ['docs': new File(repoRoot, 'docs')]
+    mcphoneLayers.each { layer ->
+        if (layer.docsDir.isDirectory()) {
+            assertDocMounts["${layer.relDir}/docs"] = layer.docsDir
+        }
+    }
+    def platformDocs = new File(projectDir, 'docs')
+    if (platformDocs.isDirectory()) {
+        assertDocMounts['platforms/26.3-neoforge/docs'] = platformDocs
+    }
+
+    def mountAssertTestsRenamed = mcphoneRegisterRenamedMount(
+            'mountAssertTestsRenamed',
+            assertDocMounts,
+            layout.buildDirectory.dir('generated/assert-tests-renamed'),
+            false)
+
+    tasks.named('compileAssertTests', JavaCompile).configure {
+        dependsOn mountAssertTestsRenamed
+        setSource(mountAssertTestsRenamed.map { it.generatedDir })
+    }
 }

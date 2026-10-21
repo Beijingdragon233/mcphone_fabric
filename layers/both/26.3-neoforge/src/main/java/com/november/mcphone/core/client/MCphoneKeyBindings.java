@@ -6,6 +6,7 @@ import com.november.mcphone.platform.client.KeyModifiers;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.settings.KeyConflictContext;
 
 /**
  * 把 {@link PhoneKeys} 声明的那几个键在 NeoForge 上建出来并注册。
@@ -34,13 +35,17 @@ public final class MCphoneKeyBindings {
 
     /** 由 MCphoneClient 构造函数挂到模组总线 */
     public static void register(RegisterKeyMappingsEvent event) {
+        KeyMapping.Category category = new KeyMapping.Category(
+                ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "mcphone"));
+        event.registerCategory(category);
+
         for (PhoneKeys.Key key : PhoneKeys.ALL) {
             KeyMapping mapping = new KeyMapping(
                     key.id(),
+                    KeyConflictContext.IN_GAME,
                     KeyModifiers.keyboardType(),
                     key.defaultCode(),
-                    KeyMapping.Category.register(ResourceLocation.fromNamespaceAndPath(
-                            MCphone.MODID, "mcphone")));
+                    category);
 
             // 建好之后交回声明那一侧：共用代码通过 PhoneKeys.XXX 用它，不认识这个类
             key.bind(mapping);

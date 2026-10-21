@@ -2979,3 +2979,54 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
   26.3 使用 `extractRenderState`，保留头部、帽子层和不透明颜色；旧三支继续调用原入口。
 - 26.3 的 `JukeboxSong.fromStack` 不再需要注册表访问，新增 26.3 `DiscSongs` 实现，仍然
   优先显示唱片曲目描述，缺失时回退物品显示名。
+
+## 四十七、26.3 真实联动、客户端冒烟与构建收口：68 → 0
+
+### 一、最终依赖与缺失联动
+
+- 26.3 编译基线升级到 NeoForge `26.3.0.95`，运行时版本范围固定为
+  `[26.3.0.95,)`。Java 25、ModDevGradle 2.0.147 与 26.3 的已命名原版输入继续使用。
+- 真实接入的 26.3 联动为 Waystones `26.3.0.1+neoforge-26.3`、Balm
+  `26.3.0.3+neoforge-26.3`、Shogi `26.3.0.3+neoforge-26.3`、Curios
+  `17.0.0-beta.3+26.3`、AE2 `26.3.1-alpha`、GuideME `26.3.4-alpha`、
+  AE2WTLib API/运行时 `26.3.1-beta`、Tom's Simple Storage `26.3-2.12.3`。
+- MCEF、Refined Storage、Patchouli、NetMusic 仍没有可用的 26.3 构件。对应原源码在
+  `mcphoneMountSharedJava` 的 `excludedMountPaths` 阶段被彻底排除，不进入
+  `build/generated/name-renames/`，也不被 javac 看见。`26.3+` 层保留稳定门面，
+  但明确报告能力不可用，没有用空实现伪装成功。
+- `layers/both/26.3-neoforge/` 承载 26.3 的按键、热键与终端注册实现；
+  `versions/layers.json` 与 `versions/targets.json` 已同步声明这一层。
+
+### 二、运行期修复
+
+- 第一次客户端启动在 `RegisterKeyMappingsEvent` 崩溃：
+  `Category 'mcphone:mcphone' is already registered`。26.3 必须通过事件
+  `registerCategory` 注册分类，不能在每个 `KeyMapping` 循环里调用已废弃的静态
+  `Category.register`。现已改为一次注册分类，并用带 `KeyConflictContext.IN_GAME`
+  的构造器恢复旧三支的冲突行为。
+- 26.3 的 `range_dispatch` 物品模型要求 `property` 是字符串。手机与平板原先写成
+  `{"type":"mcphone:screen_on"}`，客户端资源加载会报 `Not a string`；现改为
+  `"property": "mcphone:screen_on"`。
+- 修正后客户端成功启动并完成主菜单资源加载，日志中 13 个 App 注册完成，
+  AE2 与 Tom's Simple Storage 终端联动接通，MCEF 明确记录为不可用；没有 MCphone
+  的异常、崩溃或资源解析错误。客户端窗口未做进一步手工点击验收。
+
+### 三、构建与运行验证
+
+- 26.3 完整 `build`：`BUILD SUCCESSFUL`，73 个任务，42 份断言测试全部通过。
+- 26.3 真实服务器启动到 `Starting Minecraft server on *:25565` 与
+  `Done (2.185s)`，随后手工停止，无残留服务器进程。
+- 旧目标完整断言回归通过：1.20.1 Forge 41 份，1.21.1 Fabric 与
+  1.21.1 NeoForge 各 42 份；三者均为 `BUILD SUCCESSFUL`。
+- 校验闸全绿：平台孪生 131 对（差异 6744 行）、shared 中立 364 文件、
+  SPI 18 个类、层校验、dist 隔离、数据包命名与 seams 清单全部通过。
+- jar 内容确认包含 Waystones、Terminals、AE2、AE2WTLib、Tom's 与 Curios
+  联动类；不包含 `McefBackend.class`、`RefinedStorageIntegration.class`、
+  `com/refinedmods/` 或 `com/cinemamod/mcef/`。
+
+### 四、边界
+
+- 浏览器、Refined Storage、Patchouli 与 NetMusic 在 26.3 上仍不可用，直到上游
+  提供对应版本；这不是静默降级。
+- 客户端只验证了启动、主菜单资源加载、App 注册和联动装载。手机界面内的逐页点击、
+  输入法、裁剪、相机、聊天与附属 API 行为仍需后续进游戏逐项验收。

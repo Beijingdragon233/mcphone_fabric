@@ -4,12 +4,6 @@ import com.november.mcphone.platform.client.Draw;
 import com.november.mcphone.platform.client.EditBoxes;
 import com.november.mcphone.platform.client.KeyModifiers;
 import com.november.mcphone.platform.client.Transforms;
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.BufferUploader;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.client.PhoneTheme;
@@ -24,7 +18,6 @@ import net.minecraft.client.gui.components.EditBox;
 import com.november.mcphone.platform.client.PhoneScreenBase;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import org.joml.Matrix4f;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -217,27 +210,11 @@ public final class BrowserScreen extends PhoneScreenBase {
         EditBoxes.render(urlBox, g, mouseX, mouseY, partialTick);
     }
 
-    /**
-     * 把浏览器那张纹理贴到视口上。全类唯一版本相关的方法（BufferBuilder 写法随 MC 版本变），移植时改这里就够。
-     * 用矩阵重载而不是裸坐标：GuiGraphics 的位姿此刻未必是单位阵。
-     */
+    /** 把浏览器纹理贴到视口上。着色器、纹理绑定与渲染管线差异全部留在平台 Draw。 */
     private void drawBrowser(GuiGraphics g) {
         int texture = browser.textureId();
         if (texture <= 0) return;
-
-        Matrix4f matrix = g.pose().last().pose();
-
-        RenderSystem.disableDepthTest();
-        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexColorShader);
-        RenderSystem.setShaderTexture(0, texture);
-
-        // 顶点缓冲那套 API 1.21 整个改过名，差别关在 Draw 里；
-        // uv 为什么要翻 v 轴见它的文档
-        Draw.texturedQuad(matrix, viewX, viewY, viewW, viewH);
-
-        // 把纹理槽还原。留着的话，之后画别的东西会莫名其妙糊上一层网页
-        RenderSystem.setShaderTexture(0, 0);
-        RenderSystem.enableDepthTest();
+        Draw.browserTexture(g, texture, viewX, viewY, viewW, viewH);
     }
 
     /** 顶部那一条：后退、前进、刷新，加地址栏 */

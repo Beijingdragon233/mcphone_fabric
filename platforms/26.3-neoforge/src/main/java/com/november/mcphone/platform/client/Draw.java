@@ -144,6 +144,18 @@ public final class Draw {
                 srcW, srcH, texW, texH, argb);
     }
 
+    /**
+     * MCEF exposes an OpenGL texture id, while 26.3's GUI renderer accepts a
+     * GpuTextureView through a deferred render-state. There is no MCEF 26.3
+     * artifact to provide that view yet, so reaching this method is a real
+     * programming error rather than a supported silent fallback.
+     */
+    public static void browserTexture(GuiGraphicsExtractor g, int texture,
+                                      int x, int y, int w, int h) {
+        throw new UnsupportedOperationException(
+                "MCEF browser textures require a 26.3 GpuTextureView backend");
+    }
+
     /** Additive overlay approximates the former 1.8x shader-color highlight without global state. */
     public static void highlighted(GuiGraphicsExtractor g, Identifier tex,
                                    int x, int y, int w, int h, float u, float v,

@@ -95,11 +95,55 @@ player, and an open SPI-based app system that add-on mods can plug into.
     ordering="NONE"
     side="BOTH"
 
-# 【骨架阶段没有联动依赖】
-# 1.21.1-neoforge 那份在这里还有六条 optional 依赖（curios、waystones、ae2、
-# ae2wtlib、refinedstorage、toms_storage）。26.3 上这些模组一个都没有构建 —— 2026-09-19
-# 查 Modrinth：Curios / Patchouli / MCEF / Refined Storage 零构建，Fabric API / Waystones /
-# Balm 有。等兼容层真 port 过来时，那几条连着 gradle.properties 里的版本键一起回来。
+# Waystones（传送石碑）—— 可选：装了就多一个「传送石」App。
+[[dependencies.${mod_id}]]
+    modId="waystones"
+    type="optional"
+    reason="装上后手机里会多一个「传送石」App，点开就是传送石碑自己的选点界面"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Balm 是 Waystones 的前置。这里声明它是为了让加载顺序明确：菜单类型必须先注册。
+[[dependencies.${mod_id}]]
+    modId="balm"
+    type="optional"
+    reason="Waystones 的前置库，传送石 App 通过 Balm 打开菜单"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="curios"
+    type="optional"
+    reason="装上后手机可以挂在饰品栏"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="ae2"
+    type="optional"
+    reason="装上后「终端」App 能打开 AE2 的无线终端"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="ae2wtlib"
+    type="optional"
+    reason="装上后 AE2WTLib 的终端会走它自己的菜单入口"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="toms_storage"
+    type="optional"
+    reason="装上后「终端」App 能打开 Tom's Storage 的高级无线终端"
+    versionRange="[0,)"
+    ordering="AFTER"
+    side="BOTH"
 
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't

@@ -18,6 +18,10 @@ public final class SkinMetadata {
     private SkinMetadata() {}
 
     public static int border(Resource resource) {
-        return resource.metadata().getSection(TYPE).orElse(0);
+        try {
+            return resource.metadata().getSection(TYPE).orElse(0);
+        } catch (java.io.IOException ignored) {
+            return 0;
+        }
     }
 }

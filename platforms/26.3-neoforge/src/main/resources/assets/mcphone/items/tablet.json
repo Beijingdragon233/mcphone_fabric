@@ -1,7 +1,7 @@
 {
   "model": {
     "type": "minecraft:range_dispatch",
-    "property": { "type": "mcphone:screen_on" },
+    "property": "mcphone:screen_on",
     "entries": [
       {
         "threshold": 1.0,

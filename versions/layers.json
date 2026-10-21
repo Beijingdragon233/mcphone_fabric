@@ -74,6 +74,12 @@
     "populated": true,
     "note": "26.3 将 Item.use 的返回类型从 InteractionResultHolder<ItemStack> 改为 InteractionResult，并调整 tooltip 回调。只把 PhoneItem 拆到这一层，1.21+ 的其余代码继续共用。"
   },
+  "26.3-neoforge": {
+    "since": "26.3",
+    "loader": "NeoForge",
+    "populated": true,
+    "note": "26.3 的 NeoForge 专用版本层：按键事件、注册事件与终端发现都直接引用 NeoForge 类型，不能放进跨加载器的 26.3+ 层。"
+  },
   "forge": {
     "loader": "Forge",
     "populated": true,

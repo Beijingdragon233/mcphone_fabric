@@ -5,10 +5,8 @@ import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.feature.terminal.TerminalSlot;
 import com.november.mcphone.feature.terminal.integration.TerminalIntegration;
+import com.november.mcphone.feature.terminal.integration.TerminalMods;
 import com.november.mcphone.feature.terminal.integration.Terminals;
-import com.november.mcphone.feature.terminal.integration.ae2.Ae2Integration;
-import com.november.mcphone.feature.terminal.integration.refinedstorage.RefinedStorageIntegration;
-import com.november.mcphone.feature.terminal.integration.toms.TomsStorageIntegration;
 import com.november.mcphone.feature.terminal.net.TerminalActionPacket;
 import com.november.mcphone.platform.client.KeyModifiers;
 import net.minecraft.client.Minecraft;
@@ -44,14 +42,14 @@ public final class TerminalApp extends PhoneApp {
      * 装了任意一家这一格就有内容。所以声明成联动，并自己覆盖 {@link #isAvailable()}，
      * 和传送石那一格同一个写法。
      *
-     * modid 与显示名都从那三个联动类的常量取，全模组只有一份，不会两处对不上。
-     * <b>这不会把那三个类加载进来</b>：它们是编译期常量，javac 直接内联成 ldc
-     * ——理由与验法见 {@code Ae2Integration.NAME} 的注释。
+     * modid 与显示名取 {@link TerminalMods} 里的稳定常量。那些常量不依赖任何
+     * 第三方类，所以某个目标没有对应 API 时，这个 App 目录仍然能完整描述
+     * "本来可能支持哪几家"。
      */
     private static final List<RequiredMod> COMPANIONS = List.of(
-            new RequiredMod(Ae2Integration.MODID, Ae2Integration.NAME),
-            new RequiredMod(RefinedStorageIntegration.MODID, RefinedStorageIntegration.NAME),
-            new RequiredMod(TomsStorageIntegration.MODID, TomsStorageIntegration.NAME));
+            new RequiredMod(TerminalMods.AE2_MODID, TerminalMods.AE2_NAME),
+            new RequiredMod(TerminalMods.REFINED_STORAGE_MODID, TerminalMods.REFINED_STORAGE_NAME),
+            new RequiredMod(TerminalMods.TOMS_STORAGE_MODID, TerminalMods.TOMS_STORAGE_NAME));
 
     @Override
     public List<RequiredMod> companionMods() {

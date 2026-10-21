@@ -1,6 +1,8 @@
 package com.november.mcphone.api.client.ui;
 
+import com.november.mcphone.platform.client.EditBoxes;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.network.chat.Component;
 
@@ -75,5 +77,27 @@ public final class PhoneMultiLineEditBox extends MultiLineEditBox {
         // 后五个就是 Builder 的默认值；narration 收的是老三支那个 message。
         super(font, x, y, width, height, placeholder, message,
                 DEFAULT_TEXT_COLOR, true, DEFAULT_CURSOR_COLOR, true, true);
+    }
+
+    /*
+     * Addon-facing compatibility methods. The vanilla widget changed to event
+     * records in 26.3, but addons should not need to rewrite these four calls
+     * when moving an existing MCphone page to this target.
+     */
+
+    public void render(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
+        EditBoxes.render(this, g, mouseX, mouseY, partialTick);
+    }
+
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        return EditBoxes.key(this, keyCode, scanCode, modifiers);
+    }
+
+    public boolean charTyped(char chr, int modifiers) {
+        return EditBoxes.character(this, chr, modifiers);
+    }
+
+    public boolean mouseClicked(double mouseX, double mouseY, int pageButton) {
+        return EditBoxes.click(this, mouseX, mouseY, pageButton);
     }
 }
