@@ -800,7 +800,7 @@ public class EconomyDataTest {
         long g1 = Nbt.longOf(handedToMc, "generation");
         eq(Nbt.longOf(d.toTag(), "generation"), g1 + 1, "再保存一次代数加一");
         eq(Nbt.longOf(EconomyData.load(handedToMc, t::get).toTag(), "generation"), g1 + 1,
-                "代数跨重启接着涨：从 0 重来的话，快照写失败时旧快照的代数反而更大"); 
+                "代数跨重启接着涨：从 0 重来的话，快照写失败时旧快照的代数反而更大");
 
         // 清单 #4 的离线版：保存 A → 改动 → 保存 B 写到一半被杀（快照只留半截临时文件、SavedData 被截断）→ 重启读到 A
         UUID p = UUID.randomUUID();
