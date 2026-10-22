@@ -249,7 +249,9 @@ dependencies {
 
     // JavaMP3 与私有 Rhino 不是联动模组，是嵌进 jar 的库，跟 MC 版本无关。
     // 私有 Rhino 的坐标、摘要和打包规则由仓库级脚本统一锁定。
-    jarJar(implementation("fr.delthas:javamp3:[${javamp3_version},2.0)"))
+    // JavaMP3 用精确版本而不是范围：范围会让 CI 每次重新查询 Maven Central
+    // 的版本元数据，jarJar 在无缓存的 runner 上会因此长时间停在依赖解析。
+    jarJar(implementation("fr.delthas:javamp3:${javamp3_version}"))
 }
 
 apply from: '../../gradle/mcphone-engine-dependency.gradle'
