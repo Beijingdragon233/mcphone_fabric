@@ -77,6 +77,16 @@ abstract class NameRenamedMountTask extends DefaultTask {
     }
 
     /**
+     * 校验用的方法锚。把「点 + 空白」吃进匹配，避免 {@code (?<=\.\s*)} 这种
+     * 变长后顾在大文件上退化；调用点只需要 boolean，不需要替换。
+     */
+    static Pattern methodCheckAlt(Collection names) {
+        if (!names) return null
+        return Pattern.compile('\\.\\s*(' +
+                names.collect { Pattern.quote(it) }.join('|') + ')(?=\\s*\\()')
+    }
+
+    /**
      * 限定名：前面不许粘标识符字符或点（{@code com.foo.net.minecraft.Util} 不算命中），
      * 后面只禁标识符字符 —— 【点要放过】，因为 {@code net.minecraft.Util.backgroundExecutor()}
      * 这种全限定调用后面跟的就是点。大小写敏感，所以换完之后的 {@code net.minecraft.util.Util}
@@ -142,6 +152,13 @@ abstract class NameRenamedMountTask extends DefaultTask {
         pPairs.keySet().each { family[it] = 'p' }
         tPairs.keySet().each { family[it] = 't' }
         mPairs.keySet().each { family[it] = 'm' }
+        def validationPatterns = allOld.collectEntries { oldName ->
+            [(oldName): family[oldName] == 'p'
+                    ? NameRenamedMountTask.packageAlt([oldName])
+                    : family[oldName] == 't'
+                            ? NameRenamedMountTask.typeAlt([oldName])
+                            : NameRenamedMountTask.methodCheckAlt([oldName])]
+        }
         def hits = allOld.collectEntries { k -> [(k): 0] }
         def touched = allOld.collectEntries { k -> [(k): new LinkedHashSet()] }
         def inLiterals = allOld.collectEntries { k -> [(k): 0] }
@@ -232,19 +249,18 @@ abstract class NameRenamedMountTask extends DefaultTask {
                             "改名切段切错了（多半是文本块 \"\"\" 这种这份切法不认的形状）。" +
                             "字面量是要落盘与上线的，改了就是行为变化，而它不会编译报错。")
                 }
+                def codeText = codeOnly.toString()
                 allOld.each { oldName ->
                     // 不变量 4：代码段里不许还剩旧名。
-                    def w = family[oldName] == 'p'
-                            ? NameRenamedMountTask.packageAlt([oldName])
-                            : family[oldName] == 't'
-                                    ? NameRenamedMountTask.typeAlt([oldName])
-                                    : NameRenamedMountTask.methodAlt([oldName])
-                    if (w.matcher(codeOnly.toString()).find()) {
+                    def w = validationPatterns[oldName]
+                    if (codeText.indexOf(oldName) >= 0 && w.matcher(codeText).find()) {
                         throw new GradleException("改完代码里还剩旧名：${where} 里仍有 ${oldName}。替换逻辑漏了。")
                     }
                     // 字面量里留着旧名是【有意】的，那是数据；但它得出声，
                     // 否则下一个人不知道这一支的文案还写着老名字。
-                    if (w.matcher(dstText).find()) { inLiterals[oldName] = (inLiterals[oldName] as int) + 1 }
+                    if (dstText.indexOf(oldName) >= 0 && w.matcher(dstText).find()) {
+                        inLiterals[oldName] = (inLiterals[oldName] as int) + 1
+                    }
                 }
             }
 
