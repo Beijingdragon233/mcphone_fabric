@@ -2,8 +2,8 @@ package com.november.mcphone.feature.camera.client;
 
 import com.november.mcphone.core.client.AppOptions;
 import com.november.mcphone.core.client.ClientConfig;
+import com.november.mcphone.platform.client.port.PhoneGraphics;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.renderer.GameRenderer;
 
 /**
@@ -76,11 +76,11 @@ public final class CameraFlash {
      * 模糊那一版。要画在取景框【之前】：模糊的是已经画完的那部分画面，
      * 卡尺与准星得留在清楚的一层上，否则玩家会以为是自己眼花。
      */
-    public static void renderBlur(GuiGraphicsExtractor g, float partialTick, long nowMs) {
+    public static void renderBlur(PhoneGraphics g, float partialTick, long nowMs) {
     }
 
     /** 白闪那一版。画在最上面，盖住取景框才像"闪了一下" */
-    public static void renderWhite(GuiGraphicsExtractor g, int w, int h, long nowMs) {
+    public static void renderWhite(PhoneGraphics g, int w, int h, long nowMs) {
         float t = progress(nowMs);
         if (t <= 0.0F) return;
 

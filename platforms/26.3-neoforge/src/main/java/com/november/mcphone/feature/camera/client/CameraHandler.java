@@ -2,6 +2,7 @@ package com.november.mcphone.feature.camera.client;
 
 import com.november.mcphone.core.client.PhoneKeys;
 import com.november.mcphone.platform.client.ClientMessages;
+import com.november.mcphone.platform.client.port.PhoneGraphics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
@@ -59,7 +60,8 @@ public final class CameraHandler {
         // 坐标戳画在下面那个 return 【之前】—— 那个 return 的意思正是"这一帧要被拍下来"，
         // 而它是相机里唯一要留在照片上的东西。位置换到 return 之后，照片上就没有坐标了，
         // 而取景时照样看得见：这个错法在开发环境里看不出来。见 CameraStamp 的类注释
-        CameraStamp.render(event.getGuiGraphics(), mc.font, w, h);
+        var graphics = new PhoneGraphics(event.getGuiGraphics());
+        CameraStamp.render(graphics, mc.font, w, h);
 
         // 拍照期间必须跳过取景框，否则会被拍进照片
         if (CameraMode.suppressOverlay()) {
@@ -68,7 +70,7 @@ public final class CameraHandler {
         }
 
         CameraOverlay.render(
-                event.getGuiGraphics(),
+                graphics,
                 mc.font,
                 w,
                 h,

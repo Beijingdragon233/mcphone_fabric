@@ -52,6 +52,7 @@ public class MCphone implements ModInitializer {
         // 游戏生命周期 —— 对应原 NeoForge 的 NeoForge.EVENT_BUS 几条
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             var id = handler.getPlayer().getUUID();
+            com.november.mcphone.core.script.server.ScriptHost.forget(id);   // S17：epoch 成对（登录建、登出忘）
             com.november.mcphone.core.net.RequestThrottle.onPlayerLoggedOut(id);
             com.november.mcphone.feature.music.DiscService.onPlayerLoggedOut(id);
             com.november.mcphone.feature.chat.ChatImageUploads.onPlayerLoggedOut(id);
@@ -64,6 +65,8 @@ public class MCphone implements ModInitializer {
             com.november.mcphone.core.ServerConfig.load(server);
             com.november.mcphone.core.script.server.economy.EconomyRuntime.start(server);
             com.november.mcphone.core.script.server.ScriptWorkers.start();
+            // 脚本宿主（S15g）：建 StrikeTracker（必须主线程）、管线、登记进 ScriptRpcHandler
+            com.november.mcphone.core.script.server.ScriptHost.start(server);
         });
 
         // 脚本 worker 的生死跟着服务器走（§15.5）。【停必须有】：单人游戏里服务器会在同一个
@@ -74,12 +77,17 @@ public class MCphone implements ModInitializer {
         // 反过来主线程就要白等到 worker 超时（见 CurrencyGateway.close）
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             com.november.mcphone.core.script.server.economy.EconomyRuntime.stop();
+            // 先摘管线（在飞的求值还有机会落地），再停 worker
+            com.november.mcphone.core.script.server.ScriptHost.stop();
             com.november.mcphone.core.script.server.ScriptWorkers.stop();
-            com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
         });
 
         net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback.EVENT.register(
-                (dispatcher, registryAccess, environment) -> com.november.mcphone.core.script.server.economy.EconomyCommand.register(dispatcher));
+                (dispatcher, registryAccess, environment) -> {
+                    com.november.mcphone.core.script.server.economy.EconomyCommand.register(dispatcher);
+                    // 脚本后端的 OP 管理命令（S17，§14.4）：部署/授权的 Stage 1 审批入口
+                    com.november.mcphone.core.script.server.ScriptAdminCommand.register(dispatcher);
+                });
 
         // 手机替卡槽里的终端供电。漏了它的症状是"终端在手机里会没电"，见 TerminalCharger。
         // Fabric 没有 NeoForge 的按玩家 tick 事件，用服务端 tick 自己发
@@ -89,11 +97,17 @@ public class MCphone implements ModInitializer {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 com.november.mcphone.feature.terminal.TerminalCharger.onPlayerTick(player);
             }
+            // 与另两个平台同形：扇出不是一个内联块，而是一个方法，隔离写在那一处
+            tickDiscLoop(server.getPlayerList().getPlayers());
         });
 
         // 玩家进入世界时把服主那份服务端配置推给他（Fabric 没有 NeoForge 的自动同步，
         // shared/ 有三处客户端直读 ServerConfig，没有这个包按钮显隐会静默出错）
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            // S17：连接 epoch 成对（登出见 DISCONNECT）。
+            // Stage 2：拿到 epoch 后立刻把 serverId / epoch / 部署表随握手下发
+            long epoch = com.november.mcphone.core.script.server.ScriptHost.newEpoch(handler.getPlayer());
+            com.november.mcphone.core.script.server.HandshakeService.pushTo(handler.getPlayer(), epoch);
             var cfg = com.november.mcphone.core.ServerConfig.allowFriendTeleport();
             var img = com.november.mcphone.core.ServerConfig.allowChatImages();
             var kb = com.november.mcphone.core.ServerConfig.chatImageMaxBytes() / 1024;
@@ -116,6 +130,24 @@ public class MCphone implements ModInitializer {
                 .orElse("");
 
         LOGGER.info("MCphone 模组加载完成 —— 手机已就绪");
+    }
+
+    /** 接续唱片仓单曲循环；状态变化后立刻同步本轮的新终点。 */
+    private static void tickDiscLoop(Iterable<net.minecraft.server.level.ServerPlayer> players) {
+        for (net.minecraft.server.level.ServerPlayer player : players) {
+            try {
+                if (com.november.mcphone.feature.music.DiscService.tickLoop(player)) {
+                    com.november.mcphone.feature.music.DiscService.syncState(player);
+                }
+            } catch (VirtualMachineError fatal) {
+                throw fatal;
+            } catch (Throwable failure) {
+                // 与 C2S 的 handleSafely 同一个理由，而这里是【每 tick × 每个玩家】的扇出：
+                // 一个人身上出的事（例如仓里有个会让 JukeboxSong.fromStack 抛的物品栈）不隔离的话，
+                // 排在他后面的玩家这一 tick 全被跳过，而且每 tick 复现 —— 是跨玩家的影响。
+                LOGGER.error("[MCphone] 唱片循环的每 tick 扇出失败 player={}", player.getUUID(), failure);
+            }
+        }
     }
 
     /** 本模组版本号，如 "1.0.0"。onInitialize 前调用会得到空串。 */

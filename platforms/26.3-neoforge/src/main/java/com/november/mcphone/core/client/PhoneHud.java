@@ -6,6 +6,7 @@ import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneLocation;
 import com.november.mcphone.platform.client.CameraGui;
+import com.november.mcphone.platform.client.port.PhoneGraphics;
 import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -221,7 +222,7 @@ public final class PhoneHud {
 
         // false ＝ 不算暂停时的那一份。手机挂着的时候游戏没暂停，两者一样，
         // 取跟着游戏时间走的那个更合语义（相机那条覆盖层同理）
-        phone.renderAsHud(g, delta.getGameTimeDeltaPartialTick(false));
+        phone.renderAsHud(new PhoneGraphics(g), delta.getGameTimeDeltaPartialTick(false));
     }
 
     //  开关手机
@@ -341,6 +342,21 @@ public final class PhoneHud {
         if (closing != null) closing.shutdown();
     }
 
+    /** 把正在全屏使用的同一部手机交回 HUD，保留页面与滚动状态。 */
+    public static void showAsHud(PhoneScreen current) {
+        Minecraft mc = Minecraft.getInstance();
+        if (Screens.current(mc) != current || mc.player == null || mc.level == null
+                || !PhoneItem.isDevice(current.location().resolve(mc.player))) return;
+
+        if (phone != current) dismiss(mc);
+        phone = current;
+        lastAuto = PhoneHudPlacement.enabled() && PhoneItem.isDevice(mc.player.getOffhandItem());
+        manual = Override.SHOW;
+        interacting = false;
+        phone.adoptByHud();
+        mc.setScreenAndShow(null);
+    }
+
     /**
      * 按开机键或右键手机时问一句：要开的就是副手上挂着的这一部吗？
      *
@@ -440,7 +456,7 @@ public final class PhoneHud {
      * 有真手机就画真的，玩家摆的是他自己那一页的内容，比一块占位的黑屏好判断得多。
      * 手机不在副手时（在背包里也点得进这一页）返回 false，由编辑器自己画一部空壳。
      */
-    public static boolean renderPreview(GuiGraphicsExtractor g, float partialTick) {
+    public static boolean renderPreview(PhoneGraphics g, float partialTick) {
         if (phone == null) return false;
         syncSize(Minecraft.getInstance());
         phone.renderAsHud(g, partialTick);

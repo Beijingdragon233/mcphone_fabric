@@ -66,8 +66,8 @@ package com.november.mcphone.api.client.ui;
  *
  * 抛异常会怎样
  *
- * 每个回调都被兜住了，你这一页抛异常只会让这一页被关掉并记一条日志，不会
- * 拖垮整个手机界面，更不会崩游戏。但别指望这个——被兜掉的异常对玩家来说
+ * 页面回调异常会被记录并关闭页面，宿主会恢复裁剪和 GUI 矩阵。
+ * 附属仍须遵守绘图接口约定；任意底层 GPU 状态破坏不属于可恢复范围。但别指望这个——被兜掉的异常对玩家来说
  * 就是"点开这个 App 自己弹回去了"，一样难用。
  */
 public interface IPhonePage {
@@ -108,17 +108,43 @@ public interface IPhonePage {
      * 鼠标点击。坐标是屏幕绝对坐标，与 {@link PhoneCanvas#x()} 同一套；
      * {@code button} 用的是本模组编号，左键是 {@link #BUTTON_LEFT}（见上面那段）。
      *
-     * @return true 表示这一下我处理了。返回 false 会落到 MCphone 的默认处理，
-     *         而默认处理里"点手机外面＝关机"，所以页面内的空点击建议返回 true
+     * 仅在内容区内收到按下。系统栏和机身外点击由宿主处理。
+     * @return true 表示处理并捕获该按钮，后续拖动和松手即使越界也会送达；
+     *         false 不捕获。内容区内的空点击仍由宿主屏蔽，不会穿透或关机
      */
     default boolean mouseClicked(double mouseX, double mouseY, int button) {
         return false;
     }
 
-    /** 鼠标滚轮。@return true 表示已处理，不再往下传 */
+    /** 捕获按钮的拖动，位置及增量均为未缩放的屏幕绝对坐标系。 */
+    default boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+        return false;
+    }
+
+    /** 仅对应被本页捕获的按下，越出内容区也能收到。 */
+    default boolean mouseReleased(double mouseX, double mouseY, int button) { return false; }
+
+    /** 鼠标移动；没有捕获时仅在内容区送达，捕获期间允许越界。 */
+    default void mouseMoved(double mouseX, double mouseY) {}
+
+    /** 切页、关闭、失焦、停止 HUD 交互或布局改变时取消输入；可重复调用。 */
+    default void onInputCancelled() {}
+
+    /** 兼容旧版的纵向滚轮入口。@return true 表示页面处理了此事件 */
     default boolean mouseScrolled(double mouseX, double mouseY, double amount) {
         return false;
     }
+
+    /** 两轴滚轮。默认只调用一次旧入口；1.20.1 的 scrollX 恒为 0。 */
+    default boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        return mouseScrolled(mouseX, mouseY, scrollY);
+    }
+
+    /** 初次 onOpen 后、渲染和输入前收到布局。可保存 viewport，不能保存 PhoneCanvas。 */
+    default void onResize(PhoneViewport viewport) {}
+
+    /** 打开期间每客户端 tick 一次，含 HUD 后台；不是每帧，关闭后停止。 */
+    default void tick() {}
 
     /**
      * 按键。
@@ -133,7 +159,21 @@ public interface IPhonePage {
         return false;
     }
 
-    /** 字符输入。输入法提交的汉字与 Ctrl+V 粘贴走的都是这里 */
+    /** 按键释放。失焦或停止交互时用 onInputCancelled 清除仍按住的状态。 */
+    default boolean keyReleased(int keyCode, int scanCode, int modifiers) { return false; }
+
+    /**
+     * 完整 Unicode 码点入口。默认拆为 UTF-16 单元，委托旧 char 回调以兼容旧页面。
+     * 支持完整码点的页面可覆盖此重载；粘贴快捷键应在 keyPressed 中交给文本控件。
+     */
+    default boolean charTyped(int codePoint, int modifiers) {
+        if (!Character.isValidCodePoint(codePoint)) return false;
+        if (Character.isBmpCodePoint(codePoint)) return charTyped((char) codePoint, modifiers);
+        boolean first = charTyped(Character.highSurrogate(codePoint), modifiers);
+        return charTyped(Character.lowSurrogate(codePoint), modifiers) | first;
+    }
+
+    /** UTF-16 字符输入兼容入口。输入法预编辑与剪贴板不是这个回调的统一职责。 */
     default boolean charTyped(char codePoint, int modifiers) {
         return false;
     }

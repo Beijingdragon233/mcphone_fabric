@@ -63,27 +63,15 @@
     "    fromNamespaceAndPath / withDefaultNamespace / parse / tryParse / CODEC /",
     "    STREAM_CODEC 形状未变；实例侧 getPath / getNamespace 还在；",
     "    而共用代码那 27 处 isBlank() 全打在 String 上，不是打在 id 上。",
-    "  * GuiGraphics → GuiGraphicsExtractor：26.1 起换的名，net/minecraft/client/gui/ 下。",
-    "    fill / enableScissor / disableScissor / containsPointInScissor / pose 逐个查过在",
-    "    （§四那条翻案就是这个），而本仓【没有】任何名叫 GuiGraphicsExtractor 的东西。",
-  "  * drawString → text、drawCenteredString → centeredText：GuiGraphicsExtractor 上",
-  "    text 与 centeredText 的实参个数与旧方法【一字不差】（§四的调用点普查），",
-  "    且全仓 213 处 drawString 的接收者一律写作 g.，本仓自己没有这两个方法名的定义。",
-  "    这三条是 2026-09-19 那一轮 969 条错误里量出来的：类型名改完，",
-  "    原先被 error type 盖住的方法名错误当场冒出 212 条。",
+    "  * GuiGraphics → PhoneGraphics：26.1 起原版入口换成 GuiGraphicsExtractor，",
+    "    但共用代码仍按旧的 PoseStack + 全局着色语义编写。26.3 与 26.1.2 共用",
+    "    platform/client/port/PhoneGraphics 适配层，因此这里映射到适配层，而不是",
+    "    直接映射到原版提取器。",
   "  * setScreen → setScreenAndShow：26.3 的 Minecraft 上只剩 setScreenAndShow(Screen)",
   "    （那份源里 public 的开界面方法就这一个，另几处 setScreen 全在 Gui 上，不是本仓",
   "    调的那个）。本仓 10 处调用的接收者是 mc / minecraft / Minecraft.getInstance()，",
   "    全是 Minecraft；自家那个 setScreenOn(ItemStack)（PhoneItemData:105）名字不同、",
   "    而锚点要求 ( 紧跟其后，不会被牵连。",
-  "  * renderOutline → outline：【两边方法体逐字相同】，所以是纯改名。",
-  "    1.21.1 的 GuiGraphics#renderOutline 与 26.3 的 GuiGraphicsExtractor#outline",
-  "    都是那四条 fill，形参一律写作 (x, y, width, height, color) —— 这一族【不是】",
-  "    两个角点坐标，所以不需要换算，本仓那三处调用点传的本来就是宽高。",
-  "    取证取自两份官方源：26.3 那份 outline 在 GuiGraphicsExtractor.java:212；",
-  "    1.21.1 那份在构建产物 net/minecraft/client/gui/GuiGraphics.java 里。",
-  "    【进这张表的判据】：名字换、形参个数与含义都不换，才进。差一个语义的",
-  "    （比如 fill 收的是两角点、outline 收的是宽高）不进，那种得走接缝或就地换。",
   "  * net.minecraft.Util → net.minecraft.util.Util：26.3 的源里 net/minecraft/Util.java",
   "    【不存在】而 net/minecraft/util/Util.java 【存在】。本仓用到的四个成员逐个对过：",
     "    backgroundExecutor / ioPool / getPlatform / getFilenameFormattedDateTime 全在。",
@@ -98,15 +86,24 @@
   "since": "26",
   "typeRenames": {
     "ResourceLocation": "Identifier",
-    "GuiGraphics": "GuiGraphicsExtractor"
+    "GuiGraphics": "PhoneGraphics",
+    "EditBox": "PhoneEditBox",
+    "ToastComponent": "ToastManager",
+    "DynamicTexture": "PhoneDynamicTexture",
+    "PlayerFaceRenderer": "PhonePlayerFaceRenderer",
+    "RenderSystem": "PhoneTextureState"
   },
   "methodRenames": {
-    "drawString": "text",
-    "drawCenteredString": "centeredText",
     "setScreen": "setScreenAndShow",
-    "renderOutline": "outline"
+    "serverLevel": "level",
+    "getDayTime": "getOverworldClockTime"
   },
   "packageRenames": {
-    "net.minecraft.Util": "net.minecraft.util.Util"
+    "net.minecraft.Util": "net.minecraft.util.Util",
+    "net.minecraft.client.gui.GuiGraphics": "com.november.mcphone.platform.client.port.PhoneGraphics",
+    "net.minecraft.client.gui.components.EditBox": "com.november.mcphone.platform.client.port.PhoneEditBox",
+    "com.mojang.blaze3d.systems.RenderSystem": "com.november.mcphone.platform.client.port.PhoneTextureState",
+    "net.minecraft.client.gui.components.toasts.ToastComponent": "net.minecraft.client.gui.components.toasts.ToastManager",
+    "Screen.isCopy": "com.november.mcphone.platform.client.port.PhoneInputs.isCopy"
   }
 }

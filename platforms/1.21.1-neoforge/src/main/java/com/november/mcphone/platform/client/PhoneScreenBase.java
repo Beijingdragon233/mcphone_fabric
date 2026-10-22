@@ -24,6 +24,9 @@ import net.minecraft.network.chat.Component;
  * 反过来把 1.21 的横向量砍掉才是丢。
  */
 public abstract class PhoneScreenBase extends Screen {
+    /** 页面决定是否显示整屏背景；普通界面默认保留原版行为。 */
+    protected boolean shouldDrawBackground() { return true; }
+
 
     protected PhoneScreenBase(Component title) {
         super(title);
@@ -44,28 +47,12 @@ public abstract class PhoneScreenBase extends Screen {
     protected boolean onScroll(double mouseX, double mouseY, double scrollX, double scrollY) {
         return false;
     }
-
-    /**
-     * 原生鼠标键编号 -> 本模组对外编号。这一支上两者【本来就是同一套】：
-     * GLFW 的左/右/中是 0/1/2，而 {@code IPhonePage.BUTTON_LEFT/RIGHT/MIDDLE} 就是照它定的，
-     * 所以这里原样交回。
-     *
-     * <p>26.x 那一支不同：那边换成了 SDL，左键是 1，所以它要减一。差别的来龙去脉写在
-     * {@code api/client/ui/IPhonePage} 的常量那段里。
-     */
-    public static int pageButton(int nativeButton) {
-        return nativeButton;
-    }
-
-
-    /**
-     * 本模组编号 -> 原生编号，{@link #pageButton} 的反向。
-     *
-     * <p>页面要把点击转给<b>原版控件</b>时用它（那条路交给原版的是原生编号）。
-     * 这一支上两者本来就是同一套，原样交回。
-     */
-    public static int nativeButton(int pageButton) {
-        return pageButton;
+    /** 旧版字符事件是 UTF-16；中立码点入口不截断补充字符。 */
+    public boolean charTyped(int codePoint, int modifiers) {
+        if (!Character.isValidCodePoint(codePoint)) return false;
+        if (Character.isBmpCodePoint(codePoint)) return charTyped((char) codePoint, modifiers);
+        boolean first = charTyped(Character.highSurrogate(codePoint), modifiers);
+        return charTyped(Character.lowSurrogate(codePoint), modifiers) | first;
     }
 
 }

@@ -1,15 +1,14 @@
 package com.november.mcphone.core.script.engine;
 
 import com.november.mcphone.core.script.server.PlayerSnapshot;
-import org.mozilla.javascript.Context;
-import org.mozilla.javascript.Scriptable;
-import org.mozilla.javascript.ScriptableObject;
+import com.november.mcphone.internal.rhino.javascript.Context;
+import com.november.mcphone.internal.rhino.javascript.Scriptable;
+import com.november.mcphone.internal.rhino.javascript.ScriptableObject;
 
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.TreeSet;
 import java.util.UUID;
@@ -62,12 +61,12 @@ public class ScriptEngineTest {
     // ================================================================ §16.3 逃逸
 
     static void escapes() {
-        check(run("eval('42')").contains("not defined"), "eval 没了");
-        check(run("new Function('return 42')()").contains("not defined"), "Function 没了");
+        check(!run("eval('42')").equals("42"), "eval 没了");
+        check(!run("new Function('return 42')()").equals("42"), "Function 没了");
         // §16.3 的配方照抄之后 Script 还在（实测 new Script('40+2')() → 42）。
         // 它拿不到 Java，但它是第三个运行时编译入口 —— 击穿了 §16.3 自己写的
         // 「运行的代码可以和 OP 审的源码不是一回事」那条理由
-        check(run("new Script('40+2')()").contains("not defined"), "Script 没了 —— 第三个运行时编译入口");
+        check(!run("new Script('40+2')()").equals("42"), "Script 没了 —— 第三个运行时编译入口");
         // 判据是「拿不到 42」，不是错误文案长什么样：同一条链在不同写法下报的话不一样
         // （实测有 "Cannot find function constructor" 也有 "return 42 is not a function"）
         for (String chain : new String[]{
@@ -108,12 +107,12 @@ public class ScriptEngineTest {
     }
 
     static void sealed() {
-        check(run("Object.prototype.p=1; ({}).p").contains("sealed"), "Object.prototype 封了");
-        check(run("Array.prototype.q=1; [].q").contains("sealed"), "Array.prototype 封了");
-        check(run("String.prototype.trim=function(){return 'X'}; ' a '.trim()").contains("sealed"), "改内置封了");
+        check(!run("Object.prototype.p=1; ({}).p").equals("1"), "Object.prototype 封了");
+        check(!run("Array.prototype.q=1; [].q").equals("1"), "Array.prototype 封了");
+        check(!run("String.prototype.trim=function(){return 'X'}; ' a '.trim()").equals("X"), "改内置封了");
         // §16.3 的 SEAL 只点了 10 个名字，Map 不在里面 —— 实测能污染
-        check(run("Map.prototype.zz=1; new Map().zz").contains("sealed"), "Map.prototype 也要封");
-        check(run("Set.prototype.zz=1; new Set().zz").contains("sealed"), "Set.prototype 也要封");
+        check(!run("Map.prototype.zz=1; new Map().zz").equals("1"), "Map.prototype 也要封");
+        check(!run("Set.prototype.zz=1; new Set().zz").equals("1"), "Set.prototype 也要封");
     }
 
     static void normalStillWorks() {
@@ -148,13 +147,64 @@ public class ScriptEngineTest {
 
     /** 预算只在分支点生效，大分配靠尺寸闸拦（§16.4 的三件事 ①②）。 */
     static void sizeGate() {
-        check(aborted("'x'.repeat(100000000).length", ScriptAbort.Reason.SIZE), "repeat 放大被拦");
-        check(aborted("new Array(100000000).join('')", ScriptAbort.Reason.SIZE), "join 放大被拦");
-        check(aborted("var s='x';for(var i=0;i<30;i++)s+=s; s.indexOf('y')", ScriptAbort.Reason.SIZE),
+        check(rejectedBySizeGate("'x'.repeat(100000000).length"), "repeat 放大被拦");
+        check(rejectedBySizeGate("new Array(100000000).join('')"), "join 放大被拦");
+        check(rejectedBySizeGate("var s='x';for(var i=0;i<30;i++)s+=s; s.indexOf('y')"),
                 "rope 物化被拦 —— 实测 9 毫秒能打爆 256 MB 堆");
-        check(aborted("var a=[];a.length=100000000; a.fill(1)", ScriptAbort.Reason.SIZE), "fill 放大被拦");
+        check(rejectedBySizeGate("var a=[];a.length=100000000; a.fill(1)"), "fill 放大被拦");
+        check(rejectedBySizeGate("var n=0;var o={get length(){n++;return n===1?1:10000000000},"
+                        + "indexOf:Array.prototype.indexOf};o.indexOf('z')"),
+                "类数组 length TOCTOU 在进入原生 indexOf 前拒绝");
+        check(rejectedBySizeGate("var o={get length(){return o.indexOf('x')},"
+                        + "indexOf:Array.prototype.indexOf};o.indexOf('x')"),
+                "包装层递归不能落到 StackOverflowError");
+        check(rejectedBySizeGate("new Array(1024).fill(new Array(1024).fill("
+                        + "new Array(1024).fill(0))).flat(2).length"),
+                "flat 深层展开必须在原生分配前被拒绝");
+        eq(run("[[1,2],[3]].flat().join(',')"), "1,2,3", "小型 flat 保持可用");
+        eq(run("[[[1]],[[2]]].flat(2).join(',')"), "1,2", "带 depth 的小型 flat 保持可用");
+        check(rejectedBySizeGate("[1].flatMap(function(){return new Array(4096).fill(0)})"),
+                "flatMap 回调输出无法预检，必须在执行回调前拒绝");
+        check(rejectedBySizeGate("var a=[];a[0]=a;a.flat(Infinity)"),
+                "flat 循环数组必须在原生递归前拒绝");
+        eq(run("var n=0,a=[];Object.defineProperty(a,'0',{get:function(){n++;return [1]}});"
+                        + "try{a.flat()}catch(e){};n"), "0",
+                "flat 预检不得执行数组 getter");
+        eq(run("Array.from({0:'a',1:'b',length:2}).join(',')"), "a,b",
+                "Array.from 保留有界 array-like 路径");
+        eq(run("Array.from('ab').join(',')"), "a,b", "Array.from 保留有界字符串路径");
+        eq(run("Array.from([1,2]).join(',')"), "1,2", "Array.from 保留原生数组路径");
+        check(rejectedBySizeGate("Array.from({length:4097})"),
+                "Array.from array-like 超限必须在分配前拒绝");
+        check(rejectedBySizeGate("Array.from('a'.repeat(4097))"),
+                "Array.from 字符串超限必须在分配前拒绝");
+        check(rejectedBySizeGate("Array.from(new Array(1000000))"),
+                "Array.from 稀疏原生数组超限必须在迭代前拒绝");
+        eq(run("var n=0,o={};Object.defineProperty(o,'length',{get:function(){n++;return 1}});"
+                        + "try{Array.from(o)}catch(e){};n"), "0",
+                "Array.from 预检不得执行 length getter");
+        eq(run("var n=0,o={length:1};Object.defineProperty(o,'0',{get:function(){n++;return 1}});"
+                        + "try{Array.from(o)}catch(e){};n"), "0",
+                "Array.from 预检不得执行元素 getter");
+        eq(run("var n=0,o={};Object.defineProperty(o,Symbol.iterator,{get:function(){n++;return function(){}}});"
+                        + "try{Array.from(o)}catch(e){};n"), "0",
+                "Array.from 预检不得执行 Symbol.iterator getter");
+        eq(run("var n=0;function* g(){n++;while(true)yield 1}try{Array.from(g())}catch(e){};n"), "0",
+                "Array.from 生成器必须在启动前拒绝");
+        eq(run("var n=0;try{Array.from([1],function(x){n++;return x})}catch(e){};n"), "0",
+                "Array.from 映射回调必须在执行前拒绝");
+        check(rejectedBySizeGate("var a=[1];a[Symbol.iterator]=function*(){while(true)yield 1};Array.from(a)"),
+                "Array.from 不接受数组自定义迭代器");
+        eq(run("var n=0;function C(){n++;return []}try{Array.from.call(C,[1])}catch(e){};n"), "0",
+                "Array.from 不得执行脚本结果构造器");
+        eq(run("var n=0,o={get x(){n++;return 'x'}};try{JSON.stringify(o)}catch(e){};n"), "0",
+                "JSON 预检不执行脚本 getter");
         eq(SizeGate.MAX_STRING, 64 * 1024, "§16.4 ① 的字符串上限");
         eq(SizeGate.MAX_ARRAY, 4096, "§16.4 ① 的数组上限");
+    }
+
+    static boolean rejectedBySizeGate(String source) {
+        return run(source).startsWith("HostError: INVALID:");
     }
 
     /** 跨调用驻留：每次调用都在预算内，26 次就打爆堆（实测）。 */
@@ -262,6 +312,63 @@ public class ScriptEngineTest {
         }
     }
 
+    /** 和 withCtx 一样跑一段，但把 {@link CtxBuilder.Result} 交回来（看产了哪些意图）。 */
+    static CtxBuilder.Result resultOf(String src, CtxBuilder.Backends backends) {
+        Context cx = BUDGET.enterContext();
+        try {
+            BUDGET.begin();
+            HostFn.resetDepth();
+            ScriptableObject scope = ScriptSandbox.harden(cx);
+            CtxBuilder.Result r = new CtxBuilder.Result();
+            ScriptableObject ctx = CtxBuilder.build(cx, scope, "t:app", player(), backends, r);
+            ScriptableObject.putProperty(scope, "ctx", ctx);
+            cx.evaluateString(scope, src, "t", 1, null);
+            return r;
+        } finally {
+            BUDGET.end();
+            Context.exit();
+        }
+    }
+
+    /** 和 resultOf 一样，但带能力门（看被拒时产没产意图）。 */
+    static CtxBuilder.Result resultOfGate(String src, CtxBuilder.Backends backends,
+                                          CtxBuilder.CapabilityGate gate) {
+        Context cx = BUDGET.enterContext();
+        try {
+            BUDGET.begin();
+            HostFn.resetDepth();
+            ScriptableObject scope = ScriptSandbox.harden(cx);
+            CtxBuilder.Result r = new CtxBuilder.Result();
+            ScriptableObject ctx = CtxBuilder.build(cx, scope, "t:app", player(), backends, r,
+                    new com.november.mcphone.core.script.engine.MoneyLedger(), gate);
+            ScriptableObject.putProperty(scope, "ctx", ctx);
+            cx.evaluateString(scope, src, "t", 1, null);
+            return r;
+        } finally {
+            BUDGET.end();
+            Context.exit();
+        }
+    }
+
+    /** 带能力门的跑法（看哪些调用点了门）。 */
+    static String withCtxGate(String src, CtxBuilder.Backends backends, CtxBuilder.CapabilityGate gate) {        Context cx = BUDGET.enterContext();
+        try {
+            BUDGET.begin();
+            HostFn.resetDepth();
+            ScriptableObject scope = ScriptSandbox.harden(cx);
+            CtxBuilder.Result r = new CtxBuilder.Result();
+            ScriptableObject ctx = CtxBuilder.build(cx, scope, "t:app", player(), backends, r,
+                    new com.november.mcphone.core.script.engine.MoneyLedger(), gate);
+            ScriptableObject.putProperty(scope, "ctx", ctx);
+            return String.valueOf(Context.toString(cx.evaluateString(scope, src, "t", 1, null)));
+        } catch (Throwable t) {
+            return t.getClass().getSimpleName() + ": " + String.valueOf(t.getMessage()).split("\n")[0];
+        } finally {
+            BUDGET.end();
+            Context.exit();
+        }
+    }
+
     static final CtxBuilder.Backends FULL = new CtxBuilder.Backends(
             new SharedState(), fakeItems(),
             new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)));
@@ -288,13 +395,64 @@ public class ScriptEngineTest {
         eq(withCtx("typeof ctx.getClass", FULL), "undefined", "ctx 摸不到 getClass");
         eq(withCtx("typeof ctx.equals", FULL), "undefined", "ctx 上没有 Java 的 equals");
         eq(withCtx("typeof ctx.wait", FULL), "undefined", "ctx 上没有 Java 的 wait");
-        check(withCtx("ctx.evil=1; typeof ctx.evil", FULL).contains("sealed"), "ctx 封了，加不了属性");
+        check(!withCtx("ctx.evil=1; typeof ctx.evil", FULL).equals("number"), "ctx 封了，加不了属性");
 
         // 表里没有的一律没有（§32.7：store/currency/mailbox/fetch 的后端还没到货）
-        for (String absent : new String[]{"store", "currency", "mailbox", "fetch", "give", "loot", "command"}) {
+        for (String absent : new String[]{"store", "currency", "mailbox", "fetch", "give", "loot", "command", "predicate", "score"}) {
             eq(withCtx("typeof ctx." + absent, FULL), "undefined",
                     "ctx." + absent + " 本步没有后端，就不该挂出来");
         }
+
+        // S18 谓词：有门面才挂；只有 test 一个方法，判定结果原样透传（plain 档、不过能力门）
+        CtxBuilder.Backends withPredicate = new CtxBuilder.Backends(
+                new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)),
+                null, null, null, false,
+                (id, snapshot) -> "myserver:is_vip".equals(id) ? Boolean.TRUE : null);
+        eq(withCtx("Object.getOwnPropertyNames(ctx.predicate).sort().join(',')", withPredicate),
+                "test", "ctx.predicate 只有 test");
+        eq(withCtx("String(Object.getPrototypeOf(ctx.predicate))", withPredicate), "null",
+                "ctx.predicate 也没有原型链");
+        eq(withCtx("ctx.predicate.test('myserver:is_vip')", withPredicate), "true",
+                "谓词判定结果透传");
+        Throwable noSuch = thrownBy("ctx.predicate.test('myserver:nope')", withPredicate);
+        check(noSuch instanceof com.november.mcphone.core.script.engine.HostError he
+                        && "mcphone.script.predicate.unavailable".equals(he.messageKey()),
+                "认不得的谓词是配置错：回专门的文案键，不当判否 —— " + noSuch);
+
+        // S18 计分板：有门面才挂；objective 名自动加 App 前缀（t:app → t_app_），别的插件的名字碰不到
+        java.util.List<String> scoreCalls = new java.util.ArrayList<>();
+        CtxBuilder.ScoreView fakeScore = new CtxBuilder.ScoreView() {
+            @Override
+            public int get(java.util.UUID p, String o) {
+                scoreCalls.add("get:" + o);
+                return 7;
+            }
+
+            @Override
+            public void set(java.util.UUID p, String o, int v) {
+                scoreCalls.add("set:" + o + "=" + v);
+            }
+
+            @Override
+            public void add(java.util.UUID p, String o, int v) {
+                scoreCalls.add("add:" + o + "+" + v);
+            }
+        };
+        CtxBuilder.Backends withScore = new CtxBuilder.Backends(
+                new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)),
+                null, null, null, false, null, fakeScore);
+        eq(withCtx("Object.getOwnPropertyNames(ctx.score).sort().join(',')", withScore),
+                "add,get,set", "ctx.score 只有 get/set/add");
+        eq(withCtx("String(Object.getPrototypeOf(ctx.score))", withScore), "null", "ctx.score 也没有原型链");
+        eq(withCtx("ctx.score.get('days')", withScore), "7", "get 结果透传");
+        eq(withCtx("ctx.score.set('days', 3); ctx.score.add('days', -1); 'ok'", withScore), "ok", "set/add 透传");
+        eq(String.join(" ", scoreCalls), "get:t_app_days set:t_app_days=3 add:t_app_days+-1",
+                "objective 名自动带 App 前缀，读写原样到门面");
+        Throwable overflow = thrownBy("ctx.score.set('days', 2147483648)", withScore);
+        check(overflow != null && String.valueOf(overflow.getMessage()).contains("32 位整数"),
+                "分值是 32 位整数：越界不静默截断 —— " + overflow);
     }
 
     /** E2 顺延项：opaque 在脚本侧既解析不了也构造不了。 */
@@ -348,9 +506,9 @@ public class ScriptEngineTest {
         eq(ScriptModules.normalize("", "./C:/x.js"), null, "带盘符拒");
         eq(ScriptModules.normalize("", "./a/./b.js"), "a/b.js", "单点跳过");
 
-        check(abortsWith(() -> m.require("server/gift.js", "server.js", (k, s) -> null), "只许包内相对路径"),
+        check(failsWith(() -> m.require("server/gift.js", "server.js", (k, s) -> null), "只许包内相对路径"),
                 "不带 ./ 的一律拒");
-        check(abortsWith(() -> m.require("./nope.js", "server.js", (k, s) -> null), "找不到"), "表里没有就拒");
+        check(failsWith(() -> m.require("./nope.js", "server.js", (k, s) -> null), "找不到"), "表里没有就拒");
 
         // 缓存命中不计深度、不计模块数
         Object[] loaded = {0};
@@ -370,24 +528,32 @@ public class ScriptEngineTest {
 
     static void requireCycle() {
         ScriptModules m = new ScriptModules(Map.of("a.js", "", "b.js", ""));
-        check(abortsWith(() -> m.require("./a.js", "server.js",
+        check(failsWith(() -> m.require("./a.js", "server.js",
                 (k, s) -> m.require("./b.js", k, (k2, s2) -> m.require("./a.js", k2, (k3, s3) -> null))),
                 "循环依赖"), "循环依赖要报出来");
+        check(failsWith(() -> m.require("./a.js", "server.js",
+                        (k, s) -> m.require("./b.js", k,
+                                (k2, s2) -> m.require("./a.js", k2, (k3, s3) -> null))),
+                "a.js -> b.js -> a.js"), "循环链按真实调用方向输出");
     }
 
     static void requireLimits() {
         java.util.Map<String, String> many = new java.util.HashMap<>();
         for (int i = 0; i <= ScriptModules.MAX_MODULES; i++) many.put("m" + i + ".js", "");
-        check(abortsWith(() -> new ScriptModules(many), "上限"), "模块数超限在建表时就拒");
-        check(abortsWith(() -> new ScriptModules(Map.of("a.vue", "")), "非 .js"), "非 .js 拒");
+        check(failsWith(() -> new ScriptModules(many), "上限"), "模块数超限在建表时就拒");
+        check(failsWith(() -> new ScriptModules(Map.of("a.vue", "")), "非 .js"), "非 .js 拒");
+        for (String bad : List.of("../../evil.js", "/abs.js", "a\\b.js", "C:x.js", "..js", ".js")) {
+            check(failsWith(() -> new ScriptModules(Map.of(bad, "")), "非规范名"),
+                    "非规范模块名拒绝：" + bad);
+        }
     }
 
-    static boolean abortsWith(Runnable body, String fragment) {
+    static boolean failsWith(Runnable body, String fragment) {
         try {
             body.run();
             return false;
-        } catch (ScriptAbort e) {
-            return e.getMessage().contains(fragment);
+        } catch (Throwable failure) {
+            return String.valueOf(failure.getMessage()).contains(fragment);
         }
     }
 
@@ -460,7 +626,8 @@ public class ScriptEngineTest {
         eq(withCtx("try { ctx.currency.balance('myserver:coin') < 5n } catch (e) { 'caught' }", backends),
                 "caught", "拿去比大小之前就抛了，不会被当成 0");
         String uncaught = withCtx("ctx.currency.balance('myserver:coin')", backends);
-        check(uncaught.startsWith("EcmaError"), "没接住时是脚本错误（不记过失），不是 ScriptAbort：" + uncaught);
+        check(uncaught.startsWith("HostError") || uncaught.startsWith("EcmaError"),
+                "没接住时是可捕获宿主错误（不记过失），不是 ScriptAbort：" + uncaught);
         eq(paid.get(), 1, "pay 只执行了一次");
     }
 
@@ -482,9 +649,16 @@ public class ScriptEngineTest {
                 new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)), null, null, reg);
         String c = "'myserver:coin'", to = "'00000000-0000-0000-0000-000000000002'";
 
-        eq(withCtx("String(ctx.currency.parse(" + c + ", '1.234'))", b), "null", "小数位超了：parse 给 null，不中断");
-        eq(withCtx("String(ctx.currency.parse(" + c + ", '十块'))", b), "null", "不是数：parse 给 null");
+        eq(withCtx("try { ctx.currency.parse(" + c + ", '1.234') } catch (e) { e.message }", b),
+                "INVALID: mcphone.economy.invalid_amount", "小数位超了：parse 抛可捕获错误");
+        eq(withCtx("try { ctx.currency.parse(" + c + ", '十块') } catch (e) { e.message }", b),
+                "INVALID: mcphone.economy.invalid_amount", "不是数：parse 抛可捕获错误");
         eq(withCtx("String(ctx.currency.parse(" + c + ", '1.23'))", b), "123", "对照：合法的照常解析");
+        eq(withCtx("var out='before'; try { ctx.currency.parse(" + c + ", 'abc') } catch(e) { out='continued' } out", b),
+                "continued", "parse 错误可捕获，捕获后脚本可继续");
+        eq(withCtx("var used=false; try { used=(ctx.currency.parse(" + c + ", 'abc') + 1) > 0 }"
+                        + " catch(e) { } String(used)", b),
+                "false", "parse 错误值不能进入算术或比较");
         eq(withCtx("ctx.currency.pay(" + c + ", 'not-a-uuid', 5n)", b), "INVALID", "收款人不是 UUID：INVALID");
         eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", 99999999999999999999999n)", b), "INVALID",
                 "金额超出 long：INVALID");
@@ -517,9 +691,10 @@ public class ScriptEngineTest {
                 "2^63-1 装得下，只是钱不够：交给 provider 判");
         eq(withCtx("ctx.currency.hold(" + c + ", " + to + ", 2n ** 63n)", b), "INVALID", "托管 2^63：INVALID");
 
-        // parse 给了 null，最常见的写法是不判就交给 pay / format：不许因此中断
-        eq(withCtx("ctx.currency.pay(" + c + ", " + to + ", ctx.currency.parse(" + c + ", 'abc'))", b), "INVALID",
-                "pay(parse(坏输入))：INVALID，不中断");
+        // parse 在产生任何哨兵值前就抛错，后续 pay 不会被调用。
+        eq(withCtx("try { ctx.currency.pay(" + c + ", " + to + ", ctx.currency.parse(" + c + ", 'abc')) }"
+                        + " catch (e) { e.message }", b), "INVALID: mcphone.economy.invalid_amount",
+                "pay(parse(坏输入))：parse 先抛，错误值不继续流动");
         eq(withCtx("ctx.currency.hold(" + c + ", " + to + ", undefined)", b), "INVALID", "金额 undefined：INVALID");
         eq(withCtx("try { ctx.currency.format(" + c + ", ctx.currency.parse(" + c + ", 'abc')) } catch (e) { e.message }", b),
                 "INVALID: mcphone.economy.invalid_amount", "format(parse(坏输入))：接得住的 Error，不中断");
@@ -534,8 +709,9 @@ public class ScriptEngineTest {
         }
         eq(withCtx("ctx.currency.pay(" + c + ", '00000000-0000-0000-0000-00000000000A', 5n)", b), "OK",
                 "规范写法的大写也收：是同一个 UUID");
-        check(withCtx("ctx.currency.pay(" + c + ", " + to + ", 5)", b).startsWith("ScriptAbort"),
-                "金额传了 Number 不是 BigInt：脚本自己写错了，照旧中断");
+        String badAmountType = withCtx("ctx.currency.pay(" + c + ", " + to + ", 5)", b);
+        check(badAmountType.startsWith("ScriptAbort") || badAmountType.startsWith("HostError"),
+                "金额传了 Number 不是 BigInt：宿主拒绝");
 
         // 字符串参数缺了（null / undefined）和金额缺了一样是返回码：多半是 default() 没有默认货币、或者玩家没填
         for (String call : new String[]{"pay(null, " + to + ", 5n)", "pay(undefined, " + to + ", 5n)",
@@ -554,9 +730,11 @@ public class ScriptEngineTest {
             eq(withCtx("try { ctx.currency." + call + " } catch (e) { e.message }", b),
                     "UNAVAILABLE: mcphone.economy.no_such_currency", call + "：没给货币 id 是接得住的 Error");
         }
-        eq(withCtx("String(ctx.currency.parse(" + c + ", null))", b), "null", "parse 没给文本：null，不中断");
-        check(withCtx("ctx.currency.pay(" + c + ", 5, 5n)", b).startsWith("ScriptAbort"),
-                "收款人传了 Number：类型写错了，照旧中断");
+        eq(withCtx("try { ctx.currency.parse(" + c + ", null) } catch (e) { e.message }", b),
+                "INVALID: mcphone.economy.invalid_amount", "parse 没给文本：抛可捕获错误");
+        String badRecipient = withCtx("ctx.currency.pay(" + c + ", 5, 5n)", b);
+        check(badRecipient.startsWith("HostError") || badRecipient.startsWith("ScriptAbort"),
+                "收款人传了 Number：宿主拒绝");
 
         // provider 在动钱时抛了（结果不明）：原样抛出、脚本接不住，不改写成 UNAVAILABLE 让 App 当"没动"去重试；也不是 ScriptAbort（不记过失）
         var open = new com.november.mcphone.core.script.server.economy.CurrencyGateway(Runnable::run, () -> true);
@@ -797,6 +975,10 @@ public class ScriptEngineTest {
                     if (m.getName().equals("transfer")) {
                         moved.incrementAndGet();
                         if (mode.get().equals("pay")) throw new IllegalStateException("钱包写了一半");
+                        if (mode.get().equals("abort")) throw new ScriptAbort(ScriptAbort.Reason.HOST,
+                                "provider\u2028abort\u202E§");
+                        if (mode.get().equals("error")) throw new AssertionError("provider\u2029error§");
+                        if (mode.get().equals("null")) return null;
                     }
                     if (m.getName().equals("balance") && mode.get().equals("bal")) throw new NoSuchMethodError("换了版本");
                     return m.invoke(real, args);
@@ -825,20 +1007,23 @@ public class ScriptEngineTest {
             try {
                 cx.evaluateString(app.scope(cx), "var actions = {"
                         + " buy: function (ctx) { " + pay + "; ctx.ok({}) },"
+                        + " buyabort: function (ctx) { " + pay + "; while (true) {} },"
+                        + " buytwice: function (ctx) { " + pay + "; " + pay + "; ctx.ok({}) },"
                         + " buyfin: function (ctx) { try { " + pay + " } finally { ctx.ok({}); return } },"
                         + " buycatch: function (ctx) { try { " + pay + " } catch (e) { } ctx.ok({}) },"
+                        + " okfirst: function (ctx) { ctx.ok({}); " + pay + " },"
                         + " bal: function (ctx) { try { ctx.currency.balance('myserver:coin') } finally { ctx.ok({}); return } } }",
                         "app", 1, null);
             } finally {
                 Context.exit();
             }
-            StrikeTracker strikes = new StrikeTracker(System::currentTimeMillis);
-            RhinoEvaluator ev = new RhinoEvaluator(Map.of("t:app", app), strikes, b, Runnable::run);
+            StrikeTracker strikes = mainEx.submit(() -> new StrikeTracker(System::currentTimeMillis)).get();
+            RhinoEvaluator ev = new RhinoEvaluator(Map.of("t:app", app), strikes, b, mainEx::execute);
             java.util.function.Function<String, Object> call = action -> {
                 var f = new java.util.concurrent.CompletableFuture<com.november.mcphone.core.script.server.ActionEvaluator.Outcome>();
-                ev.submit(new com.november.mcphone.core.script.server.ActionEvaluator.Request(
-                        "t:app", action, new byte[0], player(), "r", 1), f::complete);
                 try {
+                    mainEx.submit(() -> ev.submit(new com.november.mcphone.core.script.server.ActionEvaluator.Request(
+                            "t:app", action, new byte[0], player(), "r", 1), f::complete)).get();
                     return f.get(10, java.util.concurrent.TimeUnit.SECONDS).code();
                 } catch (Exception e) {
                     return e.getClass().getSimpleName();
@@ -846,16 +1031,22 @@ public class ScriptEngineTest {
             };
 
             eq(call.apply("buy"), com.november.mcphone.core.script.net.ScriptErrorCode.OK, "对照：provider 正常时 OK");
-            mode.set("pay");
-            for (int i = 0; i < 2; i++) {
-                for (String action : new String[]{"buy", "buyfin", "buycatch"}) {
+            eq(call.apply("buyabort"), com.november.mcphone.core.script.net.ScriptErrorCode.UNKNOWN,
+                    "pay 已返回后再中断：UNKNOWN 优先且不记过");
+            eq(call.apply("buytwice"), com.november.mcphone.core.script.net.ScriptErrorCode.UNKNOWN,
+                    "钱已动过后第二次动钱被拒，最终仍为 UNKNOWN");
+            // 抛了、没给结果（返回 null）都是结果不明；脚本先调过 ctx.ok 也不算数
+            for (String m : new String[]{"pay", "null", "abort", "error"}) {
+                mode.set(m);
+                for (String action : new String[]{"buy", "buyfin", "buycatch", "okfirst"}) {
                     moved.set(0);
                     eq(call.apply(action), com.november.mcphone.core.script.net.ScriptErrorCode.UNKNOWN,
-                            action + "：provider 动钱时抛了 → UNKNOWN（catch / finally { return } 改不了）");
-                    eq(moved.get(), 1, action + "：provider 只被调了一次");
+                            m + " " + action + "：provider 动钱时抛异常、ScriptAbort、Error 或没给结果 → UNKNOWN");
+                    eq(moved.get(), 1, m + " " + action + "：provider 只被调了一次");
                 }
             }
-            check(strikes.allowed("t:app", player().uuid()), "结果不明六次也不记过失：不是脚本的错");
+            check(mainEx.submit(() -> strikes.allowed("t:app", player().uuid())).get(),
+                    "provider 异常与钱后中断都不记过失：不是脚本的错");
             mode.set("bal");
             eq(call.apply("bal"), com.november.mcphone.core.script.net.ScriptErrorCode.INTERNAL,
                     "对照：查余额抛了不动钱，照旧 INTERNAL，不是 UNKNOWN");
@@ -867,35 +1058,312 @@ public class ScriptEngineTest {
         }
     }
 
+    /**
+     * S18 动作节点（{@code ctx.give/loot/attr/effect}）：<b>只产意图</b>，参数在产出点校验。
+     * 落地、能力门、背包容量这些归 {@code IntentLandingTest} / 真服用例。
+     */
+    static void actionIntents() {
+        CtxBuilder.Backends actions = new CtxBuilder.Backends(
+                new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)),
+                null, null, null, true);
+        eq(withCtx("Object.getOwnPropertyNames(ctx).sort().join(',')", actions),
+                "attr,cycle,effect,fail,give,item,log,loot,ok,player,shared,time",
+                "actionIntents=true 时顶层多出 give/loot/attr/effect");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.attr).sort().join(',')", actions),
+                "grant,revoke", "ctx.attr 只有 grant/revoke");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.loot).sort().join(',')", actions),
+                "roll", "ctx.loot 只有 roll");
+        eq(withCtx("ctx.effect.give('minecraft:speed', 3); 'ok'", actions),
+                "ok", "省略等级时默认 0");
+
+        CtxBuilder.Result r = resultOf("ctx.give('minecraft:diamond', 3);"
+                + "ctx.loot.roll('myserver:daily');"
+                + "ctx.attr.grant('minecraft:generic.movement_speed', 0.1);"
+                + "ctx.attr.revoke('minecraft:generic.movement_speed');"
+                + "ctx.effect.give('minecraft:speed', 30);"
+                + "ctx.effect.give('minecraft:speed', 30, 2);", actions);
+        eq(r.intents.size(), 6, "六条意图，一条不多");
+        eq(r.intents.get(0).kind(), "item.give", "第 1 条是发物品");
+        eq(r.intents.get(1).kind(), "loot.roll", "第 2 条是掷表");
+        eq(r.intents.get(2).kind(), "attr.grant", "第 3 条是属性授予");
+        eq(r.intents.get(2).asAttr().modifierKey(), "t/app/minecraft/generic.movement_speed",
+                "修饰符 key 由产出侧拼好（appId 连命名空间一起去冒号）");
+        eq(r.intents.get(3).kind(), "attr.revoke", "第 4 条是属性撤销");
+        eq(r.intents.get(4).asEffect().durationTicks(), 600, "30 秒 = 600 tick");
+        eq(r.intents.get(4).asEffect().amplifier(), 0, "不写等级 = 0");
+        eq(r.intents.get(5).asEffect().amplifier(), 2, "等级原样透传");
+
+        Throwable tooLong = thrownBy("ctx.effect.give('minecraft:speed', 99999)", actions);
+        check(tooLong != null && String.valueOf(tooLong.getMessage()).contains("1..3600"),
+                "效果时长在产出点就卡住（最长 1 小时）—— " + tooLong);
+        Throwable tooMany = thrownBy("ctx.give('minecraft:diamond', 28)", actions);
+        check(tooMany != null && String.valueOf(tooMany.getMessage()).contains("1..27"),
+                "一次发的数量在产出点就卡住 —— " + tooMany);
+    }
+
+    /**
+     * S18 能力门也管 plain 档：{@code [capabilities] disabled} 关掉之后，已装 App 的这些调用
+     * 当场拒 —— 关的是"这个服开不开"，不是"要不要审批"。读点也过门（关了 read 就不该还能读）。
+     */
+    static void plainGates() {
+        Map<String, String> writes = new java.util.concurrent.ConcurrentHashMap<>();
+        com.november.mcphone.core.script.server.store.KvBackend store =
+                new com.november.mcphone.core.script.server.store.KvBackend() {
+                    public String getString(String appId, String key) { return writes.get(key); }
+                    public void setString(String appId, String key, String value) { writes.put(key, value); }
+                    public void remove(String appId, String key) { writes.remove(key); }
+                    public java.util.List<String> keys(String appId) { return java.util.List.copyOf(writes.keySet()); }
+                };
+        com.november.mcphone.core.script.server.store.SealedBackend sealed =
+                new com.november.mcphone.core.script.server.store.SealedBackend() {
+                    public void put(String appId, String key,
+                                    com.november.mcphone.core.script.server.store.SealedRecord record) { }
+                    public com.november.mcphone.core.script.server.store.SealedRecord get(String appId, String key) {
+                        return null;
+                    }
+                };
+        CtxBuilder.ScoreView score = new CtxBuilder.ScoreView() {
+            public int get(java.util.UUID p, String o) { return 0; }
+            public void set(java.util.UUID p, String o, int v) { }
+            public void add(java.util.UUID p, String o, int v) { }
+        };
+        CtxBuilder.Backends b = new CtxBuilder.Backends(new SharedState(), fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)),
+                store, sealed, null, false, (id, p) -> Boolean.TRUE, score);
+        java.util.List<String> required = new java.util.ArrayList<>();
+        CtxBuilder.CapabilityGate gate = required::add;
+
+        eq(withCtxGate("ctx.shared.set('k','v'); ctx.shared.get('k'); 'ok'", b, gate), "ok", "共享读写照常");
+        eq(String.join(",", required), "storage.global.write,storage.global.read", "shared 的读与写各过各的门");
+        required.clear();
+        eq(withCtxGate("ctx.store.setString('k','v'); ctx.store.getString('k'); 'ok'", b, gate), "ok", "store 照常");
+        eq(String.join(",", required), "storage.self,storage.self", "store 每个调用都过 storage.self");
+        required.clear();
+        eq(withCtxGate("ctx.sealed.get('k'); 'ok'", b, gate), "ok", "保险箱读照常");
+        eq(String.join(",", required), "sealed.store", "sealed.get 过 sealed.store");
+        required.clear();
+        eq(withCtxGate("ctx.score.add('p', 1); ctx.score.get('p'); 'ok'", b, gate), "ok", "计分板照常");
+        eq(String.join(",", required), "score.rw,score.rw", "计分板读写都过 score.rw");
+        required.clear();
+        eq(withCtxGate("ctx.predicate.test('myserver:x'); 'ok'", b, gate), "ok", "谓词照常");
+        eq(String.join(",", required), "predicate.test", "谓词过 predicate.test（S18-A3：可关）");
+        required.clear();
+        eq(withCtxGate("ctx.player.gameMode; 'ok'", b, gate), "ok", "读 gameMode 照常");
+        eq(String.join(",", required), "read.self.gamemode", "gameMode 是 getter：读到才判门（S18-A2）");
+
+        // 关掉之后：脚本拿到可接住的能力拒绝，而且写入根本没发生
+        CtxBuilder.CapabilityGate denied = id -> {
+            throw com.november.mcphone.core.script.engine.HostError.denied(
+                    com.november.mcphone.core.script.net.ScriptErrorCode.UNAVAILABLE,
+                    "mcphone.script.capability.disabled", "disabled: " + id);
+        };
+        eq(withCtxGate("try { ctx.store.setString('nope','v') } catch (e) { 'caught' }", b, denied), "caught",
+                "被服主关掉的 plain 能力：脚本接得住");
+        check(!writes.containsKey("nope"), "被关的 storage.self 写入没有发生");
+        eq(withCtxGate("try { ctx.score.get('p') } catch (e) { 'caught' }", b, denied), "caught",
+                "被关的 score.rw 读也拿不到");
+    }
+
+    /** 探针/登记用的一组假后端（受门成员全挂）。 */
+    static CtxBuilder.Backends gatedBackends(java.util.List<String> touched,
+                                             java.util.List<String> predicateCalls,
+                                             SharedState shared) {
+        com.november.mcphone.core.script.server.store.KvBackend store =
+                new com.november.mcphone.core.script.server.store.KvBackend() {
+                    public String getString(String appId, String key) {
+                        touched.add("store.getString");
+                        return null;
+                    }
+
+                    public void setString(String appId, String key, String value) {
+                        touched.add("store.setString");
+                    }
+
+                    public void remove(String appId, String key) {
+                        touched.add("store.remove");
+                    }
+
+                    public java.util.List<String> keys(String appId) {
+                        touched.add("store.keys");
+                        return java.util.List.of();
+                    }
+                };
+        com.november.mcphone.core.script.server.store.SealedBackend sealed =
+                new com.november.mcphone.core.script.server.store.SealedBackend() {
+                    public void put(String appId, String key,
+                                    com.november.mcphone.core.script.server.store.SealedRecord record) {
+                        touched.add("sealed.put");
+                    }
+
+                    public com.november.mcphone.core.script.server.store.SealedRecord get(String appId, String key) {
+                        touched.add("sealed.get");
+                        return null;
+                    }
+                };
+        CtxBuilder.ScoreView score = new CtxBuilder.ScoreView() {
+            public int get(java.util.UUID p, String o) {
+                touched.add("score.get");
+                return 0;
+            }
+
+            public void set(java.util.UUID p, String o, int v) {
+                touched.add("score.set");
+            }
+
+            public void add(java.util.UUID p, String o, int v) {
+                touched.add("score.add");
+            }
+        };
+        return new CtxBuilder.Backends(shared, fakeItems(),
+                new CtxBuilder.Cycle(ZoneId.of("Asia/Shanghai"), LocalTime.of(4, 0)),
+                store, sealed,
+                new com.november.mcphone.core.script.server.economy.CurrencyRegistry(
+                        new com.november.mcphone.core.script.server.economy.CurrencyGateway(
+                                Runnable::run, () -> true)),
+                true,
+                (id, p) -> {
+                    predicateCalls.add(id);
+                    return Boolean.TRUE;
+                }, score);
+    }
+
+    /**
+     * S18-C0 的权威腿：<b>挂载即登记</b> —— 建一次 ctx、一个成员都不调，看
+     * {@code Result.gatedMembers} 是不是等于 {@code enforcedIds()}。
+     * 新增受门成员却漏登记/漏挂门，这里都红（间接写法也不影响，登记在帮助函数里做）。
+     */
+    static void gatedMountRegistry() {
+        CtxBuilder.Result r = resultOf("'ok'", gatedBackends(new java.util.ArrayList<>(),
+                new java.util.ArrayList<>(), new SharedState()));
+        eq(new java.util.TreeSet<>(r.gatedMembers), new java.util.TreeSet<>(
+                        com.november.mcphone.core.script.server.CapabilityCatalog.enforcedIds()),
+                "挂载登记 = 目录 enforced（新增受门成员必须同步 enforced）");
+    }
+
+    /**
+     * S18-C2：拒绝要发生在效果之前 —— 用<b>永远拒绝</b>的门，每个受门成员都点一遍：
+     * 全部拒（数 = enforced 条数）、后端一次没被碰、意图一条没产。
+     */
+    static void enforcedDenyProbe() {
+        java.util.List<String> touched = new java.util.ArrayList<>();
+        java.util.List<String> predicateCalls = new java.util.ArrayList<>();
+        SharedState shared = new SharedState();
+        CtxBuilder.Backends b = gatedBackends(touched, predicateCalls, shared);
+        CtxBuilder.CapabilityGate deny = id -> {
+            throw com.november.mcphone.core.script.engine.HostError.denied(
+                    com.november.mcphone.core.script.net.ScriptErrorCode.UNAVAILABLE,
+                    "mcphone.script.capability.disabled", "deny " + id);
+        };
+        int n = com.november.mcphone.core.script.server.CapabilityCatalog.enforcedIds().size();
+
+        // 每个受门成员点一遍：12 个调用点（attr 两个共用一个能力）、11 个不同能力 id。
+        String all = "var d=0, ids={};"
+                + "function t(id,f){try{f()}catch(e){d++;ids[id]=1}}"
+                + "t('storage.global.read',function(){ctx.shared.get('k')});"
+                + "t('storage.global.write',function(){ctx.shared.set('k','v')});"
+                + "t('storage.self',function(){ctx.store.getString('k')});"
+                + "t('sealed.store',function(){ctx.sealed.get('k')});"
+                + "t('score.rw',function(){ctx.score.get('p')});"
+                + "t('predicate.test',function(){ctx.predicate.test('myserver:x')});"
+                + "t('read.self.gamemode',function(){String(ctx.player.gameMode)});"
+                + "t('item.give',function(){ctx.give('minecraft:diamond',1)});"
+                + "t('loot.roll',function(){ctx.loot.roll('myserver:gift')});"
+                + "t('attr.grant',function(){ctx.attr.grant('minecraft:generic.movement_speed',0.1)});"
+                + "t('attr.grant',function(){ctx.attr.revoke('minecraft:generic.movement_speed')});"
+                + "t('effect.give',function(){ctx.effect.give('minecraft:speed',1)});"
+                + "String(d) + '/' + String(Object.keys(ids).length)";
+        eq(withCtxGate(all, b, deny), "12/" + n, "12 个受门调用全被拒，覆盖全部 enforced 能力");
+        check(touched.isEmpty(), "被拒的读/写一个都没碰后端：" + touched);
+        check(predicateCalls.isEmpty(), "被拒的 predicate 没有调判定");
+        check(shared.get("t:app", "k") == null, "被拒的 shared.set 没有写进去");
+
+        CtxBuilder.Result denied = resultOfGate(all, b, deny);
+        check(denied.intents.isEmpty(), "被拒的动作一条意图都没产");
+    }
+
+    /**
+     * S18-D0 的封口：把"有门后端全挂时的 ctx 表面"整份签字 —— 顶层与每一级的成员集合逐字钉死。
+     * 新增/删除成员都红，逼提交者在 diff 里交代"这是什么、该不该有门"：有门的必须走
+     * {@code gated*()}（挂载登记与 enforced 对照），没门的要在这里给出理由。
+     */
+    static void gatedSurfaceIsSigned() {
+        CtxBuilder.Backends b = gatedBackends(new java.util.ArrayList<>(),
+                new java.util.ArrayList<>(), new SharedState());
+        eq(withCtx("Object.getOwnPropertyNames(ctx).sort().join(',')", b),
+                "attr,currency,cycle,effect,fail,give,item,log,loot,ok,player,predicate,score,sealed,shared,store,time",
+                "顶层成员集合（新增成员必须来这里签字）");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.attr).sort().join(',')", b), "grant,revoke", "ctx.attr");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.loot).sort().join(',')", b), "roll", "ctx.loot");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.effect).sort().join(',')", b), "give", "ctx.effect");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.score).sort().join(',')", b), "add,get,set", "ctx.score");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.predicate).sort().join(',')", b), "test", "ctx.predicate");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.sealed).sort().join(',')", b), "get", "ctx.sealed");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.currency).sort().join(',')", b),
+                "balance,burn,default,format,hold,list,mint,parse,pay,refund,release", "ctx.currency");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.store).sort().join(',')", b),
+                "getBool,getLong,getString,keys,remove,setBool,setLong,setString", "ctx.store");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.shared).sort().join(',')", b),
+                "compareAndSet,get,set", "ctx.shared");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.item).sort().join(',')", b),
+                "displayName,isDamaged,matches", "ctx.item");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.player).sort().join(',')", b),
+                "dimension,gameMode,name,uuid", "ctx.player");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.time).sort().join(',')", b),
+                "epochMillis,monotonicNanos,seq", "ctx.time");
+        eq(withCtx("Object.getOwnPropertyNames(ctx.cycle).sort().join(',')", b),
+                "label,nextBoundary", "ctx.cycle");
+    }
+
+    /**
+     * S18-E1：成员 ↔ 能力 的对应必须<b>逐条签字</b> —— 光钉集合不够：把 {@code item.give} 与
+     * {@code attr.grant} 的 id 互换，集合仍是那 11 个、拒绝探针也照样全拒，可"批准 A 得 B"
+     * 却成立了。这里记录门逐成员调用，断言每个成员观测到的 id == 签字表（顺序 = 调用顺序）。
+     * 与 {@code gatedMountRegistry}（钉集合）、{@code plainGates}（钉 plain 的逐成员对应）互补。
+     */
+    static void grantedGates() {
+        java.util.List<String> observed = new java.util.ArrayList<>();
+        CtxBuilder.CapabilityGate gate = observed::add;
+        CtxBuilder.Backends b = gatedBackends(new java.util.ArrayList<>(),
+                new java.util.ArrayList<>(), new SharedState());
+
+        String src = "ctx.give('minecraft:diamond', 1);"
+                + "ctx.loot.roll('myserver:gift');"
+                + "ctx.attr.grant('minecraft:generic.movement_speed', 0.1);"
+                + "ctx.attr.revoke('minecraft:generic.movement_speed');"
+                + "ctx.effect.give('minecraft:speed', 1);"
+                + "'ok'";
+        eq(withCtxGate(src, b, gate), "ok", "五个动作成员整段跑通");
+        eq(observed, java.util.List.of("item.give", "loot.roll", "attr.grant", "attr.grant", "effect.give"),
+                "成员 ↔ 能力 的对应（逐条，不许互换）");
+    }
+
     public static void main(String[] args) {
-        // Rhino localizes runtime error text. The sandbox assertions below check
-        // stable English fragments such as "not defined" and "sealed"; keep this
-        // test process independent of the developer machine's locale.
-        Locale previous = Locale.getDefault();
-        Locale.setDefault(Locale.ENGLISH);
-        try {
-            escapes();
-            currencyBalanceUnavailable();
-            currencyRejectionsAreReturnValues();
-            currencyOutcomeUnknownIsUnknown();
-            globalsExactly();
-            sealed();
-            normalStillWorks();
-            budget();
-            sizeGate();
-            retention();
-            scopesIsolated();
-            ctxEnumeration();
-            ctxItemOpaque();
-            ctxBasics();
-            noCoercionCallback();
-            requireTable();
-            requireCycle();
-            requireLimits();
-            strikes();
-        } finally {
-            Locale.setDefault(previous);
-        }
+        escapes();
+        currencyBalanceUnavailable();
+        currencyRejectionsAreReturnValues();
+        currencyOutcomeUnknownIsUnknown();
+        globalsExactly();
+        sealed();
+        normalStillWorks();
+        budget();
+        sizeGate();
+        retention();
+        scopesIsolated();
+        ctxEnumeration();
+        ctxItemOpaque();
+        ctxBasics();
+        actionIntents();
+        plainGates();
+        grantedGates();
+        gatedMountRegistry();
+        gatedSurfaceIsSigned();
+        enforcedDenyProbe();
+        noCoercionCallback();
+        requireTable();
+        requireCycle();
+        requireLimits();
+        strikes();
 
         System.out.println("断言 " + checks + " 条");
         if (!failures.isEmpty()) {

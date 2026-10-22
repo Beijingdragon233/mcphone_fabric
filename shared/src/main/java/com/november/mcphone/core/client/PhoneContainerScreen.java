@@ -1,9 +1,9 @@
 package com.november.mcphone.core.client;
 
 import com.november.mcphone.platform.client.Draw;
-import com.november.mcphone.platform.client.PhoneContainerScreenBase;
 import com.november.mcphone.core.menu.PhoneContainerMenu;
 import net.minecraft.client.gui.GuiGraphics;
+import com.november.mcphone.platform.client.PhoneContainerScreenBase;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
@@ -14,10 +14,6 @@ import net.minecraft.world.entity.player.Inventory;
  * shift 搬运、双击整理、悬停提示、光标上跟随的物品，全部由它处理，
  * 本类只负责画背景。
  *
- * 中间垫的那一层 platform/client/PhoneContainerScreenBase 只为挡一件事：26.x 把
- * render / renderBg / renderLabels / renderTooltip 这四个【被覆写的入口】改了名，
- * 尺寸也从 final 挪进了构造。子类这四支都照老名字覆写，行为不变。
- *
  * 尺寸沿用原版箱子的 176×168 而不是手机竖屏机身：机身只有 120px 宽，
  * 放不下 9 列格子（需 162px）。为了迁就外壳而把容器与背包拆成两页，
  * 会导致看不见对面、也没法拖拽——而"把东西放进末影箱"正是这个界面
@@ -26,10 +22,10 @@ import net.minecraft.world.entity.player.Inventory;
 public class PhoneContainerScreen extends PhoneContainerScreenBase<PhoneContainerMenu> {
 
     public PhoneContainerScreen(PhoneContainerMenu menu, Inventory playerInventory, Component title) {
-        // 尺寸与原版箱子一致，格子坐标正是相对于 leftPos/topPos，
-        // 两边必须用同一套基准，否则格子会画在背板外面。
-        // 尺寸只能从构造递进去：26.x 上 imageWidth/imageHeight 是 final
         super(menu, playerInventory, title, PhoneContainerMenu.IMAGE_WIDTH, menu.getImageHeight());
+
+        // 尺寸与原版箱子一致，格子坐标正是相对于 leftPos/topPos，
+        // 两边必须用同一套基准，否则格子会画在背板外面
 
         // 标题与"物品栏"两行字的位置，同原版
         this.titleLabelX = 8;

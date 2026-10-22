@@ -18,7 +18,7 @@ import com.november.mcphone.feature.camera.client.CameraHandler;
 import com.november.mcphone.feature.camera.client.CameraMode;
 import com.november.mcphone.feature.chat.client.ChatImageCache;
 import com.november.mcphone.feature.chat.client.ChatImageSender;
-import com.november.mcphone.feature.chat.client.ChatNotifier;
+import com.november.mcphone.feature.chat.client.ChatClientEvents;
 import com.november.mcphone.feature.chat.net.ChatClientCache;
 import com.november.mcphone.feature.music.client.DiscBayScreen;
 import com.november.mcphone.feature.music.client.DiscClientCache;
@@ -55,6 +55,18 @@ public class MCphoneClient implements ClientModInitializer {
     public void onInitializeClient() {
         ClientConfig.load();
 
+        // S17 Stage 2：接住服务端握手（serverId / epoch / 部署表）。必须在进服之前装好 ——
+        // 握手是登录时推的，晚了就丢了（丢了的表现是 connectionEpoch 恒 0，请求判过期连接）
+        com.november.mcphone.core.script.client.ClientHandshake.install();
+        // S17 Stage 2：接住脚本调用结果（@click 的 call(...) 与调试命令）
+        com.november.mcphone.core.script.client.ScriptCall.install();
+
+        // S17 Stage 2：客户端脚本诊断命令（看握手 / 伪造字段发原始 RPC，验收剧本 3/4/5 用）。
+        // Fabric 这一支的源类型是 FabricClientCommandSource，反馈走 sendFeedback
+        net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT.register(
+                (dispatcher, access) -> com.november.mcphone.core.script.client.ScriptClientCommand
+                        .register(dispatcher, (src, msg) -> src.sendFeedback(msg)));
+
         MCphoneKeyBindings.register();
 
         // 物品模型属性（离手摆姿、3D 亮屏那些）。要在资源加载前就位
@@ -69,6 +81,7 @@ public class MCphoneClient implements ClientModInitializer {
         ClientTicks.onEndTick(com.november.mcphone.feature.reader.client.ReaderKeyHandler::tick);
         ClientTicks.onEndTick(LocalPlayback::tick);
         ClientTicks.onEndTick(ChatImageSender::tick);
+        ClientTicks.onEndTick(com.november.mcphone.platform.client.PlayerSkins::tick);
         // 快门与退出键由 CameraHandler 在 tick 末尾消费。只注册下面的 HUD 回调会让
         // 按键设置里看得到 V / X，却没有任何代码读取按下次数，两个键因而完全失效。
         ClientTicks.onEndTick(CameraHandler::onClientTick);
@@ -87,10 +100,12 @@ public class MCphoneClient implements ClientModInitializer {
             // 这条路上不能碰 setScreen，理由见 PhoneHud.onWorldLeave
             PhoneHud.onWorldLeave();
             PhoneScreenOnSync.forget();
+            // S17 Stage 2：断线清掉握手状态（serverId/epoch/部署表），下次进服重新握
+            com.november.mcphone.core.script.client.ClientHandshake.clear();
+            // S17 Stage 2：在飞的脚本调用一并丢掉（旧连接的迟到结果回来时已无主）
+            com.november.mcphone.core.script.client.ScriptCall.clear();
 
-            ChatClientCache.clear();
-            ChatImageCache.clear();
-            ChatImageSender.clear();
+            com.november.mcphone.feature.chat.client.ChatClientLifecycle.disconnect();
             NotesClientCache.clear();
             StoreClientCache.clear();
             PhoneScreenRegistry.unloadWorld();
@@ -107,6 +122,15 @@ public class MCphoneClient implements ClientModInitializer {
         });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            if (net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
+                    com.november.mcphone.feature.chat.net.RequestMessagesPacket.TYPE)
+                    && (!net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
+                    com.november.mcphone.feature.chat.net.DeleteChatMessagePacket.TYPE)
+                    || !net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(
+                    com.november.mcphone.feature.chat.group.net.GroupRequestPacket.TYPE))) {
+                handler.getConnection().disconnect(net.minecraft.network.chat.Component.translatable("mcphone.chat.protocol_mismatch"));
+                return;
+            }
             // 【必须在 loadForCurrentWorld 之前】：玩家放进 mcphone/apps/ 的脚本 App 是动态登记的，
             // 而那一句读存档时只认目录里已有的 id，读完还会按当前目录覆写存档 —— 晚一步，
             // 重启后已装的脚本 App 会从主屏消失，并且被从存档里抹掉
@@ -172,7 +196,8 @@ public class MCphoneClient implements ClientModInitializer {
 
         // 这两处走监听器而不是让网络层直接调：网络层在专用服务器上也会加载，碰不得客户端的类
         StoreClientCache.setSyncListener(PhoneScreenRegistry::enforcePurchases);
-        ChatClientCache.setMessageListener(ChatNotifier::onMessage);
+        ChatClientCache.setMessageListener(ChatClientEvents::onMessage);
+        com.november.mcphone.feature.chat.client.ChatGroupEvents.install();
         ChatClientCache.setImageListener(ChatImageCache::accept);
 
         MCphone.LOGGER.info("MCphone 客户端加载完成");

@@ -5,7 +5,6 @@ import com.november.mcphone.core.ServerConfig;
 import com.november.mcphone.feature.chat.net.ConversationSummary;
 import com.november.mcphone.feature.chat.net.OnlinePlayer;
 import com.november.mcphone.feature.chat.net.Relation;
-import com.november.mcphone.platform.Profiles;
 import com.november.mcphone.util.TextSanitizer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -42,7 +41,8 @@ public final class ChatService {
             String name = resolveName(server, friends, peer, online);
             if (isOnline) friends.rememberName(peer, name);
 
-            ChatData.Tail tail = chat.tail(selfId, peer, read.getLastRead(peer));
+            ChatData.Tail tail = ChatData.tail(ChatDeletionData.get(server).visible(selfId, peer,
+                    chat.getMessages(selfId, peer)), peer, read.getLastRead(peer));
 
             out.add(tail.last() == null
                     ? ConversationSummary.empty(peer, name, isOnline)
@@ -129,7 +129,7 @@ public final class ChatService {
     public static boolean mayReadImage(ServerPlayer self, UUID peer, UUID imageId) {
         if (!FriendData.get(self.level().getServer()).areFriends(self.getUUID(), peer)) return false;
 
-        for (ChatMessage m : ChatData.get(self.level().getServer()).getMessages(self.getUUID(), peer)) {
+        for (ChatMessage m : getMessages(self, peer)) {
             if (m.body() instanceof ImageBody image && image.image().equals(imageId)) return true;
         }
         return false;
@@ -140,6 +140,11 @@ public final class ChatService {
         List<ChatMessage> evicted =
                 ChatData.get(sender.level().getServer()).addMessage(sender.getUUID(), targetId, message);
 
+        if (!evicted.isEmpty()) {
+            var existing = ChatData.get(sender.level().getServer()).getMessages(sender.getUUID(), targetId).stream()
+                    .map(ChatMessage::id).collect(java.util.stream.Collectors.toSet());
+            ChatDeletionData.get(sender.level().getServer()).retain(sender.getUUID(), targetId, existing);
+        }
         for (ChatMessage old : evicted) {
             if (old.body() instanceof ImageBody image) {
                 deleteImageIfUnreferenced(sender.level().getServer(), sender.getUUID(), targetId, image.image());
@@ -195,11 +200,13 @@ public final class ChatService {
     /** 非好友一律返回空，免得解除好友后还能翻旧账 */
     public static List<ChatMessage> getMessages(ServerPlayer self, UUID peer) {
         if (!FriendData.get(self.level().getServer()).areFriends(self.getUUID(), peer)) return List.of();
-        return ChatData.get(self.level().getServer()).getMessages(self.getUUID(), peer);
+        return ChatDeletionData.get(self.level().getServer()).visible(self.getUUID(), peer,
+                ChatData.get(self.level().getServer()).getMessages(self.getUUID(), peer));
     }
 
     /** 已读时刻由服务端盖章：采信客户端的话报一个未来时间就能让红点永远不出现 */
     public static void markRead(ServerPlayer self, UUID peer) {
+        if (!FriendData.get(self.level().getServer()).areFriends(self.getUUID(), peer)) return;
         markReadAt(self, peer, System.currentTimeMillis());
     }
 
@@ -304,7 +311,7 @@ public final class ChatService {
             UUID id = p.getUUID();
             if (id.equals(selfId)) continue;
 
-            String name = ConversationSummary.clampName(Profiles.name(p.getGameProfile()));
+            String name = ConversationSummary.clampName(com.november.mcphone.platform.PlayerAccess.name(p));
             friends.rememberName(id, name);
 
             if (out.size() >= limit) continue;   // 仍要走完循环，名字缓存不能漏
@@ -330,7 +337,7 @@ public final class ChatService {
         if (server.getPlayerList().getPlayer(id) != null) return true;
         if (friends.getName(id) != null) return true;
 
-        return Profiles.cachedName(server, id).isPresent();
+        return com.november.mcphone.platform.PlayerAccess.cachedName(server,id).isPresent();
     }
 
     /** 建立关系时把双方的名字都记一遍，日后任一方离线都显示得出来 */
@@ -350,14 +357,14 @@ public final class ChatService {
     private static String rawName(MinecraftServer server, FriendData friends,
                                   UUID id, ServerPlayer online) {
         if (online != null) {
-            return Profiles.name(online.getGameProfile());
+            return com.november.mcphone.platform.PlayerAccess.name(online);
         }
 
         String cached = friends.getName(id);
         if (cached != null) return cached;
 
-        var fromCache = Profiles.cachedName(server, id);
-        if (fromCache.isPresent()) return fromCache.get();
+        var profile = com.november.mcphone.platform.PlayerAccess.cachedName(server,id);
+        if (profile.isPresent()) return profile.get();
 
         return id.toString().substring(0, 8);
     }

@@ -72,7 +72,7 @@ public enum ScriptErrorCode {
      * 少了它，实现者只能在 {@link #OK} 和 {@link #INTERNAL} 之间二选一，两个选择都会造成
      * 重复发奖或漏发。本步还有一处会走到它：重放命中但上次的 {@code data} 太大没进账本
      * （见 {@code IdempotencyLedger.REPLAYABLE_DATA_MAX}）。
-     * 货币调用结果不明（{@code OutcomeUnknown}：provider 动钱时抛了或没给结果）也回它。
+     * 货币调用结果不明（{@code OutcomeUnknown}：provider 动钱时抛了或没给结果）也回它；脚本自己 {@code ctx.fail('UNKNOWN')} 同样回得出来。
      */
     UNKNOWN,
 
@@ -80,7 +80,13 @@ public enum ScriptErrorCode {
     REVOKED,
 
     /** 后端脚本抛异常 / 宿主错误。通用失败，已记审计。 */
-    INTERNAL;
+    INTERNAL,
+
+    /**
+     * 发放时背包满（§20.9 的 {@code reject} 策略）。<b>追加在末尾</b>：中间插会让旧客户端把
+     * 后面的码全认错（序号即身份）。S18 先落 {@code reject}；{@code mailbox} 策略等 §20 落地时再谈。
+     */
+    INVENTORY_FULL;
 
     /** 线上的序号。只许追加，不许中间插。 */
     public int toWire() {

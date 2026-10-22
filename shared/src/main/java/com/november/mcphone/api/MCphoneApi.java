@@ -26,6 +26,8 @@ public final class MCphoneApi {
      *   5  —— AppInfo.Signature 与 AppInfo.signature()；IAppSource.confirmSignature（§12.4）
      *   6  —— Balances.checkParties 与 Balances.checkEscrowCurrency（勘误 E25）
      *
+     *   7  —— 附属页面完整输入、布局与 tick；PhoneViewport / PhoneWidgetPage
+     *
      * 【这个值是在静态块里赋的，别改成 {@code = 3}】
      *
      * 写成声明式里的字面量，它就成了【编译期常量】，javac 会把它内联进读它的那个类：附属编译
@@ -52,7 +54,7 @@ public final class MCphoneApi {
 
     static {
         // 【别把这一句挪回上面的声明里】——那样它就成了编译期常量，会被内联进附属，理由见上
-        VERSION = 6;
+        VERSION = 7;
     }
 
 }

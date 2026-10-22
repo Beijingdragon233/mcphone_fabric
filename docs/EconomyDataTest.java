@@ -7,7 +7,6 @@ import com.november.mcphone.api.economy.ICurrencyProvider;
 import com.november.mcphone.api.economy.TxnReason;
 import com.november.mcphone.api.economy.TxnResult;
 import com.november.mcphone.core.script.engine.ScriptBudget;
-import com.november.mcphone.platform.Nbt;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -164,34 +163,34 @@ public class EconomyDataTest {
         bad.put("托管金额是负数", t -> escrowOf(t).putLong("amount", -50));
         bad.put("托管号是大写 UUID", t -> escrowOf(t).putString("id", UUID.randomUUID().toString().toUpperCase()));
         bad.put("余额键是大写 UUID（会与小写的那个归到同一个人）",
-                t -> Nbt.compoundOf(Nbt.compoundOf(Nbt.compoundOf(t, "currencies"), COIN), "balances")
+                t -> com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(t, "currencies"), COIN), "balances")
                         .putLong(a.toString().toUpperCase(), 700));
-        bad.put("余额键省了前导零", t -> Nbt.compoundOf(Nbt.compoundOf(Nbt.compoundOf(t, "currencies"), COIN), "balances")
+        bad.put("余额键省了前导零", t -> com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(t, "currencies"), COIN), "balances")
                 .putLong("1-1-1-1-1", 700));
-        bad.put("铸造累计是负数", t -> Nbt.compoundOf(Nbt.compoundOf(t, "currencies"), COIN).putLong("minted", -1));
-        bad.put("销毁累计是负数", t -> Nbt.compoundOf(Nbt.compoundOf(t, "currencies"), COIN).putLong("burned", -1));
+        bad.put("铸造累计是负数", t -> com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(t, "currencies"), COIN).putLong("minted", -1));
+        bad.put("销毁累计是负数", t -> com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(t, "currencies"), COIN).putLong("burned", -1));
         bad.put("托管 settledAt 不是 long", t -> escrowOf(t).putInt("settledAt", 5));
         for (var c : bad.entrySet()) {
             CompoundTag tag = goodTag(a);
             c.getValue().accept(tag);
             EconomyData d = EconomyData.load(tag, () -> 5);
             eq(d.lockedCurrencies(), Set.of(COIN), c.getKey() + " → 锁住 COIN");
-            eq(Nbt.compoundOf(d.toTag(), "currencies").get(COIN), Nbt.compoundOf(tag, "currencies").get(COIN),
+            eq(com.november.mcphone.core.PhoneNbt.getCompound(d.toTag(), "currencies").get(COIN), com.november.mcphone.core.PhoneNbt.getCompound(tag, "currencies").get(COIN),
                     c.getKey() + " → 余额段原样写回");
         }
         eq(EconomyData.load(goodTag(a), () -> 5).lockedCurrencies(), Set.of(), "对照组：好的那一份不锁");
 
         CompoundTag upperKey = goodTag(a);
-        CompoundTag cs = Nbt.compoundOf(upperKey, "currencies");
+        CompoundTag cs = com.november.mcphone.core.PhoneNbt.getCompound(upperKey, "currencies");
         Tag coinSection = cs.get(COIN);
         cs.remove(COIN);
         cs.put("MyServer:Coin", coinSection);
         EconomyData d1 = EconomyData.load(upperKey, () -> 5);
         check(d1.lockedCurrencies().contains("MyServer:Coin"), "货币 id 是大写：锁住，不当成另一种货币来记");
-        eq(Nbt.compoundOf(d1.toTag(), "currencies").get("MyServer:Coin"), coinSection, "原样写回");
+        eq(com.november.mcphone.core.PhoneNbt.getCompound(d1.toTag(), "currencies").get("MyServer:Coin"), coinSection, "原样写回");
 
         CompoundTag noNamespace = goodTag(a);
-        CompoundTag cs3 = Nbt.compoundOf(noNamespace, "currencies");
+        CompoundTag cs3 = com.november.mcphone.core.PhoneNbt.getCompound(noNamespace, "currencies");
         cs3.put("coin", cs3.get(COIN).copy());
         check(EconomyData.load(noNamespace, () -> 5).lockedCurrencies().contains("coin"),
                 "货币 id 省了命名空间（coin 而不是 minecraft:coin）：锁住，不当成另一种货币来记");
@@ -200,7 +199,7 @@ public class EconomyDataTest {
         escrowOf(upperEscrow).putString("currency", "MyServer:Coin");
         EconomyData d2 = EconomyData.load(upperEscrow, () -> 5);
         eq(d2.lockedCurrencies(), Set.of("MyServer:Coin"), "托管的货币 id 是大写：锁那个 id，不让它成没人认领的孤儿");
-        eq(Nbt.compoundAt(Nbt.compoundListOf(d2.toTag(), "escrow"), 0), escrowOf(upperEscrow), "那笔托管原样写回");
+        eq(com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getList(d2.toTag(), "escrow", 10), 0), escrowOf(upperEscrow), "那笔托管原样写回");
     }
 
     /** 开服补存档点：找不到存档点的老流水也补一个；没有流水目录的世界不为它建目录。 */
@@ -514,7 +513,14 @@ public class EconomyDataTest {
                 LegacyWalletProvider.KEY_NO_ESCROW, LegacyWalletProvider.KEY_NO_BALANCE,
                 ScoreboardProvider.KEY_UNKNOWN_PLAYER, "mcphone.economy.adapter.unavailable",
                 "mcphone.economy.no_such_currency", "mcphone.economy.invalid_amount", "mcphone.economy.scoreboard.no_server",
-                "mcphone.economy.scoreboard.off_thread", "mcphone.economy.scoreboard.no_objective"};
+                "mcphone.economy.scoreboard.off_thread", "mcphone.economy.scoreboard.no_objective",
+                // S18：能力拒绝、意图落地与礼包白名单的键也得两份都有
+                "mcphone.script.capability.disabled", "mcphone.script.capability.not_approved",
+                "mcphone.script.capability.not_open", "mcphone.script.capability.unknown",
+                "mcphone.script.intent_unavailable", "mcphone.script.loot.no_such_table",
+                "mcphone.script.predicate.unavailable", "mcphone.script.give.not_giftable",
+                "mcphone.script.score.unavailable", "mcphone.script.attr.unavailable",
+                "mcphone.script.effect.unavailable"};
         for (String lang : new String[]{"zh_cn", "en_us"}) {
             var in = EconomyDataTest.class.getClassLoader().getResourceAsStream("assets/mcphone/lang/" + lang + ".json");
             check(in != null, lang + ".json 在 classpath 上");
@@ -569,7 +575,7 @@ public class EconomyDataTest {
     }
 
     static CompoundTag escrowOf(CompoundTag tag) {
-        return Nbt.compoundAt(Nbt.compoundListOf(tag, "escrow"), 0);
+        return com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getList(tag, "escrow", 10), 0);
     }
 
     /**
@@ -617,10 +623,10 @@ public class EconomyDataTest {
         twice.putLong("savedAt", savedAt);
         escrowOf(twice).putLong("createdAt", savedAt - 3_600_000L);
         CompoundTag savedSlow = EconomyData.load(twice, () -> 30_000L).toTag();
-        eq(Nbt.longOf(savedSlow, "savedAt"), savedAt, "慢时钟上保存：savedAt 不往回拉");
+        eq(com.november.mcphone.core.PhoneNbt.getLong(savedSlow, "savedAt"), savedAt, "慢时钟上保存：savedAt 不往回拉");
         eq(EconomyData.load(savedSlow, () -> 30_000L).escrow().snapshot().values().iterator().next().createdAt(),
                 savedAt - 3_600_000L, "第二次开服时钟仍慢：正常的托管还是不改写（改成慢时钟的现在就是提前退款）");
-        eq(Nbt.longOf(EconomyData.load(savedSlow, () -> savedAt + 5).toTag(), "savedAt"), savedAt + 5, "时钟正常时 savedAt 跟着走");
+        eq(com.november.mcphone.core.PhoneNbt.getLong(EconomyData.load(savedSlow, () -> savedAt + 5).toTag(), "savedAt"), savedAt + 5, "时钟正常时 savedAt 跟着走");
 
         // 时钟快过一年、那段时间建了托管并存过档，之后时钟恢复：选的是不提前动钱 —— 不改写、不标脏，savedAt 停在快的那一刻，
         // 等到那一刻再过一个超时周期（开服时大声报）。与上面慢时钟那条是同一个取舍的两面
@@ -632,7 +638,7 @@ public class EconomyDataTest {
         eq(fd.escrow().snapshot().values().iterator().next().createdAt(), fast - 1_000L, "时钟快过：那段时间建的托管不改写");
         check(!fd.isDirty(), "时钟快过：不标脏");
         eq(fd.escrow().expired().size(), 0, "时钟快过：恢复后 7 天也不到期");
-        eq(Nbt.longOf(fd.toTag(), "savedAt"), fast, "时钟快过：savedAt 停在快的那一刻");
+        eq(com.november.mcphone.core.PhoneNbt.getLong(fd.toTag(), "savedAt"), fast, "时钟快过：savedAt 停在快的那一刻");
         eq(fd.aheadOfClock, 1, "时钟快过：开服报出 1 笔建立时刻晚于读档时刻的托管");
         for (long ahead : new long[]{6L * 86_400_000L, 2 * 3_600_000L}) {
             CompoundTag few = goodTag(UUID.randomUUID());
@@ -662,7 +668,7 @@ public class EconomyDataTest {
 
         // 那种货币本来就锁住了：改了也不落盘，不标脏（不然每次开服白白重写一遍存档）
         CompoundTag lockedOne = goodTag(UUID.randomUUID());
-        Nbt.compoundOf(Nbt.compoundOf(lockedOne, "currencies"), COIN).putString("minted", "坏");
+        com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(lockedOne, "currencies"), COIN).putString("minted", "坏");
         escrowOf(lockedOne).putLong("createdAt", Long.MAX_VALUE);
         EconomyData ld = EconomyData.load(lockedOne, () -> now);
         eq(ld.lockedCurrencies(), Set.of(COIN), "对照：那种货币锁着");
@@ -763,8 +769,8 @@ public class EconomyDataTest {
         older.putLong("generation", 4);
         CompoundTag newer = goodTag(a);
         newer.putLong("generation", 5);
-        Nbt.compoundOf(Nbt.compoundOf(Nbt.compoundOf(newer, "currencies"), COIN), "balances").putLong(a.toString(), 777);
-        Nbt.compoundOf(Nbt.compoundOf(newer, "currencies"), COIN).putLong("minted", 877);
+        com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(newer, "currencies"), COIN), "balances").putLong(a.toString(), 777);
+        com.november.mcphone.core.PhoneNbt.getCompound(com.november.mcphone.core.PhoneNbt.getCompound(newer, "currencies"), COIN).putLong("minted", 877);
 
         EconomySnapshot.write(snap, newer);
         EconomyData pick = EconomyData.loadPreferring(older, snap, () -> 1);
@@ -796,10 +802,10 @@ public class EconomyDataTest {
         sameCoin.hold(holder, UUID.randomUUID(), 20, RSN);
         CompoundTag handedToMc = d.toTag();
         eq(EconomySnapshot.read(snap), handedToMc, "快照就是交给 MC 的那一份（含托管）");
-        check(Nbt.compoundListOf(handedToMc, "escrow").size() == 1, "夹具里真有一笔托管");
-        long g1 = Nbt.longOf(handedToMc, "generation");
-        eq(Nbt.longOf(d.toTag(), "generation"), g1 + 1, "再保存一次代数加一");
-        eq(Nbt.longOf(EconomyData.load(handedToMc, t::get).toTag(), "generation"), g1 + 1,
+        check(com.november.mcphone.core.PhoneNbt.getList(handedToMc, "escrow", 10).size() == 1, "夹具里真有一笔托管");
+        long g1 = com.november.mcphone.core.PhoneNbt.getLong(handedToMc, "generation");
+        eq(com.november.mcphone.core.PhoneNbt.getLong(d.toTag(), "generation"), g1 + 1, "再保存一次代数加一");
+        eq(com.november.mcphone.core.PhoneNbt.getLong(EconomyData.load(handedToMc, t::get).toTag(), "generation"), g1 + 1,
                 "代数跨重启接着涨：从 0 重来的话，快照写失败时旧快照的代数反而更大");
 
         // 清单 #4 的离线版：保存 A → 改动 → 保存 B 写到一半被杀（快照只留半截临时文件、SavedData 被截断）→ 重启读到 A
@@ -882,7 +888,7 @@ public class EconomyDataTest {
         check(onlyStale.wholeLock() != null && onlyStale.wholeLock().contains(stale.toString()),
                 "只剩 .stale：整份锁住并点名它 —— " + onlyStale.wholeLock());
         String why = onlyStale.wholeLock();
-        check(why.contains("第 " + Nbt.longOf(latest, "generation") + " 次保存"), "锁住原因里说得出 .stale 是第几次保存");
+        check(why.contains("第 " + com.november.mcphone.core.PhoneNbt.getLong(latest, "generation") + " 次保存"), "锁住原因里说得出 .stale 是第几次保存");
         java.nio.file.attribute.FileTime past = java.nio.file.attribute.FileTime.fromMillis(1_600_000_000_000L);
         Files.setLastModifiedTime(stale, past);
         why = EconomyData.createFor(mcFile, snap, t::get).wholeLock();
@@ -927,13 +933,9 @@ public class EconomyDataTest {
         Path snap = eco.resolve("economy.dat");
         EconomySnapshot.write(snap, goodTag(UUID.randomUUID()));
         Path mcFile = dir.resolve("mcphone_economy.dat");                 // SavedData 不在
-        try {
-            if (Files.getFileAttributeView(eco, java.nio.file.attribute.PosixFileAttributeView.class) == null) {
-                System.out.println("（跳过 unreadableIsNotAbsent：这个文件系统没有 POSIX 权限）");
-                return;
-            }
-        } catch (UnsupportedOperationException ignored) {
-            System.out.println("（跳过 unreadableIsNotAbsent：这个文件系统没有 POSIX 权限）");
+        if (!Files.getFileStore(eco).supportsFileAttributeView(
+                java.nio.file.attribute.PosixFileAttributeView.class)) {
+            System.out.println("（跳过 unreadableIsNotAbsent：这个文件系统没有 POSIX 权限位）");
             return;
         }
         Files.setPosixFilePermissions(eco, java.util.EnumSet.noneOf(java.nio.file.attribute.PosixFilePermission.class));
@@ -1036,8 +1038,7 @@ public class EconomyDataTest {
         String blind = EconomyData.loadPreferring(badSaved, plain.resolve("economy.dat"), () -> 1).wholeLock();
         check(blind.contains("看不到"), "SavedData 锁住、快照看不到：说看不到，不说不在 —— " + blind);
         check(notDir != null && notDir.contains("看不到"), "快照路径走不通：锁住并说看不到，不当成新世界 —— " + notDir);
-        check(notDir != null && !notDir.contains("上一份完整快照") && !notDir.contains("也读不出来"),
-                ".stale 同样看不到：不暗示有一份 .stale —— " + notDir);
+        check(!notDir.contains("上一份完整快照") && !notDir.contains("也读不出来"), ".stale 同样看不到：不暗示有一份 .stale —— " + notDir);
     }
 
     /** 解压后超过上限：读不出（IOException），不为它把堆吃光。上限本身那么大的读得出。 */
@@ -1544,9 +1545,9 @@ public class EconomyDataTest {
         eq(gem.transfer(a, b, 4, RSN), TxnResult.OK, "没坏的那种照常");
 
         CompoundTag out = d.toTag();
-        eq(Nbt.compoundOf(out, "currencies").get(COIN), bad, "坏的那一段原样写回");
-        ListTag outEsc = Nbt.compoundListOf(out, "escrow");
-        check(outEsc.size() == 1 && Nbt.compoundAt(outEsc, 0).equals(escrowTag(escId, COIN, 30, 1)),
+        eq(com.november.mcphone.core.PhoneNbt.getCompound(out, "currencies").get(COIN), bad, "坏的那一段原样写回");
+        ListTag outEsc = com.november.mcphone.core.PhoneNbt.getList(out, "escrow", 10);
+        check(outEsc.size() == 1 && com.november.mcphone.core.PhoneNbt.getCompound(outEsc, 0).equals(escrowTag(escId, COIN, 30, 1)),
                 "坏货币的托管原样写回，没被当成能放款的读进账本：" + outEsc);
         eq(EconomyData.load(out, t::get).lockedCurrencies(), Set.of(COIN), "写回去再读还是锁着 —— 没有被一本空账盖掉");
 
@@ -1563,7 +1564,7 @@ public class EconomyDataTest {
         t2.put("escrow", esc2);
         EconomyData d2 = EconomyData.load(t2, t::get);
         eq(d2.lockedCurrencies(), Set.of(GEM), "托管读坏也锁那种货币");
-        eq(Nbt.compoundOf(d2.toTag(), "currencies").get(GEM), good, "它的余额段原样写回，没丢");
+        eq(com.november.mcphone.core.PhoneNbt.getCompound(d2.toTag(), "currencies").get(GEM), good, "它的余额段原样写回，没丢");
     }
 
     /** 强杀：重启后看到的是上一次保存那一份完整快照 —— 总额守恒、对账平；流水里标出没进存档的几笔。 */
@@ -2031,10 +2032,7 @@ public class EconomyDataTest {
                     long wallBefore = ScriptBudget.wallLeftNanos();
                     g.call(() -> 1);                                   // 主线程卡了约 60 ms
                     long wallAfter = ScriptBudget.wallLeftNanos();
-                    // 并行 CI 里线程唤醒与调度本身会有十几毫秒抖动。真正的失败形态是
-                    // 60 ms 的主线程等待被算进 20 ms 墙钟预算（会掉到 0 或负数）；
-                    // 30 ms 容差仍能把“等待没有扣除”与调度噪声分开。
-                    check(wallAfter > wallBefore - 30_000_000L,
+                    check(wallAfter > wallBefore - 10_000_000L,
                             "等主线程的 60 ms 没有吃掉 20 ms 的墙钟（前 " + wallBefore / 1_000_000 + " ms，后 "
                                     + wallAfter / 1_000_000 + " ms）");
                     check(ScriptBudget.hostWaitLeftNanos() < 150_000_000L - 40_000_000L, "等的时间记进了累计");
@@ -2130,16 +2128,6 @@ public class EconomyDataTest {
 
     /** 权限挂在 economy 上：mcphone 根节点对谁都放行，别的子命令先后注册都不受影响。 */
     static void commandPermissionNode() {
-        CommandSources.initialize();
-        if (!CommandSources.supportsDispatcherTests()) {
-            check(!com.november.mcphone.platform.CommandPermissions.canAuditEconomy(source(0)),
-                    "普通玩家（权限 0）不能对账");
-            check(!com.november.mcphone.platform.CommandPermissions.canAuditEconomy(source(2)),
-                    "权限 2 也不行");
-            check(com.november.mcphone.platform.CommandPermissions.canAuditEconomy(source(3)),
-                    "OP 3 级能对账");
-            return;
-        }
         var dispatcher = new com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack>();
         EconomyCommand.register(dispatcher);
         var root = dispatcher.getRoot().getChild("mcphone");
@@ -2152,7 +2140,7 @@ public class EconomyDataTest {
     }
 
     static net.minecraft.commands.CommandSourceStack source(int level) {
-        return CommandSources.forLevel(level);
+        return com.november.mcphone.test.CommandPermissions.source(level);
     }
 
     /** 1000 次合法调用经网关、两条 worker 并发：总额不变，对账平（builtin 档；计分板档要真服，在 S15g）。 */
@@ -2188,6 +2176,97 @@ public class EconomyDataTest {
             w.shutdownNow();
             eq(m.ex.submit(() -> total(d, COIN)).get(), before, "1000 次合法调用后总额不变");
             check(m.ex.submit(() -> EconomyAudit.run(COIN, d).balanced()).get(), "对账平");
+        }
+    }
+
+    /**
+     * S15f：注册表与服务器/世界生命周期同轴 —— 开服建、停服 clear；重复 install/stop 幂等；
+     * 查找函数来自注册表，而不是写死的 null。起不了服务器，用假网关走 {@link EconomyRuntime#install}。
+     */
+    static void registryLifecycle() throws Exception {
+        AtomicLong t = new AtomicLong(1);
+        EconomyData d = EconomyData.empty(t::get);
+        TxnLog log = new TxnLog(tmp("s15f"), ZoneOffset.UTC, d);
+        UUID a = UUID.randomUUID();
+        // 先造一点账：注册表只给"存档里已经出现过"的货币注册（面额表属 S15d′，本步不造货币）
+        eq(builtin(COIN, d, log, t).mint(a, 1000, RSN), TxnResult.OK, "先造出账目，注册表才有货币可注册");
+
+        CurrencyGateway gw = new CurrencyGateway(Runnable::run, () -> true);
+        EconomyRuntime r = EconomyRuntime.install(d, log, gw, 0);
+        try {
+            check(EconomyRuntime.current() == r, "开服后 current 就是它");
+            CurrencyRegistry reg = r.registry();
+            check(reg != null, "注册表不是 null —— 查找函数来自它，不再是 currencyId -> null");
+            ICurrencyProvider p = reg.get(COIN);
+            check(p != null, "存档里已有的货币查得到 provider");
+            check(p instanceof GatedCurrencyProvider, "交出来的是包过网关的那一份");
+            eq(reg.defaultCurrency(), null, "没有配置默认货币时 default() 是 null，不抛");
+            eq(reg.get(GEM), null, "没出现过的货币查不到，也不挂空壳");
+
+            // 同一种货币的第二个实例直接拒、不替换（E25、E26①）
+            ICurrencyProvider before = reg.get(COIN);
+            check(!reg.register(builtin(COIN, d, log, t), false), "同一种货币第二个实例被拒");
+            check(reg.get(COIN) == before, "被拒的那次没有替换掉原来的");
+
+            // 重复开服：上一份被 stop（清注册表 + 关网关），换成新的一份
+            CurrencyGateway gw2 = new CurrencyGateway(Runnable::run, () -> true);
+            EconomyRuntime r2 = EconomyRuntime.install(d, log, gw2, 0);
+            check(EconomyRuntime.current() == r2 && r2 != r, "重复开服：current 换成新的一份");
+            check(!gw.isOpen(), "重复开服把上一份的网关关掉了");
+            eq(reg.get(COIN), null, "上一份注册表被 clear，不残留上一个世界的 provider");
+            check(r2.registry() != reg && r2.registry().get(COIN) != null, "新的一份是新的注册表且照样注册上了");
+
+            // 停服：current 归 null、注册表清空；重复停服安全
+            CurrencyRegistry reg2 = r2.registry();
+            EconomyRuntime.stop();
+            check(EconomyRuntime.current() == null, "停服后 current 是 null");
+            eq(reg2.get(COIN), null, "停服 clear 之后查不到");
+            check(!gw2.isOpen(), "停服关网关");
+            EconomyRuntime.stop();
+            check(EconomyRuntime.current() == null, "重复停服安全（幂等）");
+        } finally {
+            EconomyRuntime.stop();
+        }
+    }
+
+    /**
+     * S15g 补上一轮的 P1：生产里<b>唯一会动钱</b>的组合 ——
+     * {@code install → sweepNow → registry::get → GatedCurrencyProvider → 网关主线程快路径 → BuiltinProvider.refund}
+     * —— 真的把钱退回原主、写进流水，且重复扫描不重复退。
+     */
+    static void installRefundsExpiredEscrow() throws Exception {
+        AtomicLong t = new AtomicLong(1_700_000_000_000L);
+        Path dir = tmp("s15g-refund");
+        EconomyData d = EconomyData.empty(t::get);
+        TxnLog log = new TxnLog(dir, ZoneOffset.UTC, d);
+        BuiltinProvider coin = builtin(COIN, d, log, t);
+        UUID a = UUID.randomUUID(), b = UUID.randomUUID();
+        eq(coin.mint(a, 100, RSN), TxnResult.OK, "先造出账目");
+        HoldResult expired = coin.hold(a, b, 30, RSN);
+        eq(d.get(a, COIN), 70L, "托管先扣了 30");
+        t.addAndGet(EscrowLedger.DEFAULT_TIMEOUT_MS + 1);       // 这笔托管已经过期
+
+        CurrencyGateway gw = new CurrencyGateway(Runnable::run, () -> true);
+        EconomyRuntime r = EconomyRuntime.install(d, log, gw, 0);
+        try {
+            eq(d.get(a, COIN), 100L, "开服扫描经注册表把超时托管退回原主");
+            check(d.escrow().get(expired.id()).settled(), "那笔托管结清了");
+            // 流水文件名按【墙上时钟】的日期（注册表里的 provider 用 System::currentTimeMillis，与生产一致），
+            // 而这份测试的假时钟停在过去：所以扫整个 ledger 目录，不按合成时间戳找文件
+            StringBuilder all = new StringBuilder();
+            Path ledgerDir = dir.resolve("ledger");
+            if (Files.isDirectory(ledgerDir)) {
+                try (var files = Files.list(ledgerDir)) {
+                    for (Path f : files.toList()) all.append(Files.readString(f)).append('\n');
+                }
+            }
+            check(all.indexOf("|refund|") >= 0 && all.indexOf("|" + EconomyRuntime.TIMEOUT_REFUND_KIND + "|") >= 0,
+                    "退款进了流水，kind 写明是超时：" + all);
+            long before = d.get(a, COIN);
+            r.sweepNow();
+            eq(d.get(a, COIN), before, "再扫一趟不重复退");
+        } finally {
+            EconomyRuntime.stop();
         }
     }
 
@@ -2277,8 +2356,12 @@ public class EconomyDataTest {
         gatewayCarriesCallingApp();
         gatedCoversInterface();
         registryHandsOutGated();
-        commandPermissionNode();
+        if (com.november.mcphone.test.CommandPermissions.supportsDispatcherTests()) {
+            commandPermissionNode();
+        }
         conservationThroughGateway();
+        registryLifecycle();
+        installRefundsExpiredEscrow();
 
         System.out.println("断言 " + checks + " 条");
         if (!failures.isEmpty()) {

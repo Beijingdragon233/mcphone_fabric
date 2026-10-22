@@ -1,19 +1,24 @@
 package com.november.mcphone.core.script.server.economy;
 
 import com.november.mcphone.MCphone;
+import com.november.mcphone.api.economy.Currency;
 import com.november.mcphone.api.economy.EscrowId;
 import com.november.mcphone.api.economy.ICurrencyProvider;
 import com.november.mcphone.api.economy.TxnReason;
 import com.november.mcphone.api.economy.TxnResult;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * 货币这一摊跟着服务器生死（§15.5）。
@@ -24,8 +29,28 @@ import java.util.function.Function;
  * <p>超时托管除了开服扫一次，运行中每 {@link #SWEEP_INTERVAL_MS} 再扫一次（{@link #tick()}）：只在开服扫，
  * 服务器跑得越久越不守 7 天的规则。
  *
- * <p>注册表（有哪几种货币、各用哪一档）还没接进来，那是 S15f 的事；所以扫描时超时托管找不到 provider 退款，
- * 只计数不动账 —— 钱留在托管里，比退错地方强。
+ * <h2>注册表：谁提供哪种钱（S15f 接线）</h2>
+ *
+ * 唯一一份 {@link CurrencyRegistry} 由本类持有（{@link #registry()}），与服务器/世界生命周期同轴：
+ * 开服建、停服 {@link CurrencyRegistry#clear()}；provider 查找就是它的 {@code get}，不再是写死的 {@code null}。
+ * {@code ctx.currency.*}（S15g 接线）与这里的超时托管查找拿到的是<b>同一个实例</b> ——
+ * 两份实例会让"同一种货币只有一个实例"这条守恒前提失效（见 {@link CurrencyRegistry#register}）。
+ *
+ * <p><b>S15d′ 起按配置注册</b>（{@code serverconfig/mcphone-economy.json}）：
+ * {@link EconomyConfig} 读表 → {@link EconomyProviders#plan} 定"注册/跳过 + 默认货币" →
+ * {@link EconomyProviders#build} 构造 → 本类按<b>配置顺序</b>注册。
+ * 存档里出现过、配置里没有的货币仍按 {@code builtin} 兜底注册 + WARN（不许把玩家已有的钱变不可达）。
+ * 新世界没有配置、也没有存档货币时注册表为空，{@code ctx.currency.default()} 回 null
+ * （App 该 {@code ctx.fail} 而不是崩，§22.8）。
+ *
+ * <p><b>没到货的档不注册、也不挂空壳</b>（{@code ctx} 上不出现"有属性但永远不可用"的货币，E12/E20/E33）：
+ * <ul>
+ *   <li>{@code scoreboard} —— S15d′ 起按配置注册（{@code platform/Scores} 接缝已在）；</li>
+ *   <li>{@code adapter} —— 还没有已到货的 {@link AdapterProvider.ExternalWallet} 实例（目标模组未定）
+ *       ⇒ 一律跳过 + 明确日志；</li>
+ *   <li>{@code emc_legacy} —— 只有旧 {@code api/cost} 钱包（{@code IEmcWallet}）真的在场才注册，
+ *       否则跳过 + 明确日志。</li>
+ * </ul>
  */
 public final class EconomyRuntime {
 
@@ -40,25 +65,51 @@ public final class EconomyRuntime {
     private final EconomyData data;
     private final TxnLog log;
     private final CurrencyGateway gateway;
-    /** 货币 id → 它的 provider。注册表接进来（S15f）之前一律找不到。 */
+    /** 货币 id → 它的 provider。生产里就是 {@link #registry} 的 get（同一个实例）。 */
     private final Function<String, ICurrencyProvider> providers;
+    /**
+     * 唯一一份货币注册表，与服务器/世界生命周期同轴（开服建、停服 {@link CurrencyRegistry#clear()}）。
+     * {@code null} 只出现在断言测试直接注入 provider 查找函数的那个构造器里。
+     */
+    private final CurrencyRegistry registry;
+    /**
+     * 本次注册的"配置面注意事项"（plan warning + "没有默认货币"这类），供命令面查（对抗 D′4）：
+     * 光进日志的话，服主在 S2/S5/S6 三种终止态下只能看到一行 warn，对不上账。
+     */
+    private final List<String> configNotes;
     private long nextSweepAt;
     private int lastOrphaned;
     private int lastFailed;
     /** 退款时 provider 抛过异常的托管：钱退没退出去不知道，这次运行里不再自动退（见 {@link #sweepEscrow}） */
     private final Set<EscrowId> suspect = new HashSet<>();
 
+    /** 断言测试用：直接喂一个 provider 查找函数（{@link #registry()} 为 null）。 */
     EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
                    Function<String, ICurrencyProvider> providers, long now) {
+        this(data, log, gateway, null, providers, List.of(), now);
+    }
+
+    private EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
+                           CurrencyRegistry registry, List<String> configNotes, long now) {
+        this(data, log, gateway, registry, registry::get, configNotes, now);
+    }
+
+    private EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
+                           CurrencyRegistry registry,
+                           Function<String, ICurrencyProvider> providers, List<String> configNotes, long now) {
         this.data = data;
         this.log = log;
         this.gateway = gateway;
+        this.registry = registry;
+        this.configNotes = List.copyOf(configNotes);
         this.providers = providers;
         this.nextSweepAt = now + SWEEP_INTERVAL_MS;
     }
 
-    /** 开服时在主线程上调。重复调会先把上一份关掉。 */
+    /** 开服时在主线程上调。重复调会先把上一份关掉（在 {@link #install} 里；这里再兜一句，幂等）。 */
     public static synchronized void start(MinecraftServer server) {
+        // 先停掉上一份再建新日志/网关：否则在最外面这个窗口里，旧的 gateway 还开着、
+        // 旧 runtime 还是 current，而新日志已经开跑了一次 sweep（P3）。多调一次 stop() 零代价。
         stop();
         EconomyData data = EconomyData.get(server);
         // 整份锁住的存档不接进流水：它永远不写存档点，接上了流水就会替它自动补存档点、说它"存过了"
@@ -69,12 +120,161 @@ public final class EconomyRuntime {
         if (data.wholeLock() == null) log.noteRestart(now);
         data.onSave(() -> log.checkpoint(Instant.now()));
         log.sweep(now);
+        // S15d′：先把货币配置读出来（坏条目只丢自己、不崩服），再建网关与注册表
+        EconomyConfig.Result cfg = EconomyConfig.load(
+                EconomyConfig.pathIn(server.getWorldPath(LevelResource.ROOT)));
+        for (String p : cfg.problems()) MCphone.LOGGER.warn("[MCphone] 货币配置：{}", p);
         CurrencyGateway gateway = new CurrencyGateway(server::execute,
                 () -> Thread.currentThread() == server.getRunningThread());
-        EconomyRuntime r = new EconomyRuntime(data, log, gateway, currencyId -> null, System.nanoTime() / 1_000_000);
+        // 顺序：建注册表 → 按配置注册 → 扫超时托管（用注册表找 provider）→ 最后才开网关。
+        // 扫描发生在主线程上，而网关的 call 在主线程直接执行、不受"还没 open"影响（见 CurrencyGateway.call）
+        install(data, log, gateway, System.nanoTime() / 1_000_000, cfg.specs(), () -> server);
+    }
+
+    /**
+     * 建注册表、注册已到货的档、扫一趟超时托管、开网关、挂上 {@link #current}。
+     * <b>会先 {@link #stop()} 把上一份关掉</b>，所以重复调用是幂等的（单人游戏连续开关世界不会残留上一个世界）。
+     *
+     * <p>与 {@code start(MinecraftServer)} 分开是为了能在 {@code docs/} 的断言测试里跑完整生命周期 ——
+     * 那边起不了服务器，但能喂一本 {@link EconomyData} 与一个假网关。
+     */
+    static synchronized EconomyRuntime install(EconomyData data, TxnLog log,
+                                               CurrencyGateway gateway, long now) {
+        return install(data, log, gateway, now, null, null);
+    }
+
+    /**
+     * S15d′ 的接线版：{@code specs} 来自 {@link EconomyConfig}；{@code server} 给
+     * {@link ScoreboardProvider} 用。{@code specs == null} = 旧兜底（只按存档注册 builtin，
+     * 供断言测试与"配置没到"的降级）。
+     */
+    static synchronized EconomyRuntime install(EconomyData data, TxnLog log, CurrencyGateway gateway,
+                                               long now, List<CurrencySpec> specs,
+                                               Supplier<MinecraftServer> server) {
+        stop();
+        EconomyRuntime r = wire(data, log, gateway, now, specs, server);
         r.sweepNow();
         gateway.open();
         current = r;
+        return r;
+    }
+
+    /**
+     * 建出唯一一份注册表并按配置注册，得到 runtime。开服与断言测试都走这里，
+     * 保证 {@code ctx.currency} 与超时托管查找不会各建一份。
+     */
+    static EconomyRuntime wire(EconomyData data, TxnLog log, CurrencyGateway gateway, long now) {
+        return wire(data, log, gateway, now, null, null);
+    }
+
+    static EconomyRuntime wire(EconomyData data, TxnLog log, CurrencyGateway gateway, long now,
+                               List<CurrencySpec> specs, Supplier<MinecraftServer> server) {
+        CurrencyRegistry registry = new CurrencyRegistry(gateway);
+        List<String> notes;
+        if (specs == null) {
+            registerAvailable(registry, data, log);   // 旧兜底：没有配置时的行为，一个字节不变
+            notes = List.of();
+        } else {
+            notes = registerConfigured(registry, data, log, specs, server);
+        }
+        return new EconomyRuntime(data, log, gateway, registry, notes, now);
+    }
+
+    /**
+     * 按配置注册（S15d′）。顺序 = 配置顺序；跳过项各打一行原因；
+     * <b>存档兜底</b>：存档里出现过、配置里没有的货币仍按 builtin 注册 + 一条 WARN
+     * （漏掉等于把玩家已经拥有的钱变成不可达，卡约束 3）。
+     */
+    private static List<String> registerConfigured(CurrencyRegistry registry, EconomyData data, TxnLog log,
+                                                   List<CurrencySpec> specs, Supplier<MinecraftServer> server) {
+        Set<String> configured = new java.util.LinkedHashSet<>();
+        List<String> notes = new java.util.ArrayList<>();
+        EconomyProviders.Plan plan = EconomyProviders.plan(specs, EconomyProviders.hasEmcWallet());
+        for (String w : plan.warnings()) {
+            MCphone.LOGGER.warn("[MCphone] 货币配置：{}", w);
+            notes.add(w);
+        }
+        for (EconomyProviders.Planned p : plan.entries()) {
+            CurrencySpec spec = p.spec();
+            configured.add(spec.id());
+            if (!p.register()) {
+                MCphone.LOGGER.warn("[MCphone] 货币 '{}'（provider={}）本次不注册：{}",
+                        spec.id(), spec.provider(), skipText(p.skipReasonKey()));
+                continue;
+            }
+            ICurrencyProvider provider = EconomyProviders.build(p, data, server, log);
+            if (registry.register(provider, p.isDefault())) {
+                MCphone.LOGGER.info("[MCphone] 货币 '{}'：provider={} decimals={} default={} max={}",
+                        spec.id(), spec.provider(), spec.decimals(), p.isDefault(),
+                        spec.effectiveMax() == Long.MAX_VALUE ? "无上限" : String.valueOf(spec.effectiveMax()));
+            }
+        }
+        for (String id : data.currencyIds()) {
+            if (configured.contains(id)) continue;
+            ResourceLocation rl = ResourceLocation.tryParse(id);
+            if (rl == null) {
+                MCphone.LOGGER.warn("[MCphone] 货币注册表：存档里的 id {} 不是合法的 ResourceLocation，跳过", id);
+                continue;
+            }
+            Currency currency = new Currency(rl, Component.literal(rl.getPath()), "", 0, null);
+            BuiltinProvider p = new BuiltinProvider(currency, data, data.escrow(), log,
+                    System::currentTimeMillis, false, Long.MAX_VALUE);
+            if (registry.register(p, false)) {
+                MCphone.LOGGER.warn("[MCphone] 存档里的货币 '{}' 不在配置里，仍按 builtin 注册"
+                        + "（要让它带元数据/走别的档，请写进 mcphone-economy.json）", id);
+            }
+        }
+        // D′4：没有默认货币要单独说一句，并留给命令面查 —— 只在启动日志里的话服主对不上账
+        if (registry.defaultCurrency() == null) {
+            String note = "本服没有默认货币（default=true 都落在未注册的档上，或配置里没写）；"
+                    + "ctx.currency.default() 回 null";
+            MCphone.LOGGER.warn("[MCphone] {}", note);
+            notes.add(note);
+        }
+        return notes;
+    }
+
+    /** 本次注册的配置面注意事项（命令面用；见 {@link #registerConfigured}）。 */
+    List<String> configNotes() {
+        return configNotes;
+    }
+
+    /** 跳过原因键 → 服主看得懂的一句话。 */
+    private static String skipText(String reasonKey) {
+        return switch (reasonKey) {
+            case EconomyProviders.SKIP_EMC_NO_WALLET -> "本服没有在用的 EMC 钱包（emc_legacy 需要真钱包在场）";
+            case EconomyProviders.SKIP_ADAPTER_NO_BRIDGE -> "adapter 档还没有实现（目标模组未定），不挂空壳";
+            default -> reasonKey;
+        };
+    }
+
+    /**
+     * <b>旧兜底路径</b>（{@code specs == null} 时走）：只为世界存档里已经出现过的货币按 {@code builtin}
+     * 注册一份。S15d′ 起生产走 {@link #registerConfigured}（按配置注册）；这条留给断言测试与
+     * "配置没读到"的降级，行为与 S15f 时代一致。
+     *
+     * <p>元数据只从 id 推：显示名取 path、符号空、小数位 0。它只影响显示（E19），
+     * 对账与超时退款都不看这些。
+     */
+    private static void registerAvailable(CurrencyRegistry registry, EconomyData data, TxnLog log) {
+        java.util.List<String> ids = new java.util.ArrayList<>();
+        for (String id : data.currencyIds()) {
+            ResourceLocation rl = ResourceLocation.tryParse(id);
+            if (rl == null) {
+                // 存档里的 id 不是合法 ResourceLocation：本来也花不出去，跳过并说出来，别让它把开服打断
+                MCphone.LOGGER.warn("[MCphone] 货币注册表：存档里的 id {} 不是合法的 ResourceLocation，跳过", id);
+                continue;
+            }
+            Currency currency = new Currency(rl, Component.literal(rl.getPath()), "", 0, null);
+            BuiltinProvider p = new BuiltinProvider(currency, data, data.escrow(), log,
+                    System::currentTimeMillis, false, Long.MAX_VALUE);
+            // isDefault=false：默认货币是配置决定的事（S15d′ 之后由 registerConfigured 拿 plan 决定）
+            if (registry.register(p, false)) ids.add(id);
+        }
+        if (!ids.isEmpty()) {
+            MCphone.LOGGER.info("[MCphone] 货币注册表：按 builtin 档注册了 {} 种（{}）",
+                    ids.size(), String.join("、", ids));
+        }
     }
 
     /**
@@ -121,16 +321,34 @@ public final class EconomyRuntime {
         lastFailed = s.failed();
     }
 
-    /** 停服时在主线程上调，<b>在 {@code ScriptWorkers.stop()} 之前</b>。 */
+    /** 停服时在主线程上调，<b>在 {@code ScriptWorkers.stop()} 之前</b>。重复调安全（已经是 null 就是空操作）。 */
     public static synchronized void stop() {
         EconomyRuntime r = current;
         current = null;
-        if (r != null) r.gateway.close();
+        if (r != null) {
+            // 先关网关（还在排队的调用一律取消）、再清注册表：清掉之后谁都拿不到 provider，
+            // 上一个世界的实例不会跟着静态表进下一个世界（单人游戏连续开关世界）
+            r.gateway.close();
+            if (r.registry != null) r.registry.clear();
+        }
     }
 
     /** 没开服、或者已经停了就是 null。 */
     public static EconomyRuntime current() {
         return current;
+    }
+
+    /**
+     * 唯一一份货币注册表 —— {@code ctx.currency.*}（S15g 接线）与超时托管查找用的是<b>同一个实例</b>。
+     * 直接注入 provider 查找函数的测试运行时为 {@code null}。
+     *
+     * <p><b>线程约定（S15g 接线前必须定死）</b>：注册表是普通 {@code LinkedHashMap}，现在只有主线程上的
+     * {@code sweepNow} 读它，{@code registry()} 也还没有生产调用点。S15g 把 {@code ctx.currency} 接上之后，
+     * worker 上的 {@code get()} 会与主线程上的 {@code register()}/{@code clear()} 并发 —— 要么把表换成并发结构，
+     * 要么明文规定"注册表只在主线程读"。在那之前不许接。
+     */
+    public CurrencyRegistry registry() {
+        return registry;
     }
 
     public EconomyData data() {
@@ -143,6 +361,18 @@ public final class EconomyRuntime {
 
     public CurrencyGateway gateway() {
         return gateway;
+    }
+
+    /**
+     * 当前这一份的主线程网关；<b>没装经济、或已停服就是 null</b>。
+     *
+     * <p>S18 的 {@code ctx.score} 借它回主线程：{@code Scoreboard} 和账本一样不是线程安全的，
+     * 不该为了计分板再养一个队列。网关一关（停服顺序里在脚本之前），计分板调用就和货币一样
+     * 拿到"正在停"的拒绝 —— 这正是我们要的。
+     */
+    public static CurrencyGateway gatewayOrNull() {
+        EconomyRuntime r = current;
+        return r == null ? null : r.gateway;
     }
 
     /**

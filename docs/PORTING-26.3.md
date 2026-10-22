@@ -3060,3 +3060,25 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
   `Registry loading errors` 或新的 crash report，客户端正常关闭。
 - 本轮 jar：3,076,716 字节，SHA256
   `A8E18CB5615157517F07B3B2D13711E9912C8E622BE9149D76FC786E8099059A`。
+
+## 四十九、同步 main 到 port/26.3-s23
+
+- 合并源为 `main` 的 `cd1a9ece`，合并前 26.3 分支为 `23aec8d0`。
+- 共用代码接入 main 新增的 `PhoneGraphics`、`PlayerAccess`、`PlayerEffects`、
+  `PlayerAbilities`、`Predicates`、`LootAccess`、`PhoneKeyInput`、`PhoneSoundDevice`、
+  `PhoneWeather` 与 `PhoneSkinMetadata` 接缝；26.3 专属差异继续留在
+  `platforms/26.3-neoforge` 和 `versions/name-renames.json`。
+- 26.3 的私有 Rhino 改为消费仓库统一的 `gradle/mcphone-engine-dependency.gradle`，
+  不再声明原版 Rhino。新增的断言夹具覆盖 `TestFontBase`、`TestEditBoxFactory` 与
+  `CommandPermissions`；26.3 的纯 JVM 测试跳过需要真实 FML 引导的 Brigadier
+  静态树，POSIX 文件权限断言在非 POSIX 文件系统上显式跳过。
+- 已重新生成接缝清单与平台孪生基线：26.3 接缝 81 个、26.1.2 接缝 83 个，
+  全部目标 155 对、差异合计 9796 行。
+- 1.20.1 Forge、1.21.1 Fabric、1.21.1 NeoForge 与 26.1.2 NeoForge 的
+  `compileAssertTests` 均 `BUILD SUCCESSFUL`。
+- 本地 26.3 `build --max-workers=2`：`BUILD SUCCESSFUL`，114 份断言全部跑完；
+  私有引擎身份 708 类、类型边界 1016 类，正式包内嵌引擎校验通过。
+  默认并行度在这台 Windows 机器上曾触发 `LayoutEngineTest` 的 100ms 性能阈值，
+  单测复跑为 0.51ms；Linux CI 仍是权威结果。
+- 尚未进行这一版 jar 的进游戏逐页复测；聊天、输入法、裁剪、相机和附属 API
+  仍需在真实客户端/服务端中验收。

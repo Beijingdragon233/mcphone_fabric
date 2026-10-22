@@ -247,12 +247,12 @@ dependencies {
     compileOnly "maven.modrinth:toms-storage:${toms_version}"
     localRuntime "maven.modrinth:toms-storage:${toms_version}"
 
-    // JavaMP3 与 Rhino 不是联动模组，是嵌进 jar 的库，跟 MC 版本无关，留着它们
-    // 顺带把 jarJar 这条路一起验了。
-    jarJar(implementation("org.mozilla:rhino:[${rhino_version},2.0)"))
-
+    // JavaMP3 与私有 Rhino 不是联动模组，是嵌进 jar 的库，跟 MC 版本无关。
+    // 私有 Rhino 的坐标、摘要和打包规则由仓库级脚本统一锁定。
     jarJar(implementation("fr.delthas:javamp3:[${javamp3_version},2.0)"))
 }
+
+apply from: '../../gradle/mcphone-engine-dependency.gradle'
 
 var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
     var replaceProperties = [

@@ -1,8 +1,8 @@
 package com.november.mcphone.core.client;
 
 import com.november.mcphone.MCphone;
-import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.api.client.app.IPhoneApp;
+import com.november.mcphone.api.client.ui.PhoneViewport;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.ui.IPhonePage;
 import com.november.mcphone.api.client.ui.PhoneCanvas;
@@ -10,14 +10,17 @@ import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneItemData;
 import com.november.mcphone.core.PhoneLocation;
 import com.november.mcphone.platform.client.Draw;
-import com.november.mcphone.platform.client.KeyModifiers;
-import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.feature.chat.client.ChatAddContact;
 import com.november.mcphone.feature.chat.client.ChatConversation;
+import com.november.mcphone.feature.chat.client.ChatAttachment;
 import com.november.mcphone.core.ServerConfig;
 import com.november.mcphone.feature.chat.client.ChatImageCache;
 import com.november.mcphone.feature.chat.client.ChatImageSender;
 import com.november.mcphone.feature.chat.client.ChatList;
+import com.november.mcphone.feature.chat.client.ChatContacts;
+import com.november.mcphone.feature.chat.client.ChatProfile;
+import com.november.mcphone.feature.chat.client.ChatGroupCreate;
+import com.november.mcphone.feature.chat.client.ChatGroupDetails;
 import com.november.mcphone.feature.chat.client.ChatMediaPicker;
 import com.november.mcphone.feature.chat.client.StickerLibrary;
 import com.november.mcphone.feature.gallery.client.Gallery;
@@ -46,7 +49,6 @@ import com.november.mcphone.feature.store.client.AppStore;
 import com.november.mcphone.feature.store.client.CompanionApps;
 import com.november.mcphone.feature.clock.client.ClockPage;
 import com.november.mcphone.feature.weather.client.WeatherPage;
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import com.november.mcphone.platform.client.PhoneScreenBase;
@@ -62,7 +64,7 @@ import java.util.UUID;
 /** 手机主屏幕 GUI：管理各页面之间的导航（{@link Mode}）、分发输入、兜住附属页面的异常 */
 public final class PhoneScreen extends PhoneScreenBase {
 
-    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT, AUTHOR_KEY }
+    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_PROFILE, CHAT_PLAYER_PROFILE, CHAT_CONTACTS, CHAT_NEW_FRIENDS, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION, CHAT_GROUP_CREATE, CHAT_GROUP_DETAILS, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT, AUTHOR_KEY }
 
     private final long openTimeMs;
     private boolean animationDone;
@@ -104,13 +106,26 @@ public final class PhoneScreen extends PhoneScreenBase {
      * 附属 App 当前打开的那一页，null 表示没有。
      * 每个回调都要兜 Throwable 而不是 Exception：引用没装的模组类抛的是 NoClassDefFoundError。
      */
-    private IPhonePage addonPage = null;
+    private PhoneViewport cachedAddonViewport;
+    private final PhonePageHost addonHost = new PhonePageHost((page, error) ->
+            MCphone.LOGGER.error("[MCphone] 附属页面 {} 回调失败", page.getClass().getName(), error));
 
     private final Gallery gallery = new Gallery();
 
     private final DeviceNameEditor deviceNameEditor = new DeviceNameEditor();
 
     private final ChatList chatList = new ChatList();
+    private final ChatProfile chatProfile=new ChatProfile();
+    private Mode profileReturnMode=Mode.CHAT;
+    private UUID profileTarget;
+    private void openPlayerProfile(UUID id) {
+        profileTarget=id;profileReturnMode=mode;navigateTo(Mode.CHAT_PLAYER_PROFILE);
+    }
+    private final ChatContacts chatContacts = new ChatContacts();
+    private final ChatGroupCreate chatGroupCreate = new ChatGroupCreate();
+    private final ChatGroupDetails chatGroupDetails = new ChatGroupDetails();
+    private final ChatAddContact chatNewFriends = ChatAddContact.newFriends();
+    private Mode chatReturnMode = Mode.CHAT;
     private final ChatAddContact chatAddContact = new ChatAddContact();
     private final ChatConversation chatConversation = new ChatConversation();
     /**
@@ -138,6 +153,9 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     /** 待打开的会话对端：navigateTo 不带参数，进会话前先存这里 */
     private UUID pendingConversationPeer;
+    private boolean pendingConversationIsGroup;
+    private boolean inConversation() { return mode == Mode.CHAT_CONVERSATION || mode == Mode.CHAT_GROUP_CONVERSATION; }
+    private Mode conversationMode() { return pendingConversationIsGroup ? Mode.CHAT_GROUP_CONVERSATION : Mode.CHAT_CONVERSATION; }
 
     /**
      * 手机在玩家身上的位置，设备名要写回这一部。
@@ -207,6 +225,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         this.location = location;
         this.metrics = metricsAt(location);
         this.openTimeMs = System.currentTimeMillis();
+        this.nowMs = this.openTimeMs; // 初次渲染前的布局也必须使用有效动画时间
         this.animationDone = PhoneTheme.OPEN_ANIMATION_MS <= 0;
     }
 
@@ -229,6 +248,11 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     public void navigateTo(Mode target) {
         if (this.mode == target) return;
+        // 临时聊天子页记住来源；附件页返回会话时保留原来源。
+        if ((target == Mode.CHAT_ADD_CONTACT || target == Mode.CHAT_CONVERSATION || target == Mode.CHAT_GROUP_CONVERSATION || target == Mode.CHAT_GROUP_CREATE)
+                && (mode == Mode.CHAT || mode == Mode.CHAT_CONTACTS || mode == Mode.MAIN)) {
+            chatReturnMode = mode == Mode.CHAT_CONTACTS ? Mode.CHAT_CONTACTS : Mode.CHAT;
+        }
 
         // 进详情页不算离开商店：reset 会清掉页码
         if (this.mode == Mode.APP_STORE
@@ -238,7 +262,12 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         // ESC 关机、被顶掉、断线不经过 navigateTo，那几条由 removed() 兜住
-        if (this.mode == Mode.ADDON_PAGE && target != Mode.ADDON_PAGE) closeAddonPage();
+        if (this.mode == Mode.ADDON_PAGE && target != Mode.ADDON_PAGE) {
+            Mode leaving = this.mode;
+            closeAddonPage();
+            // 清理回调可发起另一次导航；不能再用旧目标覆盖新页面。
+            if (addonHost.page() != null || this.mode != leaving) return;
+        }
 
         if (this.mode == Mode.COMPANION_APPS) companionApps.reset();
         if (target == Mode.COMPANION_APPS) companionApps.refresh();
@@ -259,11 +288,25 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (this.mode == Mode.CHAT) chatList.close();
         if (target == Mode.CHAT) chatList.open();
 
+        if (this.mode == Mode.CHAT_PROFILE || this.mode == Mode.CHAT_PLAYER_PROFILE) chatProfile.close();
+        if (target == Mode.CHAT_PROFILE) chatProfile.open();
+        if (target == Mode.CHAT_PLAYER_PROFILE) chatProfile.openPlayer(profileTarget);
+        if (this.mode == Mode.CHAT_CONTACTS) chatContacts.close();
+        if (target == Mode.CHAT_CONTACTS) chatContacts.open();
+        if (this.mode == Mode.CHAT_NEW_FRIENDS) chatNewFriends.close();
+        if (target == Mode.CHAT_NEW_FRIENDS) chatNewFriends.open();
+
         if (this.mode == Mode.CHAT_ADD_CONTACT) chatAddContact.close();
         if (target == Mode.CHAT_ADD_CONTACT) chatAddContact.open();
 
-        if (this.mode == Mode.CHAT_CONVERSATION) chatConversation.close();
+        if (inConversation()) chatConversation.close();
         if (target == Mode.CHAT_CONVERSATION) chatConversation.open(pendingConversationPeer);
+        if (target == Mode.CHAT_GROUP_CONVERSATION) chatConversation.openGroup(pendingConversationPeer);
+        if (target == Mode.CHAT_CONVERSATION || target == Mode.CHAT_GROUP_CONVERSATION) pendingConversationIsGroup = target == Mode.CHAT_GROUP_CONVERSATION;
+        if (mode == Mode.CHAT_GROUP_CREATE) chatGroupCreate.close();
+        if (target == Mode.CHAT_GROUP_CREATE) chatGroupCreate.open();
+        if (mode == Mode.CHAT_GROUP_DETAILS) chatGroupDetails.close();
+        if (target == Mode.CHAT_GROUP_DETAILS) chatGroupDetails.open(pendingConversationPeer);
 
         if (this.mode == Mode.CHAT_PHOTO_PICKER) chatPhotoPicker.close();
         if (target == Mode.CHAT_PHOTO_PICKER) chatPhotoPicker.open();
@@ -349,7 +392,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         UUID target = switch (mode) {
-            case CHAT_CONVERSATION -> chatConversation.peer();
+            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> chatConversation.peer();
             // 选照片那一页也收：人已经在"挑一张"的语境里了，拖进来是同一个意思
             case CHAT_PHOTO_PICKER -> pendingConversationPeer;
             default -> null;
@@ -366,8 +409,8 @@ public final class PhoneScreen extends PhoneScreenBase {
             return;
         }
 
-        ChatImageSender.send(target, picture);
-        if (mode == Mode.CHAT_PHOTO_PICKER) navigateTo(Mode.CHAT_CONVERSATION);
+        if (pendingConversationIsGroup) ChatImageSender.sendGroup(target, picture); else ChatImageSender.send(target, picture);
+        if (mode == Mode.CHAT_PHOTO_PICKER) navigateTo(conversationMode());
     }
 
     /**
@@ -433,8 +476,8 @@ public final class PhoneScreen extends PhoneScreenBase {
      */
     private void sendPicked(Path picked) {
         if (picked == null) return;
-        ChatImageSender.send(pendingConversationPeer, picked);
-        navigateTo(Mode.CHAT_CONVERSATION);
+        if (pendingConversationIsGroup) ChatImageSender.sendGroup(pendingConversationPeer, picked); else ChatImageSender.send(pendingConversationPeer, picked);
+        navigateTo(conversationMode());
     }
 
     /**
@@ -452,7 +495,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     private void tellPlayer(String translationKey, Object... args) {
         // 动作栏而不是聊天框：玩家的眼睛正看着手机屏幕
         if (minecraft != null && minecraft.player != null) {
-            ClientMessages.show(minecraft.player, Component.translatable(translationKey, args), true);
+            com.november.mcphone.platform.PlayerAccess.message(minecraft.player, Component.translatable(translationKey, args), true);
         }
     }
 
@@ -460,6 +503,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     public boolean isViewingConversation(UUID peer) {
         return mode == Mode.CHAT_CONVERSATION && chatConversation.isViewing(peer);
     }
+    public boolean isViewingGroup(UUID group) { return mode == Mode.CHAT_GROUP_CONVERSATION && chatConversation.isViewing(group); }
 
     /**
      * 点开一个 App：先问 openPage()，没有就走 onPress() 由它自己跳出去。
@@ -490,86 +534,71 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
     }
 
-    private void openAddonPage(IPhonePage page) {
-        closeAddonPage();
-        addonPage = page;
-        try {
-            page.onOpen();
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 的 onOpen() 抛异常",
-                    page.getClass().getName(), t);
-        }
-        navigateTo(Mode.ADDON_PAGE);
-    }
-
-    /** 先清字段再回调 onClose()：它里面可能又开一页，后清会把新页抹掉 */
-    private void closeAddonPage() {
-        IPhonePage page = addonPage;
-        addonPage = null;
-        if (page == null) return;
-        try {
-            page.onClose();
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 的 onClose() 抛异常",
-                    page.getClass().getName(), t);
-        }
-    }
-
-    /** 调一次页面回调；抛异常就当场关掉退回主屏，留着会每帧再抛。出异常时算没处理 */
-    private boolean callPage(java.util.function.Predicate<IPhonePage> call) {
-        IPhonePage page = addonPage;
-        if (page == null) return false;
-        try {
-            return call.test(page);
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 抛异常，已关闭该页",
-                    page.getClass().getName(), t);
-            closeAddonPage();
-            navigateTo(Mode.MAIN);
-            return false;
-        }
-    }
-
-    /** 这一页有没有输入框。问不出来就当没有——那是更安全的一侧 */
-    private boolean pageCapturesKeyboard() {
-        IPhonePage page = addonPage;
-        if (page == null) return false;
-        try {
-            return page.capturesKeyboard();
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 的 capturesKeyboard() 抛异常",
-                    page.getClass().getName(), t);
-            return false;
-        }
-    }
-
-    /** 画附属那一页，给它的是扣掉状态栏与导航栏的内容区 */
-    private void renderAddonPage(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        IPhonePage page = addonPage;
-        if (page == null) {
-            navigateTo(Mode.MAIN);
-            return;
-        }
-
+    private PhoneViewport addonViewport() {
+        computeLayout();
         int contentY = phoneTop + PhoneTheme.STATUS_BAR_HEIGHT;
+        int contentW = metrics.contentWidth(), contentH = metrics.contentHeight();
+        double scale = renderScale();
+        PhoneViewport previous = cachedAddonViewport;
+        if (previous == null || previous.x() != phoneLeft || previous.y() != contentY
+                || previous.width() != contentW || previous.height() != contentH || previous.scale() != scale) {
+            cachedAddonViewport = new PhoneViewport(phoneLeft, contentY, contentW, contentH, scale);
+        }
+        return cachedAddonViewport;
+    }
 
-        // 附属那一侧从来只认画布给的这个矩形，所以平板的宽高直接送进去就行，
-        // 它们一行代码都不用改 —— 这正是 PhoneCanvas 当初不摊开成十个参数的原因
+    private boolean addonInteractive() {
+        return minecraft != null && com.november.mcphone.platform.client.Screens.current(minecraft) == this
+                && minecraft.isWindowActive();
+    }
+
+    private void openAddonPage(IPhonePage page) {
+        addonHost.open(page, addonViewport(), addonInteractive());
+        navigateTo(addonHost.page() != null ? Mode.ADDON_PAGE : Mode.MAIN);
+    }
+
+    private void closeAddonPage() { addonHost.close(); }
+
+    private void updateAddonContext() {
+        if (addonHost.page() == null) return;
+        addonHost.interactive(addonInteractive());
+        addonHost.layout(addonViewport());
+        leaveFailedAddon();
+    }
+
+    private void leaveFailedAddon() {
+        if (mode == Mode.ADDON_PAGE && addonHost.page() == null) navigateTo(Mode.MAIN);
+    }
+
+    private boolean callPage(java.util.function.Predicate<IPhonePage> call) {
+        boolean result = addonHost.invoke(call);
+        leaveFailedAddon();
+        return result;
+    }
+
+    private boolean pageCapturesKeyboard() { return callPage(IPhonePage::capturesKeyboard); }
+
+    private void renderAddonPage(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        updateAddonContext();
+        IPhonePage page = addonHost.page();
+        if (page == null) { leaveFailedAddon(); return; }
+        var viewport = addonViewport();
         PhoneCanvas canvas = new PhoneCanvas(g, font,
-                phoneLeft, contentY, metrics.contentWidth(), metrics.contentHeight(),
+                viewport.x(), viewport.y(), viewport.width(), viewport.height(),
                 mouseX, mouseY, partialTick, ThemeStyle.INSTANCE);
-
-        try {
-            page.render(canvas);
-        } catch (Throwable t) {
-            MCphone.LOGGER.error("[MCphone] 附属页面 {} 渲染抛异常，已关闭该页",
-                    page.getClass().getName(), t);
-            closeAddonPage();
-            navigateTo(Mode.MAIN);
+        try (var scope = new PhonePoseScope(g.pose())) {
+            canvas.clipped(viewport.x(), viewport.y(), viewport.width(), viewport.height(),
+                    () -> callPage(p -> { p.render(canvas); return true; }));
         } finally {
-            // 抛异常那条路更要收：附属很可能正是在开着裁剪的时候抛的
             healLeakedScissor(g, page);
         }
+    }
+
+    /** Screen 由原版 tick；后台 HUD 由 PhoneHud tick，二者互斥。 */
+    @Override public void tick() {
+        super.tick();
+        updateAddonContext();
+        if (addonHost.page() != null) callPage(p -> { p.tick(); return true; });
     }
 
     /** 已经因为裁剪没收干净警告过的页面，一个类只说一次，不刷屏 */
@@ -656,17 +685,35 @@ public final class PhoneScreen extends PhoneScreenBase {
             return true;
         }
 
+        // 首页菜单先收起，第二次返回再离开聊天页。
+        if (mode == Mode.CHAT && chatList.dismissContextMenu()) return true;
+        if (mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) {
+            if (!chatProfile.back()) navigateTo(mode == Mode.CHAT_PLAYER_PROFILE ? profileReturnMode : Mode.CHAT);
+            return true;
+        }
+        if (mode == Mode.CHAT_CONTACTS) {
+            if (!chatContacts.back()) navigateTo(Mode.CHAT);
+            return true;
+        }
+        if (mode == Mode.CHAT_NEW_FRIENDS) {
+            navigateTo(Mode.CHAT_CONTACTS); return true;
+        }
+        if (mode == Mode.CHAT_GROUP_CREATE) { navigateTo(chatReturnMode); return true; }
+        if (mode == Mode.CHAT_GROUP_DETAILS) {
+            if (!chatGroupDetails.back()) navigateTo(Mode.CHAT_GROUP_CONVERSATION);
+            return true;
+        }
         // 放大看的那张图先关掉：那不是一页，但它盖住了整块内容区，返回键该先收它
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.dismissViewer()) return true;
+        if (inConversation() && chatConversation.dismissViewer()) return true;
 
         // 选照片、选表情都是从某个会话点进来的，返回自然回那个会话
         if (mode == Mode.CHAT_PHOTO_PICKER || mode == Mode.CHAT_STICKER_PICKER) {
-            navigateTo(Mode.CHAT_CONVERSATION);
+            navigateTo(conversationMode());
             return true;
         }
 
-        if (mode == Mode.CHAT_ADD_CONTACT || mode == Mode.CHAT_CONVERSATION) {
-            navigateTo(Mode.CHAT);
+        if (mode == Mode.CHAT_ADD_CONTACT || inConversation()) {
+            navigateTo(chatReturnMode);
             return true;
         }
 
@@ -787,13 +834,17 @@ public final class PhoneScreen extends PhoneScreenBase {
     @Override
     public void resize(Minecraft mc, int w, int h) { super.resize(mc, w, h); invalidateLayout(); }
 
+    /** HUD 唤出鼠标也只是操作游戏内浮窗，不显示整屏菜单背景。 */
+    @Override
+    protected boolean shouldDrawBackground() { return !hudMode; }
+
     @Override
     public void render(GuiGraphics g, int rawMouseX, int rawMouseY, float partialTick) {
         this.nowMs = System.currentTimeMillis();
         computeLayout();
 
         // HUD 那副面孔不铺背景。铺了就把世界糊成一片，而它存在的全部意义正是"边玩边看"
-        if (!hudMode) Draw.screenBackground(this, g, rawMouseX, rawMouseY, partialTick);
+        if (shouldDrawBackground()) Draw.screenBackground(this, g, rawMouseX, rawMouseY, partialTick);
 
         // 全屏读书：这一帧整块窗口都给那本书，机身、壁纸、状态栏、导航栏一概不画
         if (fullscreenReading()) {
@@ -858,10 +909,10 @@ public final class PhoneScreen extends PhoneScreenBase {
         int cx = phoneLeft + metrics.screenW() / 2;
         int cy = phoneTop + metrics.screenH() / 2;
 
-        Transforms.push(g);
-        Transforms.translate(g, cx, cy);
-        Transforms.scale(g, scale, scale);
-        Transforms.translate(g, -cx, -cy);
+        g.pose().pushPose();
+        g.pose().translate(cx, cy, 0);
+        g.pose().scale(scale, scale, 1.0f);
+        g.pose().translate(-cx, -cy, 0);
 
         renderScreenBackground(g);
         renderStatusBar(g);
@@ -923,12 +974,28 @@ public final class PhoneScreen extends PhoneScreenBase {
             case CHAT              -> chatList.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
+            case CHAT_GROUP_CREATE -> {
+                chatGroupCreate.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, font, partialTick);
+                UUID created = chatGroupCreate.consumeCreated();
+                if (created != null) { pendingConversationPeer = created; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
+            }
+            case CHAT_GROUP_DETAILS -> {
+                chatGroupDetails.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, font);
+                if (chatGroupDetails.consumeFinished()) navigateTo(chatReturnMode);
+            }
+            case CHAT_PROFILE, CHAT_PLAYER_PROFILE -> chatProfile.render(g,phoneLeft,phoneTop,sw,sh,statusH,navH,mouseX,mouseY,font,partialTick);
+            case CHAT_CONTACTS     -> chatContacts.render(g, phoneLeft, phoneTop,
+                    sw, sh, statusH, navH, mouseX, mouseY, font, partialTick);
+            case CHAT_NEW_FRIENDS  -> chatNewFriends.render(g, phoneLeft, phoneTop,
+                    sw, sh, statusH, navH, mouseX, mouseY, font);
             case CHAT_ADD_CONTACT  -> chatAddContact.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case CHAT_CONVERSATION -> chatConversation.render(g, phoneLeft, phoneTop,
-                    sw, sh, statusH, navH,
-                    mouseX, mouseY, partialTick, font);
+            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> {
+                if (mode == Mode.CHAT_GROUP_CONVERSATION && com.november.mcphone.feature.chat.group.net.GroupClientCache.removed(pendingConversationPeer)) {
+                    tellPlayer("mcphone.chat.group.removed"); navigateTo(chatReturnMode);
+                } else chatConversation.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, partialTick, font);
+            }
             case CHAT_PHOTO_PICKER -> chatPhotoPicker.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
@@ -958,7 +1025,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 外壳圈的是【整块屏幕】，不是页面能用的那块，所以这里也不能用上面的 sw
         PhoneChassis.drawFrame(g, phoneLeft, phoneTop, metrics.screenW(), sh, metrics);
 
-        Transforms.pop(g);
+        g.pose().popPose();
 
     }
 
@@ -999,13 +1066,7 @@ public final class PhoneScreen extends PhoneScreenBase {
                 Component.translatable("mcphone.app.app_manager").getString(),
                 () -> navigateTo(Mode.APP_MANAGER),
                 () -> String.valueOf(PhoneScreenRegistry.getAppCount())));
-        settingItems.add(new SettingsList.Item(
-                Component.translatable("mcphone.settings.vault").getString(),
-                () -> navigateTo(Mode.VAULT)));
-        // 开发者那一档（§12.6 原文的路径：设置 → 开发者 → 我的签名密钥）
-        settingItems.add(new SettingsList.Item(
-                Component.translatable("mcphone.settings.author_key").getString(),
-                () -> navigateTo(Mode.AUTHOR_KEY)));
+        // 保险箱与我的签名密钥尚未开放，暂不注册设置入口；页面和已有数据继续保留。
         settingItems.add(new SettingsList.Item(
                 Component.translatable("mcphone.gui.about").getString(),
                 () -> navigateTo(Mode.ABOUT)));
@@ -1143,11 +1204,23 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 屏幕这条路还在。两条都试过之后仍然绑不上，那就说明这一下压根没进游戏
         if (captureHotkeyMouse(button)) return true;
 
-        if (button != InputConstants.MOUSE_BUTTON_LEFT) return super.mouseClicked(rawX, rawY, button);
-
-        // 从这里往下的 pb 是【本模组编号】（左 = 0，见 IPhonePage 上那五个常量）。上面那一句、
-        // 以及 super 与 captureHotkeyMouse 用的都还是原生编号：26.3 起原生左键是 1，两套不通用。
-        final int pb = PhoneScreenBase.pageButton(button);
+        // 菜单打开时先接管所有点击，点机身外或导航栏也只关闭菜单，不穿透。
+        if (mode == Mode.CHAT && dispatchChatHomeMenu(chatList, unscaledX(rawX), unscaledY(rawY), button, this::navigateTo))
+            return true;
+        if (inConversation() && (chatConversation.hasContextMenu()
+                || button == 1 && isInsidePhone(unscaledX(rawX), unscaledY(rawY))))
+            return chatConversation.mouseClicked(unscaledX(rawX), unscaledY(rawY), button);
+        if (mode == Mode.ADDON_PAGE && button != 0) {
+            updateAddonContext();
+            double mx = unscaledX(rawX), my = unscaledY(rawY);
+            if (addonViewport().contains(mx, my)) {
+                addonHost.click(mx, my, button);
+                leaveFailedAddon();
+                return true;
+            }
+            return super.mouseClicked(rawX, rawY, button);
+        }
+        if (button != 0) return super.mouseClicked(rawX, rawY, button);
 
         // 全屏读书这一帧没有机身，也就没有"点机身外＝关机"这回事；坐标也不必换算
         // （那一层 pose 缩放没有加上去）。必须排在下面 isInsidePhone 那一句之前
@@ -1157,6 +1230,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         // 换算一次，下面全用它。super 那几句仍然给原始坐标：原版控件是按屏幕坐标摆的
+        if (mode == Mode.ADDON_PAGE) updateAddonContext();
         final double mx = unscaledX(rawX);
         final double my = unscaledY(rawY);
 
@@ -1170,6 +1244,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         // HUD 上抓着边框或状态栏 ＝ 挪位置，不是操作手机。必须在导航栏与各页分发之前：
         // 各页的 mouseClicked 一律把点击吞掉，放到后面就永远轮不到
         if (isOnHudHandle(mx, my)) {
+            if (mode == Mode.ADDON_PAGE) { addonHost.cancelInput(); leaveFailedAddon(); }
             hudDragging = true;
             hudGrabX = (int) Math.round(rawX) - PhoneHudPlacement.originX(metrics, this.width, this.height);
             hudGrabY = (int) Math.round(rawY) - PhoneHudPlacement.originY(metrics, this.width, this.height);
@@ -1187,7 +1262,8 @@ public final class PhoneScreen extends PhoneScreenBase {
                 return true;
             }
             case TASKS -> {
-                // 多任务尚未实现，先吃掉点击，免得穿透到下面的界面
+                if (hudMode) PhoneHud.openFullscreen(location);
+                else PhoneHud.showAsHud(this);
                 return true;
             }
             case NONE -> { }
@@ -1202,11 +1278,11 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case SETTINGS -> {
-                settingsList.mouseClicked(mx, my, pb);
+                settingsList.mouseClicked(mx, my, button);
                 yield true;
             }
             case WALLPAPER_PICKER -> {
-                if (wallpaperPicker.mouseClicked(pb)) {
+                if (wallpaperPicker.mouseClicked(button)) {
                     navigateTo(Mode.SETTINGS);
                 }
                 yield true;
@@ -1225,13 +1301,13 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case FONT_COLOR_PICKER -> {
-                if (fontColorPicker.mouseClicked(pb)) {
+                if (fontColorPicker.mouseClicked(button)) {
                     navigateTo(Mode.SETTINGS);
                 }
                 yield true;
             }
             case APP_MANAGER -> {
-                appManagerPage.mouseClicked(mx, my, pb);
+                appManagerPage.mouseClicked(mx, my, button);
                 IPhoneApp picked = appManagerPage.consumeSelection();
                 if (picked != null) {
                     pendingManagedApp = picked;
@@ -1240,17 +1316,17 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case APP_MANAGER_DETAIL -> {
-                appManagerDetail.mouseClicked(mx, my, pb);
+                appManagerDetail.mouseClicked(mx, my, button);
                 // 卸载完了那个 App 已经不在列表里，留在它的详情页上没有意义
                 if (appManagerDetail.consumeBackRequest()) navigateTo(Mode.APP_MANAGER);
                 yield true;
             }
             case MUSIC_PLAYER -> {
-                musicPage.mouseClicked(mx, my, pb);
+                musicPage.mouseClicked(mx, my, button);
                 yield true;
             }
             case APP_STORE -> {
-                appStore.mouseClicked(mx, my, pb);
+                appStore.mouseClicked(mx, my, button);
                 AppInfo open = appStore.consumeOpenRequest();
                 if (open != null) {
                     appDetail.open(open);
@@ -1260,12 +1336,13 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case COMPANION_APPS -> {
-                companionApps.mouseClicked(mx, my, pb);
+                companionApps.mouseClicked(mx, my, button);
                 yield true;
             }
             case ADDON_PAGE -> {
-                // 不看返回值：附属页里的空点击不该关机
-                callPage(p -> p.mouseClicked(mx, my, pb));
+                // 是否消费决定捕获；空点击仍由手机屏蔽，不穿透。
+                addonHost.click(mx, my, button);
+                leaveFailedAddon();
                 yield true;
             }
             case ABOUT, CLOCK, WEATHER -> {
@@ -1274,7 +1351,7 @@ public final class PhoneScreen extends PhoneScreenBase {
             case READER -> {
                 // 按下只是按下：书架页上这一下可能是"打开这本"，也可能是"拖着排"，
                 // 由 mouseReleased 定性，见 BookList.mouseReleased
-                bookList.mouseClicked(mx, my, pb);
+                bookList.mouseClicked(mx, my, button);
                 yield true;
             }
             case TXT_BOOK -> {
@@ -1282,30 +1359,30 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case APP_DETAIL -> {
-                appDetail.mouseClicked(mx, my, pb);
+                appDetail.mouseClicked(mx, my, button);
                 // 顺序不能反：先 navigateTo 的话 reset 会把刷新请求清掉
                 if (appDetail.consumeInstalledRequest()) appStore.onInstalled();
                 if (appDetail.consumeBackRequest()) navigateTo(Mode.APP_STORE);
                 yield true;
             }
             case GALLERY -> {
-                gallery.mouseClicked(mx, my, pb);
+                gallery.mouseClicked(mx, my, button);
                 yield true;
             }
             case DEVICE_NAME -> {
-                if (deviceNameEditor.mouseClicked(mx, my, pb)) navigateTo(Mode.SETTINGS);
+                if (deviceNameEditor.mouseClicked(mx, my, button)) navigateTo(Mode.SETTINGS);
                 yield true;
             }
             case VAULT -> {
-                vaultPage.mouseClicked(mx, my, pb);
+                vaultPage.mouseClicked(mx, my, button);
                 yield true;
             }
             case AUTHOR_KEY -> {
-                authorKeyPage.mouseClicked(mx, my, pb);
+                authorKeyPage.mouseClicked(mx, my, button);
                 yield true;
             }
             case CHAT -> {
-                chatList.mouseClicked(mx, my, pb);
+                chatList.mouseClicked(mx, my, button);
                 // 点了传送就关机，包由列表自己发
                 if (chatList.consumeCloseRequest()) {
                     onClose();
@@ -1316,19 +1393,58 @@ public final class PhoneScreen extends PhoneScreenBase {
                     pendingConversationPeer = open;
                     navigateTo(Mode.CHAT_CONVERSATION);
                 }
-                if (chatList.consumeAddContactRequest()) {
-                    navigateTo(Mode.CHAT_ADD_CONTACT);
-                }
+                if (chatList.consumeContactsRequest()) navigateTo(Mode.CHAT_CONTACTS);
+                if (chatList.consumeProfileRequest()) navigateTo(Mode.CHAT_PROFILE);
+                UUID group = chatList.consumeGroupOpenRequest();
+                if (group != null) { pendingConversationPeer = group; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
+                yield true;
+            }
+            case CHAT_PROFILE, CHAT_PLAYER_PROFILE -> {
+                chatProfile.mouseClicked(mx,my,button);
+                var action=chatProfile.consumeAction();
+                if (action!=null) navigateTo(switch(action) {
+                    case CHATS -> Mode.CHAT;case CONTACTS -> Mode.CHAT_CONTACTS;
+                    case BACK -> mode==Mode.CHAT_PLAYER_PROFILE?profileReturnMode:Mode.CHAT;
+                });
+                yield true;
+            }
+            case CHAT_CONTACTS -> {
+                chatContacts.mouseClicked(mx, my, button);
+                UUID peer = chatContacts.consumeOpenRequest();
+                if (peer != null) { pendingConversationPeer = peer; navigateTo(Mode.CHAT_CONVERSATION); }
+                UUID group = chatContacts.consumeGroupOpenRequest();
+                if (group != null) { pendingConversationPeer = group; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
+                UUID profile=chatContacts.consumeProfileRequest();
+                if (profile!=null) openPlayerProfile(profile);
+                ChatContacts.Action action = chatContacts.consumeAction();
+                if (action != null) navigateTo(switch (action) {
+                    case CHATS -> Mode.CHAT;
+                    case ADD_CONTACT -> Mode.CHAT_ADD_CONTACT;
+                    case NEW_FRIENDS -> Mode.CHAT_NEW_FRIENDS;
+                    case PROFILE -> Mode.CHAT_PROFILE;
+                });
+                yield true;
+            }
+            case CHAT_NEW_FRIENDS -> { chatNewFriends.mouseClicked(mx, my, button); yield true; }
+            case CHAT_GROUP_CREATE -> { chatGroupCreate.mouseClicked(mx, my, button); yield true; }
+            case CHAT_GROUP_DETAILS -> {
+                chatGroupDetails.mouseClicked(mx,my,button);
+                UUID profile=chatGroupDetails.consumeProfileRequest();if (profile!=null) openPlayerProfile(profile);
                 yield true;
             }
             case CHAT_ADD_CONTACT -> {
-                chatAddContact.mouseClicked(mx, my, pb);
+                chatAddContact.mouseClicked(mx, my, button);
                 yield true;
             }
-            case CHAT_CONVERSATION -> {
-                chatConversation.mouseClicked(mx, my, pb);
+            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> {
+                chatConversation.mouseClicked(mx, my, button);
+                if (chatConversation.consumeBackRequest()) {
+                    navigateTo(chatReturnMode);
+                    yield true;
+                }
+                if (chatConversation.consumeDetailsRequest()) { navigateTo(Mode.CHAT_GROUP_DETAILS); yield true; }
 
-                ChatConversation.Attach attach = chatConversation.consumeAttachRequest();
+                ChatAttachment attach = chatConversation.consumeAttachRequest();
                 if (attach != null) {
                     // 先记下是谁：进挑东西那一页会 close 掉会话，对端就没了
                     pendingConversationPeer = chatConversation.peer();
@@ -1340,17 +1456,17 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case CHAT_PHOTO_PICKER -> {
-                chatPhotoPicker.mouseClicked(mx, my, pb);
+                chatPhotoPicker.mouseClicked(mx, my, button);
                 sendPicked(chatPhotoPicker.consumeSelection());
                 yield true;
             }
             case CHAT_STICKER_PICKER -> {
-                chatStickerPicker.mouseClicked(mx, my, pb);
+                chatStickerPicker.mouseClicked(mx, my, button);
                 sendPicked(chatStickerPicker.consumeSelection());
                 yield true;
             }
             case NOTES -> {
-                notesList.mouseClicked(mx, my, pb);
+                notesList.mouseClicked(mx, my, button);
                 Integer open = notesList.consumeOpenRequest();
                 if (open != null) {
                     noteEditor.open(open);
@@ -1362,18 +1478,48 @@ public final class PhoneScreen extends PhoneScreenBase {
                 yield true;
             }
             case NOTE_EDIT -> {
-                noteEditor.mouseClicked(mx, my, pb);
+                noteEditor.mouseClicked(mx, my, button);
                 if (noteEditor.consumeBackRequest()) navigateTo(Mode.NOTES);
                 yield true;
             }
         };
     }
 
+    /** 菜单点击与导航在同一事件内完成，不能把某个请求留给下一次普通点击。 */
+    private static boolean dispatchChatHomeMenu(ChatList list, double mx, double my, int button,
+                                                java.util.function.Consumer<Mode> navigate) {
+        if (!list.contextMouseClicked(mx, my, button)) return false;
+        boolean create = list.consumeCreateRequest();
+        boolean add = list.consumeAddContactRequest();
+        if (create) navigate.accept(Mode.CHAT_GROUP_CREATE);
+        else if (add) navigate.accept(Mode.CHAT_ADD_CONTACT);
+        return true;
+    }
+
+    @Override public void mouseMoved(double rawX, double rawY) {
+        if (mode == Mode.ADDON_PAGE && !hudDragging) {
+            updateAddonContext();
+            double mx = unscaledX(rawX), my = unscaledY(rawY);
+            addonHost.move(mx, my);
+            if (addonInteractive() && (addonHost.captured() || addonViewport().contains(mx, my)))
+                callPage(p -> { p.mouseMoved(mx, my); return true; });
+            leaveFailedAddon();
+        }
+        super.mouseMoved(rawX, rawY);
+    }
+
     @Override
     public boolean mouseDragged(double rawX, double rawY, int button, double dx, double dy) {
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
+        // 系统的机身拖动优先于附属内容拖动。
         if (hudDragging) {
             dragHudTo(rawX, rawY, false);
             return true;
+        }
+        // 附属拖动由 mouseMoved 产生，避免原版左键 drag 再发一遍。
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            return addonHost.captured();
         }
 
         final double mx = unscaledX(rawX);
@@ -1383,11 +1529,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         final double ldx = dx / scale;
         final double ldy = dy / scale;
 
-        // 往页面里的原版控件转那一下拖动用的是本模组编号（左 = 0）；上面判左键与末尾那句
-        // super 仍然用原生编号，两套在 26.3 上差一。
-        final int pb = PhoneScreenBase.pageButton(button);
-
-        if (mode == Mode.MAIN && button == InputConstants.MOUSE_BUTTON_LEFT && homeGrid.mouseDragged(mx, my)) {
+        if (mode == Mode.MAIN && button == 0 && homeGrid.mouseDragged(mx, my)) {
             return true;
         }
 
@@ -1397,24 +1539,36 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 书架页靠拖动排书
         if (mode == Mode.READER && bookList.mouseDragged(mx, my)) return true;
 
+        if (inConversation() && chatConversation.mouseDragged(mx, my, button)) return true;
+
         // 多行输入框靠拖动选中文本，不转发的话选不了
-        if (mode == Mode.NOTE_EDIT && noteEditor.mouseDragged(mx, my, pb, ldx, ldy)) return true;
+        if (mode == Mode.NOTE_EDIT && noteEditor.mouseDragged(mx, my, button, ldx, ldy)) return true;
         return super.mouseDragged(rawX, rawY, button, dx, dy);
     }
 
     /** 松手才定性：主屏上这一下算"点开"还是"挪位置" */
     @Override
     public boolean mouseReleased(double rawX, double rawY, int button) {
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
         if (hudDragging) {
             hudDragging = false;
             dragHudTo(rawX, rawY, true);
             return true;
         }
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            boolean consumed = addonHost.release(unscaledX(rawX), unscaledY(rawY), button);
+            leaveFailedAddon();
+            return consumed;
+        }
+
+        if (inConversation()
+                && chatConversation.mouseReleased(unscaledX(rawX), unscaledY(rawY), button)) return true;
 
         if (mode == Mode.UI_SCALE) uiScalePage.mouseReleased();
         if (mode == Mode.HUD) hudPage.mouseReleased();
 
-        if (mode == Mode.MAIN && button == InputConstants.MOUSE_BUTTON_LEFT
+        if (mode == Mode.MAIN && button == 0
                 && homeGrid.mouseReleased(unscaledX(rawX), unscaledY(rawY))) {
             IPhoneApp launch = homeGrid.consumeLaunchRequest();
             if (launch != null) launchApp(launch);
@@ -1422,7 +1576,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         // 书架页同理：拖过就是排序，没拖过才是"打开这本"
-        if (mode == Mode.READER && button == InputConstants.MOUSE_BUTTON_LEFT && bookList.mouseReleased()) {
+        if (mode == Mode.READER && button == 0 && bookList.mouseReleased()) {
             BookRef book = bookList.consumeOpenRequest();
             // 打开之后接管屏幕的是那本书自己的界面，这一部手机就退下去了
             if (book != null) BookSources.open(book);
@@ -1436,8 +1590,13 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 全屏读书：翻页，与坐标无关
         if (fullscreenReading() && txtReader.mouseScrolled(scrollY, font)) return true;
 
+        if (mode == Mode.ADDON_PAGE) updateAddonContext();
         final double mx = unscaledX(rawX);
         final double my = unscaledY(rawY);
+
+        // 菜单可见时滚轮只关闭菜单，不能绕过模态层缩放或滚动底下页面。
+        if (mode == Mode.CHAT && chatList.dismissContextMenu()) return true;
+        if (inConversation() && chatConversation.dismissContextMenu()) return true;
 
         // HUD 上 Ctrl+滚轮 ＝ 改大小。普通滚轮照旧翻这一页的内容——那是滚轮的本职，
         // 抢过来的话相册、聊天记录、便签在 HUD 上就翻不动了。
@@ -1446,9 +1605,9 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 跟着变小，光标很容易在半途落到手机外面，若还要求"必须停在某块区域上"，
         // 一次连续的缩小会滚到一半突然不动了。
         //
-        // Ctrl 走 KeyModifiers.ctrl()：它在 macOS 上认的是 Command，与本模组别处
+        // Ctrl 用原版的 hasControlDown()：它在 macOS 上认的是 Command，与本模组别处
         // 对修饰键的约定一致（见 ClientConfig 里 appHotkeys 那段注释）。
-        if (scrollY != 0 && hudMode && KeyModifiers.ctrl()) {
+        if (scrollY != 0 && hudMode && hasControlDown()) {
             PhoneHudPlacement.setPercent(PhoneHudPlacement.percent()
                     + (scrollY > 0 ? PhoneHudPlacement.STEP_PERCENT
                                    : -PhoneHudPlacement.STEP_PERCENT));
@@ -1463,8 +1622,13 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.MAIN && homeGrid.mouseScrolled(scrollY)) return true;
         if (mode == Mode.GALLERY && gallery.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT && chatList.mouseScrolled(scrollY)) return true;
+        if (mode == Mode.CHAT_CONTACTS && chatContacts.mouseScrolled(mx, my, scrollY)) return true;
+        if (mode == Mode.CHAT_GROUP_CREATE && chatGroupCreate.mouseScrolled(mx, my, scrollY)) return true;
+        if ((mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) && chatProfile.mouseScrolled(mx,my,scrollY)) return true;
+        if (mode == Mode.CHAT_GROUP_DETAILS && chatGroupDetails.mouseScrolled(mx, my, scrollY)) return true;
+        if (mode == Mode.CHAT_NEW_FRIENDS && chatNewFriends.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT_ADD_CONTACT && chatAddContact.mouseScrolled(scrollY)) return true;
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.mouseScrolled(scrollY)) return true;
+        if (inConversation() && chatConversation.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT_PHOTO_PICKER && chatPhotoPicker.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT_STICKER_PICKER && chatStickerPicker.mouseScrolled(scrollY)) return true;
         if (mode == Mode.NOTES && notesList.mouseScrolled(scrollY)) return true;
@@ -1477,20 +1641,31 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.APP_MANAGER && appManagerPage.mouseScrolled(scrollY)) return true;
         if (mode == Mode.APP_MANAGER_DETAIL && appManagerDetail.mouseScrolled(scrollY, font)) return true;
         if (mode == Mode.ABOUT && aboutPage.mouseScrolled(scrollY, font)) return true;
-        if (mode == Mode.ADDON_PAGE
-                && callPage(p -> p.mouseScrolled(mx, my, scrollY))) return true;
+        if (mode == Mode.VAULT && vaultPage.mouseScrolled(scrollY, font)) return true;
+        if (mode == Mode.AUTHOR_KEY && authorKeyPage.mouseScrolled(scrollY, font)) return true;
+        if (mode == Mode.ADDON_PAGE) {
+            boolean consumed = addonHost.scroll(mx, my, scrollX, scrollY);
+            leaveFailedAddon();
+            return consumed || addonViewport().contains(mx, my);
+        }
         return false;
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (mode == Mode.ADDON_PAGE) updateAddonContext();
         // App 管理页正等着玩家按一个键当快捷键。这一下不是在操作手机，是在绑键，
         // 所以要抢在下面 ESC 关机之前——在那一页上 ESC 的意思是"清除这个绑定"
         if (mode == Mode.APP_MANAGER_DETAIL && appManagerDetail.isCapturingKey()) {
             appManagerDetail.captureKey(keyCode, scanCode);
             return true;
         }
-        if (keyCode == InputConstants.KEY_ESCAPE) { // ESC
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) {
+            if (keyCode == 256) chatList.dismissContextMenu();
+            return true;
+        }
+        if (keyCode == 256 && inConversation() && chatConversation.dismissContextMenu()) return true;
+        if (keyCode == 256) { // ESC
             // ESC 一下直接关机，不退层；退层交给导航栏 ◁
             onClose();
             return true;
@@ -1509,10 +1684,15 @@ public final class PhoneScreen extends PhoneScreenBase {
             if (vaultPage.consumeBackRequest()) navigateTo(Mode.SETTINGS);
             return true;
         }
-        if (mode == Mode.CHAT_CONVERSATION) {
+        if (inConversation()) {
             chatConversation.keyPressed(keyCode, scanCode, modifiers);
             return true;
         }
+        if (mode == Mode.CHAT && chatList.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (mode == Mode.CHAT_CONTACTS && chatContacts.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_CREATE && chatGroupCreate.keyPressed(keyCode, scanCode, modifiers)) return true;
+        if ((mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) && chatProfile.keyPressed(keyCode,scanCode,modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_DETAILS && chatGroupDetails.keyPressed(keyCode, scanCode, modifiers)) return true;
         if (mode == Mode.NOTE_EDIT) {
             noteEditor.keyPressed(keyCode, scanCode, modifiers);
             return true;
@@ -1526,11 +1706,12 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
         // 附属页面自称有输入框时同样要抢在背包键之前
         if (mode == Mode.ADDON_PAGE && pageCapturesKeyboard()) {
-            callPage(p -> p.keyPressed(keyCode, scanCode, modifiers));
+            addonHost.keyPressed(keyCode, scanCode, modifiers, true);
+            leaveFailedAddon();
             return true;
         }
 
-        if (minecraft != null && KeyModifiers.matches(minecraft.options.keyInventory, keyCode, scanCode)) {
+        if (minecraft != null && com.november.mcphone.platform.client.PhoneKeyInput.matches(minecraft.options.keyInventory,keyCode,scanCode)) {
             if (mode != Mode.MAIN) back();
             else onClose();
             return true;
@@ -1539,22 +1720,52 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.GALLERY && gallery.keyPressed(keyCode)) return true;
         if (mode == Mode.CHAT_PHOTO_PICKER && chatPhotoPicker.keyPressed(keyCode)) return true;
         if (mode == Mode.CHAT_STICKER_PICKER && chatStickerPicker.keyPressed(keyCode)) return true;
-        if (mode == Mode.ADDON_PAGE
-                && callPage(p -> p.keyPressed(keyCode, scanCode, modifiers))) return true;
+        if (mode == Mode.ADDON_PAGE) {
+            boolean consumed = addonHost.keyPressed(keyCode, scanCode, modifiers, false);
+            leaveFailedAddon();
+            if (consumed) return true;
+        }
 
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    /** 字符输入。EditBox 靠这个收字符（含输入法提交与粘贴），是所有文字进入界面的唯一通道 */
+    @Override public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            boolean consumed = addonHost.keyReleased(keyCode, scanCode, modifiers);
+            leaveFailedAddon();
+            if (consumed) return true;
+        }
+        return super.keyReleased(keyCode, scanCode, modifiers);
+    }
+
+    /** 26.1 的码点事件直接走此入口；老目标继续经 char 重载送入页面。 */
+    public boolean charTyped(int codePoint, int modifiers) {
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            return addonInteractive() && callPage(p -> p.charTyped(codePoint, modifiers));
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+
+    /** 字符提交；粘贴快捷键由 keyPressed 和文本控件处理。 */
     @Override
     public boolean charTyped(char c, int modifiers) {
-        if (mode == Mode.ADDON_PAGE
-                && callPage(p -> p.charTyped(c, modifiers))) return true;
+        if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
+        if (mode == Mode.ADDON_PAGE) {
+            updateAddonContext();
+            if (addonInteractive() && callPage(p -> p.charTyped((int) c, modifiers))) return true;
+        }
         if (mode == Mode.DEVICE_NAME && deviceNameEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.VAULT && vaultPage.charTyped(c, modifiers)) return true;
         // 「作者密钥变了」那一档要抄指纹（§12.4）
         if (mode == Mode.APP_DETAIL && appDetail.charTyped(c, modifiers)) return true;
-        if (mode == Mode.CHAT_CONVERSATION && chatConversation.charTyped(c, modifiers)) return true;
+        if (inConversation() && chatConversation.charTyped(c, modifiers)) return true;
+        if (mode == Mode.CHAT && chatList.charTyped(c, modifiers)) return true;
+        if (mode == Mode.CHAT_CONTACTS && chatContacts.charTyped(c, modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_CREATE && chatGroupCreate.charTyped(c, modifiers)) return true;
+        if ((mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) && chatProfile.charTyped(c,modifiers)) return true;
+        if (mode == Mode.CHAT_GROUP_DETAILS && chatGroupDetails.charTyped(c, modifiers)) return true;
         if (mode == Mode.NOTE_EDIT && noteEditor.charTyped(c, modifiers)) return true;
         if (mode == Mode.READER && bookList.charTyped(c, modifiers)) return true;
         return super.charTyped(c, modifiers);
@@ -1565,6 +1776,9 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 用 removed() 而不是 onClose()：被别的界面顶掉时 onClose 不触发 */
     @Override
     public void removed() {
+        // HUD 暂时退出交互仍继续显示，但必须结束其按键与拖动会话。
+        addonHost.interactive(false);
+        hudDragging = false;
         // HUD 上那部手机是【一直开着】的：松开 Alt、或者从书架点开一本书把它顶掉，都只是
         // 它不再是 mc.screen —— 人还在副手上拿着，屏幕也还亮着。这时候真去拆，聊天会话、
         // 相册贴图、附属页面会全部收掉，下一帧 HUD 画出来的是一部刚开机的手机，玩家眼里
@@ -1588,18 +1802,28 @@ public final class PhoneScreen extends PhoneScreenBase {
         // 正在读的那本 txt 记成书架：那一页攥着整本书的文本，关机时必须放掉
         // （见 TxtReaderPage.close），下次开机没有可续的东西，停在书架上最贴近。
         // 这一步在这里做而不在 PhoneSession 里：TXT_BOOK 这个常量只有本目标有
-        PhoneSession.save(location, mode == Mode.TXT_BOOK ? Mode.READER : mode, pendingConversationPeer);
+        PhoneSession.save(location, mode == Mode.TXT_BOOK ? Mode.READER
+                : (mode == Mode.CHAT_PLAYER_PROFILE ? profileReturnMode : mode == Mode.CHAT_ADD_CONTACT ? chatReturnMode : (mode == Mode.CHAT_PHOTO_PICKER || mode == Mode.CHAT_STICKER_PICKER ? conversationMode() : mode)), pendingConversationPeer);
 
         if (mode == Mode.GALLERY) gallery.close();
         if (mode == Mode.CHAT_PHOTO_PICKER) chatPhotoPicker.close();
         if (mode == Mode.CHAT_STICKER_PICKER) chatStickerPicker.close();
-        if (mode == Mode.CHAT_CONVERSATION) chatConversation.close();
+        if (inConversation()) chatConversation.close();
+        if (mode == Mode.CHAT) chatList.close();
+        if (mode == Mode.CHAT_CONTACTS) chatContacts.close();
+        if (mode == Mode.CHAT_NEW_FRIENDS) chatNewFriends.close();
+        if (mode == Mode.CHAT_GROUP_CREATE) chatGroupCreate.close();
+        if (mode == Mode.CHAT_GROUP_DETAILS) chatGroupDetails.close();
+        if (mode == Mode.CHAT_PROFILE || mode == Mode.CHAT_PLAYER_PROFILE) chatProfile.close();
 
         // 图片消息的贴图只在手机开着时有用。留到关机才放，是因为"会话 → 列表 → 会话"
         // 是常有的来回，每次都放掉等于每次回来重下一遍
         ChatImageCache.clear();
         if (mode == Mode.NOTE_EDIT) noteEditor.close();
         if (mode == Mode.TXT_BOOK) txtReader.close();
+
+        // 口令输入也在"关机必抹"之列：HUD 那副面孔不经过 navigateTo，不在这里关就还留在内存里
+        vaultPage.close();
 
         // 关手机、被顶掉、退出世界都不经过 navigateTo，IPhonePage.onClose() "一定会被调用"靠这一行兑现
         closeAddonPage();
@@ -1612,7 +1836,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 交给 PhoneHud 托管：从此它的关机由那边负责，见 {@link #removed()} */
     void adoptByHud() {
         this.hudOwned = true;
-        this.hudMode = true;
+        setHudMode(true);
     }
 
     /** 画在 HUD 那个角上（true）还是屏幕正中（false） */

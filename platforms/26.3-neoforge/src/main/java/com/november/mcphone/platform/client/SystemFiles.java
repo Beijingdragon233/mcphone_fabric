@@ -2,6 +2,7 @@ package com.november.mcphone.platform.client;
 
 import com.mojang.blaze3d.Blaze3D;
 
+import java.net.URI;
 import java.nio.file.Path;
 
 /**
@@ -36,5 +37,9 @@ public final class SystemFiles {
     /** 用系统的文件管理器打开这个目录。目录不存在时各平台自己的行为，这里不兜。 */
     public static void openInFileManager(Path dir) {
         Blaze3D.openPath(dir);
+    }
+
+    public static void openUri(String uri) {
+        Blaze3D.openUri(URI.create(uri));
     }
 }

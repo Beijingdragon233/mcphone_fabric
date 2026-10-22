@@ -5,14 +5,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
+import com.november.mcphone.core.script.JsonScan;
 
-import java.io.IOException;
-import java.io.StringReader;
 import java.util.Base64;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -52,6 +48,16 @@ public record Manifest(
 
     /** 内建 App 的命名空间。第三方占了它，PhoneScreenRegistry 的 id 去重会把内建 App 挡在外面。 */
     public static final String RESERVED_NAMESPACE = "mcphone";
+
+    /**
+     * 整条 {@code namespace:path} 的长度上限，与线格式的 {@code ScriptProtocol.ID_MAX}、
+     * 部署表的 {@code Deployment.MAX_ID_LEN} <b>是同一个数</b>（三处各有一个 64，改一个就得三处一起改）。
+     *
+     * <p><b>注意 {@link #ID_SEGMENT} 那个 64 是「每段」的上限</b>：两段各 64 拼出来 129 字符，
+     * 客户端装得下、`ScriptRpc` 却编码不出来（writeUtf 上限 64），服务端也永远批不了。
+     * 所以在清单入口就按整条卡死（ADV-S2b-3）。
+     */
+    public static final int MAX_ID = 64;
 
     /** JSON 嵌套深度上限。清单是一层对象加一个 ui 子对象，给到 8 已经宽得没边。 */
     private static final int MAX_JSON_DEPTH = 8;
@@ -159,6 +165,9 @@ public record Manifest(
         }
 
         String id = requireString(root, "id");
+        if (id.length() > MAX_ID) {
+            throw PackageError.of(PackageError.Code.E_PKG_ID_TOO_LONG, MAX_ID, id.length(), id);
+        }
         int colon = id.indexOf(':');
         if (colon < 0 || id.indexOf(':', colon + 1) >= 0) {
             throw PackageError.of(PackageError.Code.E_PKG_BAD_ID, id);
@@ -222,49 +231,20 @@ public record Manifest(
      * <p>Gson 的 {@code JsonParser} 是宽容的：无引号的键、单引号、注释、{@code NaN} 全收，
      * 而重复键在 {@code JsonObject} 里是后者静默覆盖前者 —— 于是一份清单有两种读法，
      * 审核的人读到第一个 id，注册进去的是第二个。
+     *
+     * <p>S18-E4 起与能力配置共用 {@link JsonScan}；清单的嵌套上限比配置更严（8 层）。
      */
     private static void strictScan(String json) {
-        try (JsonReader reader = new JsonReader(new StringReader(json))) {
-            reader.setLenient(false);
-            scan(reader, 0);
-            if (reader.peek() != JsonToken.END_DOCUMENT) {
-                throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_SYNTAX, "末尾还有多余的内容");
-            }
-        } catch (IOException | IllegalStateException | NumberFormatException e) {
-            throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_SYNTAX, String.valueOf(e.getMessage()));
+        JsonScan.Problem problem = JsonScan.check(json, MAX_JSON_DEPTH);
+        if (problem == null) return;
+        if (problem.kind() == JsonScan.Kind.DUP_KEY) {
+            // args[0] 必须是键本身：SfcCompiler.manifestLine 靠它找"第二次出现的那一行"
+            String detail = problem.detail();
+            String prefix = "重复键：";
+            String key = detail.startsWith(prefix) ? detail.substring(prefix.length()) : detail;
+            throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_DUP_KEY, key);
         }
-    }
-
-    private static void scan(JsonReader reader, int depth) throws IOException {
-        if (depth > MAX_JSON_DEPTH) {
-            throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_SYNTAX,
-                    "嵌套深度超过 " + MAX_JSON_DEPTH);
-        }
-        switch (reader.peek()) {
-            case BEGIN_OBJECT -> {
-                reader.beginObject();
-                Set<String> keys = new HashSet<>();
-                while (reader.hasNext()) {
-                    String key = reader.nextName();
-                    if (!keys.add(key)) {
-                        throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_DUP_KEY, key);
-                    }
-                    scan(reader, depth + 1);
-                }
-                reader.endObject();
-            }
-            case BEGIN_ARRAY -> {
-                reader.beginArray();
-                while (reader.hasNext()) scan(reader, depth + 1);
-                reader.endArray();
-            }
-            // 数字按字符串吃掉：这里只管形状，值的范围留给 requireInt 报自己的码
-            case STRING, NUMBER -> reader.nextString();
-            case BOOLEAN -> reader.nextBoolean();
-            case NULL -> reader.nextNull();
-            default -> throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_SYNTAX,
-                    "不该出现的记号 " + reader.peek());
-        }
+        throw PackageError.of(PackageError.Code.E_PKG_MANIFEST_SYNTAX, problem.detail());
     }
 
     // ============================================================

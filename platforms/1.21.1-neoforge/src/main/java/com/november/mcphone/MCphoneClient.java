@@ -18,7 +18,7 @@ import com.november.mcphone.feature.camera.client.CameraFlash;
 import com.november.mcphone.feature.camera.client.CameraHandler;
 import com.november.mcphone.feature.chat.client.ChatImageCache;
 import com.november.mcphone.feature.chat.client.ChatImageSender;
-import com.november.mcphone.feature.chat.client.ChatNotifier;
+import com.november.mcphone.feature.chat.client.ChatClientEvents;
 import com.november.mcphone.feature.chat.net.ChatClientCache;
 import com.november.mcphone.feature.music.client.DiscBayScreen;
 import com.november.mcphone.feature.music.client.DiscClientCache;
@@ -58,6 +58,19 @@ public class MCphoneClient {
         modEventBus.addListener(ClientConfig::onReload);
         container.registerConfig(ModConfig.Type.CLIENT, ClientConfig.SPEC);
 
+        // S17 Stage 2：接住服务端握手（serverId / epoch / 部署表）。必须在进服之前装好 ——
+        // 握手是登录时推的，晚了就丢了（丢了的表现是 connectionEpoch 恒 0，请求判过期连接）
+        com.november.mcphone.core.script.client.ClientHandshake.install();
+        // S17 Stage 2：接住脚本调用结果（@click 的 call(...) 与调试命令）
+        com.november.mcphone.core.script.client.ScriptCall.install();
+
+        // S17 Stage 2：客户端脚本诊断命令（看握手 / 伪造字段发原始 RPC，验收剧本 3/4/5 用）。
+        // 只在客户端本地执行，不发给服务端；与 OP 的 /mcphone script 不共根名
+        NeoForge.EVENT_BUS.addListener(
+                (net.neoforged.neoforge.client.event.RegisterClientCommandsEvent event) ->
+                        com.november.mcphone.core.script.client.ScriptClientCommand.register(
+                                event.getDispatcher(), (src, msg) -> src.sendSuccess(() -> msg, false)));
+
         modEventBus.addListener(MCphoneKeyBindings::register);
 
         // 副手 HUD 那一层。插在原版战利品条之后：玩法 HUD 之上，F3 与聊天框之下
@@ -90,6 +103,7 @@ public class MCphoneClient {
 
         // 冷却期里点的那几张图排着，每 tick 看一眼闸开了没有；队伍空的时候第一行就返回
         ClientTicks.onEndTick(ChatImageSender::tick);
+        ClientTicks.onEndTick(com.november.mcphone.platform.client.PlayerSkins::tick);
 
         // 一首停下来时带停止原因通知控制器，见 LocalPlayback.Ending
         LocalPlayback.setEndListener(MusicController::onTrackEnded);
@@ -104,10 +118,12 @@ public class MCphoneClient {
                     // 这条路上不能碰 setScreen，理由见 PhoneHud.onWorldLeave
                     PhoneHud.onWorldLeave();
                     PhoneScreenOnSync.forget();
+                    // S17 Stage 2：断线清掉握手状态（serverId/epoch/部署表），下次进服重新握
+                    com.november.mcphone.core.script.client.ClientHandshake.clear();
+                    // S17 Stage 2：在飞的脚本调用一并丢掉（旧连接的迟到结果回来时已无主）
+                    com.november.mcphone.core.script.client.ScriptCall.clear();
 
-                    ChatClientCache.clear();
-                    ChatImageCache.clear();
-                    ChatImageSender.clear();
+                    com.november.mcphone.feature.chat.client.ChatClientLifecycle.disconnect();
                     NotesClientCache.clear();
                     StoreClientCache.clear();
                     PhoneScreenRegistry.unloadWorld();
@@ -143,7 +159,8 @@ public class MCphoneClient {
         StoreClientCache.setSyncListener(
                 PhoneScreenRegistry::enforcePurchases);
 
-        ChatClientCache.setMessageListener(ChatNotifier::onMessage);
+        ChatClientCache.setMessageListener(ChatClientEvents::onMessage);
+        com.november.mcphone.feature.chat.client.ChatGroupEvents.install();
         ChatClientCache.setImageListener(ChatImageCache::accept);
     }
 

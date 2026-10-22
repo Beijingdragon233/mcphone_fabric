@@ -1,6 +1,7 @@
 package com.november.mcphone.api.client.ui;
 
 import com.november.mcphone.platform.client.EditBoxes;
+import com.november.mcphone.platform.client.port.PhoneGraphics;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.MultiLineEditBox;
@@ -84,6 +85,10 @@ public final class PhoneMultiLineEditBox extends MultiLineEditBox {
      * records in 26.3, but addons should not need to rewrite these four calls
      * when moving an existing MCphone page to this target.
      */
+
+    public void render(PhoneGraphics g, int mouseX, int mouseY, float partialTick) {
+        EditBoxes.render(this, g, mouseX, mouseY, partialTick);
+    }
 
     public void render(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
         EditBoxes.render(this, g, mouseX, mouseY, partialTick);

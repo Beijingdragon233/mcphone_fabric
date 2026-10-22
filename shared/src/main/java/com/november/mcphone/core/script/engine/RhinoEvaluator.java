@@ -4,13 +4,16 @@ import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.net.ScriptErrorCode;
 import com.november.mcphone.core.script.server.ActionEvaluator;
 import com.november.mcphone.core.script.server.ScriptWorkers;
-import org.mozilla.javascript.Callable;
-import org.mozilla.javascript.Context;
-import org.mozilla.javascript.Scriptable;
-import org.mozilla.javascript.ScriptableObject;
+import com.november.mcphone.internal.rhino.javascript.Callable;
+import com.november.mcphone.internal.rhino.javascript.Context;
+import com.november.mcphone.internal.rhino.javascript.RhinoException;
+import com.november.mcphone.internal.rhino.javascript.Scriptable;
+import com.november.mcphone.internal.rhino.javascript.ScriptableObject;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -31,10 +34,21 @@ import java.util.function.Consumer;
  */
 public final class RhinoEvaluator implements ActionEvaluator {
 
+    /** Internal-only completion disposition; it is never exposed to scripts or the wire. */
+    public enum Disposition { NONE, RESET, STRIKE }
+
+    public record Completion(Outcome outcome, Disposition disposition) {
+        Completion andStrike() {
+            return disposition == Disposition.STRIKE ? this : new Completion(outcome, Disposition.STRIKE);
+        }
+    }
+
     private final Map<String, AppScope> apps;
     private final StrikeTracker strikes;
     private final CtxBuilder.Backends backends;
     private final Consumer<Runnable> mainThread;
+    /** 能力门（S18）。没传时用一个"全放行"的替身（断言/旧路径），生产必须传真的。 */
+    private final com.november.mcphone.core.script.server.CapabilityPolicy capabilities;
 
     /**
      * @param apps       appId → 那个 App 的 scope
@@ -42,10 +56,20 @@ public final class RhinoEvaluator implements ActionEvaluator {
      */
     public RhinoEvaluator(Map<String, AppScope> apps, StrikeTracker strikes,
                           CtxBuilder.Backends backends, Consumer<Runnable> mainThread) {
+        this(apps, strikes, backends, mainThread,
+                new com.november.mcphone.core.script.server.CapabilityPolicy(
+                        com.november.mcphone.core.script.server.CapabilityConfig.defaults()));
+    }
+
+    public RhinoEvaluator(Map<String, AppScope> apps, StrikeTracker strikes,
+                          CtxBuilder.Backends backends, Consumer<Runnable> mainThread,
+                          com.november.mcphone.core.script.server.CapabilityPolicy capabilities) {
+        RhinoRuntimeIdentity.reportOnce();
         this.apps = apps;
         this.strikes = strikes;
         this.backends = backends;
         this.mainThread = mainThread;
+        this.capabilities = capabilities;
     }
 
     @Override
@@ -62,67 +86,233 @@ public final class RhinoEvaluator implements ActionEvaluator {
         }
         // 队列满时返回 false，onDone 不会被调 —— 背压要传回准入那一层（ActionEvaluator 的契约）
         return ScriptWorkers.submit(() -> {
-            Outcome outcome = evaluate(app, request);
-            mainThread.accept(() -> onDone.accept(outcome));
+            Completion completion = evaluateSafely(app, request);
+            try {
+                mainThread.accept(() -> land(request, completion, onDone));
+            } catch (VirtualMachineError fatal) {
+                throw fatal;
+            } catch (Throwable dispatch) {
+                // 服务器正在停：主线程执行器（server::execute）拒绝投递。onDone 的契约是"主线程上恰好一次"，
+                // 此时只能降级，但【绝不静默丢，也不许丢真实结论】—— 直接把这次求值的 Completion 走 land()：
+                // land 的 finally 一定会调 onDone，于是账本那条 RESERVED 结清、钱已动⇒UNKNOWN 也照常生效（M1）。
+                // 代价：这一次 onDone 不在主线程，且 apply(处分) 会因归属断言在 worker 上失败（被 catch 住）；
+                // 停服窗口内可接受，日志留痕。C1：这条口子把"两张表只在主线程读写"的纪律在停服窗口里开了缝 ——
+                // 所以【停服窗口里不许再有人改 DeploymentData/AuthorityData/账本】（热重载、stopping 时保存都不行）。
+                MCphone.LOGGER.error("[MCphone] ⚠ 完成回调投递失败（服务器正在停？），改在 worker 上直接落地 app={} action={}",
+                        request.appId(), request.actionId(), dispatch);
+                try {
+                    land(request, completion, onDone);
+                } catch (Throwable t) {
+                    // 归属断言（StrikeTracker 只许主线程）会在这里抛；onDone 已在 land 的 finally 里用真实结论调过
+                    MCphone.LOGGER.error("[MCphone] 降级落地收尾（处分跳过，结论已回）app={} action={}",
+                            request.appId(), request.actionId(), t);
+                }
+            }
         });
     }
 
-    /** 在 worker 线程上跑。<b>任何异常都要收敛成一个 Outcome，不许漏出去。</b> */
-    private Outcome evaluate(AppScope app, Request request) {
-        ScriptBudget budget = app.budget();
-        CtxBuilder.Result result = new CtxBuilder.Result();
-        Context cx = budget.enterContext();
+    /** Last worker boundary: even a bug in failure classification must not kill the worker. */
+    private Completion evaluateSafely(AppScope app, Request request) {
         try {
-            budget.begin();
-            HostFn.resetDepth();
+            return evaluate(app, request);
+        } catch (Throwable failure) {
+            try {
+                MCphone.LOGGER.error("[MCphone] evaluator boundary contained a failure app={} action={}",
+                        LogText.filter(request.appId()), LogText.filter(request.actionId()), safeFailure(failure));
+            } catch (Throwable ignored) {
+                // Completion still has to be delivered even when logging itself is unavailable.
+            }
+            return none(ScriptErrorCode.INTERNAL);
+        }
+    }
 
-            Scriptable call = app.callScope(cx);
-            Scriptable actions = app.actions(cx);
-            if (actions == null) return Outcome.fail(ScriptErrorCode.NOT_DEPLOYED);
-
-            Object fn = ScriptableObject.getProperty(actions, request.actionId());
-            if (!(fn instanceof Callable action)) return Outcome.fail(ScriptErrorCode.NOT_DEPLOYED);
-
-            ScriptableObject ctx = CtxBuilder.build(cx, call, request.appId(), request.player(), backends, result);
-            action.call(cx, call, actions, new Object[]{ctx});
-
-            strikes.recordOk(request.appId(), request.player().uuid());
-            ScriptErrorCode code = result.code == null ? ScriptErrorCode.INTERNAL : result.code;
-            return new Outcome(code, result.dataJson.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                    result.messageKey, result.messageArgs, 0, 0, List.of());
-
-        } catch (ScriptAbort abort) {
-            // 超预算 / 超尺寸 / 重入过深。审计里有原因与 App，【不给客户端 Java 栈】（§16.6）
-            boolean banned = strikes.recordAbort(request.appId(), request.player().uuid());
-            MCphone.LOGGER.warn("[MCphone] 脚本中断 app={} action={} {}{}",
-                    request.appId(), request.actionId(), abort.getMessage(),
-                    banned ? "（该玩家的后端已禁用 5 分钟）" : "");
-            return Outcome.fail(ScriptErrorCode.INTERNAL);
-
-        } catch (OutcomeUnknown unknown) {
-            // 钱可能动了一半：回 INTERNAL 玩家会再点一次、可能多付，所以回 UNKNOWN（客户端绝不自动重试）。不是脚本的错，不记过失；来龙去脉 moneyCall 已打过 ERROR
-            MCphone.LOGGER.warn("[MCphone] 货币调用结果不明 app={} action={}，已回 UNKNOWN", request.appId(), request.actionId());
-            return Outcome.fail(ScriptErrorCode.UNKNOWN);
-
-        } catch (org.mozilla.javascript.RhinoException e) {
-            // 脚本自己抛的。审计里带行号，客户端只拿到 INTERNAL（§16.6）
-            MCphone.LOGGER.warn("[MCphone] 脚本出错 app={} action={} 第 {} 行: {}",
-                    request.appId(), request.actionId(), e.lineNumber(), e.details());
-            return Outcome.fail(ScriptErrorCode.INTERNAL);
-
-        } catch (Throwable t) {
-            // OOM / StackOverflowError 落在这里。§16.6 明写它们【不在"catch 就能恢复"的保证范围内】——
-            // 这里兜住只是为了不让一个 worker 线程静默死掉，不是说状态还是好的
-            MCphone.LOGGER.error("[MCphone] 脚本求值出了预期外的问题 app={}", request.appId(), t);
-            return Outcome.fail(ScriptErrorCode.INTERNAL);
-
+    /** Applies the disposition first, then invokes onDone exactly once, all on the main thread. */
+    private void land(Request request, Completion completion, Consumer<Outcome> onDone) {
+        try {
+            apply(request.appId(), request.player().uuid(), completion.disposition());
+        } catch (Throwable failure) {
+            MCphone.LOGGER.error("[MCphone] failed to apply script disposition app={} action={}",
+                    LogText.filter(request.appId()), LogText.filter(request.actionId()), failure);
         } finally {
-            budget.end();
-            HostFn.resetDepth();
-            Context.exit();
-            if (app.sweepRetained()) {
-                MCphone.LOGGER.warn("[MCphone] {} 的后端跨调用驻留超限，scope 已重建", app.appId());
+            try {
+                onDone.accept(completion.outcome());
+            } catch (Throwable failure) {
+                MCphone.LOGGER.error("[MCphone] script completion callback failed app={} action={}",
+                        LogText.filter(request.appId()), LogText.filter(request.actionId()), failure);
             }
         }
+    }
+
+    private void apply(String appId, UUID player, Disposition disposition) {
+        switch (disposition) {
+            case NONE -> { }
+            case RESET -> strikes.recordOk(appId, player);
+            case STRIKE -> strikes.recordAbort(appId, player);
+        }
+    }
+
+    /** Worker-side evaluation. It returns data only and never touches StrikeTracker. */
+    private Completion evaluate(AppScope app, Request request) {
+        ScriptBudget budget = app.budget();
+        CtxBuilder.Result result = new CtxBuilder.Result();
+        MoneyLedger ledger = new MoneyLedger();
+        Completion completion = null;
+        boolean entered = false;
+        boolean began = false;
+        try {
+            Context cx = budget.enterContext();
+            entered = true;
+            budget.begin();
+            began = true;
+            HostFn.resetDepth();
+
+            try {
+                completion = runAction(cx, app, request, result, ledger);
+            } catch (Throwable failure) {
+                completion = classify(request, failure, ledger);
+            }
+
+            completion = sweepRetained(app, request, completion, ledger);
+        } catch (Throwable t) {
+            completion = classify(request, t, ledger);
+        } finally {
+            if (began) {
+                try {
+                    budget.end();
+                } catch (Throwable failure) {
+                    completion = cleanupFailure(request, completion, ledger, failure);
+                }
+            }
+            try {
+                HostFn.resetDepth();
+            } catch (Throwable failure) {
+                completion = cleanupFailure(request, completion, ledger, failure);
+            }
+            if (entered) {
+                try {
+                    Context.exit();
+                } catch (Throwable failure) {
+                    completion = cleanupFailure(request, completion, ledger, failure);
+                }
+            }
+        }
+        // 钱动过的记号要带进 Outcome：落地前重查被拒时靠它决定 UNKNOWN 还是 NOT_AUTHORIZED（S17 约束 6）。
+        // 各条路径自己不带这个记号（runAction 只在 code!=OK 时折成 UNKNOWN），在这里统一补上。
+        Completion done = completion == null ? none(ScriptErrorCode.INTERNAL) : completion;
+        return ledger.moved() && !done.outcome().moneyMoved()
+                ? new Completion(done.outcome().withMoneyMoved(), done.disposition())
+                : done;
+    }
+
+    private Completion runAction(Context cx, AppScope app, Request request, CtxBuilder.Result result,
+                                 MoneyLedger ledger) {
+        AppScope.Invocation invocation = app.beginInvocation(cx);
+        Scriptable call = invocation.callScope();
+        Scriptable actions = invocation.actions();
+        if (actions == null) return none(ScriptErrorCode.NOT_DEPLOYED);
+
+        Object fn = ScriptableObject.getProperty(actions, request.actionId());
+        if (!(fn instanceof Callable action)) return none(ScriptErrorCode.NOT_DEPLOYED);
+
+        // 能力门（S18）：拒绝抛可接住的 HostError，脚本没接住时整次调用按它带的码回去。
+        // 判定读的是"装配期冻结的已批准集合 + 当前配置快照"，worker 上无副作用。
+        CtxBuilder.CapabilityGate gate = capability -> {
+            com.november.mcphone.core.script.server.CapabilityPolicy.Verdict verdict =
+                    capabilities.check(capability, app.capabilities());
+            if (verdict == com.november.mcphone.core.script.server.CapabilityPolicy.Verdict.OK) return;
+            boolean unavailable = verdict != com.november.mcphone.core.script.server.CapabilityPolicy.Verdict.NOT_APPROVED;
+            throw HostError.denied(unavailable ? ScriptErrorCode.UNAVAILABLE : ScriptErrorCode.NOT_AUTHORIZED,
+                    com.november.mcphone.core.script.server.CapabilityPolicy.messageKey(verdict),
+                    capability + "：" + verdict);
+        };
+
+        ScriptableObject ctx = CtxBuilder.build(cx, call, request.appId(), request.player(), backends, result, ledger, gate);
+        action.call(cx, call, actions, new Object[]{ctx});
+
+        ScriptErrorCode code = result.code == null ? ScriptErrorCode.INTERNAL : result.code;
+        if (ledger.moved() && code != ScriptErrorCode.OK) return none(ScriptErrorCode.UNKNOWN);
+        Outcome outcome = new Outcome(code, result.dataJson.getBytes(StandardCharsets.UTF_8),
+                LogText.filter(result.messageKey), result.messageArgs.stream().map(LogText::filter).toList(),
+                0, 0, List.copyOf(result.intents), ledger.moved());
+        return new Completion(outcome, Disposition.RESET);
+    }
+
+    private Completion classify(Request request, Throwable failure, MoneyLedger ledger) {
+        if (failure instanceof OutcomeUnknown) return none(ScriptErrorCode.UNKNOWN);
+        if (failure instanceof ProviderAbort provider) {
+            return none(provider.mutating() || ledger.moved() ? ScriptErrorCode.UNKNOWN : ScriptErrorCode.INTERNAL);
+        }
+        if (failure instanceof HostError host && HostError.classify(host) != null) {
+            // 业务拒绝（能力门等）：没接住时按它带的码与文案键回去，不记过失。
+            // 钱已经动过时仍按"结果不明"优先（E35③）。
+            if (host.resultCode() != null && !ledger.moved()) {
+                return new Completion(new Outcome(host.resultCode(), new byte[0], host.messageKey(),
+                        List.of(), 0, 0, List.of(), false), Disposition.NONE);
+            }
+            return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : none(ScriptErrorCode.INTERNAL);
+        }
+        if (failure instanceof ScriptAbort abort) {
+            MCphone.LOGGER.warn("[MCphone] script aborted app={} action={} detail={}",
+                    LogText.filter(request.appId()), LogText.filter(request.actionId()),
+                    LogText.filter(abort.getMessage()));
+            if (ledger.moved()) return none(ScriptErrorCode.UNKNOWN);
+            return new Completion(Outcome.fail(ScriptErrorCode.INTERNAL), strikeFor(abort));
+        }
+        if (failure instanceof ProviderError
+                || failure instanceof com.november.mcphone.core.script.server.economy.ProviderFailure) {
+            return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : none(ScriptErrorCode.INTERNAL);
+        }
+        if (failure instanceof RhinoException rhino) {
+            MCphone.LOGGER.warn("[MCphone] script error app={} action={} line={} detail={}",
+                    LogText.filter(request.appId()), LogText.filter(request.actionId()),
+                    rhino.lineNumber(), LogText.filter(rhino.details()));
+            return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : strike(ScriptErrorCode.INTERNAL);
+        }
+        MCphone.LOGGER.error("[MCphone] unexpected script evaluation failure app={} action={}",
+                LogText.filter(request.appId()), LogText.filter(request.actionId()), safeFailure(failure));
+        return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : none(ScriptErrorCode.INTERNAL);
+    }
+
+    private Completion sweepRetained(AppScope app, Request request, Completion completion, MoneyLedger ledger) {
+        try {
+            if (app.sweepRetained()) {
+                MCphone.LOGGER.warn("[MCphone] retained script scope reset app={}", LogText.filter(app.appId()));
+            }
+            return completion;
+        } catch (Throwable failure) {
+            MCphone.LOGGER.error("[MCphone] retained-scope sweep failed app={} action={}",
+                    LogText.filter(request.appId()), LogText.filter(request.actionId()), safeFailure(failure));
+            return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : completion.andStrike();
+        }
+    }
+
+    private Completion cleanupFailure(Request request, Completion completion, MoneyLedger ledger, Throwable failure) {
+        MCphone.LOGGER.error("[MCphone] script evaluator cleanup failed app={} action={}",
+                LogText.filter(request.appId()), LogText.filter(request.actionId()), safeFailure(failure));
+        if (ledger.moved()) return none(ScriptErrorCode.UNKNOWN);
+        return completion == null ? strike(ScriptErrorCode.INTERNAL) : completion.andStrike();
+    }
+
+    private static Disposition strikeFor(ScriptAbort abort) {
+        return switch (abort.reason()) {
+            case INSTRUCTIONS, WALL_CLOCK, STACK -> Disposition.STRIKE;
+            case SIZE, RETAINED, HOST -> Disposition.NONE;
+        };
+    }
+
+    private static Throwable safeFailure(Throwable failure) {
+        try {
+            return com.november.mcphone.core.script.server.economy.ProviderFailure.of(failure);
+        } catch (Throwable ignored) {
+            return new IllegalStateException("unprintable failure");
+        }
+    }
+
+    private static Completion none(ScriptErrorCode code) {
+        return new Completion(Outcome.fail(code), Disposition.NONE);
+    }
+
+    private static Completion strike(ScriptErrorCode code) {
+        return new Completion(Outcome.fail(code), Disposition.STRIKE);
     }
 }

@@ -8,7 +8,6 @@ import com.november.mcphone.feature.chat.ChatService;
 import com.november.mcphone.feature.chat.FriendData;
 import com.november.mcphone.feature.chat.FriendGuard;
 import com.november.mcphone.feature.chat.TextBody;
-import com.november.mcphone.platform.Profiles;
 import com.november.mcphone.util.TextSanitizer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -62,7 +61,8 @@ public final class PhoneChat {
         if (cached.size() != 1) return Optional.empty();
         UUID id = cached.get(0);
 
-        if (Profiles.cachedName(server, id).filter(rec -> !rec.equalsIgnoreCase(name)).isPresent()) {
+        var cachedName = com.november.mcphone.platform.PlayerAccess.cachedName(server,id);
+        if (cachedName.filter(p -> !p.equalsIgnoreCase(name)).isPresent()) {
             return Optional.empty();
         }
         return Optional.of(contact(server, friends, id));
@@ -112,7 +112,8 @@ public final class PhoneChat {
         if (!friends.areFriends(selfId, peer)) return Optional.empty();
 
         long since = PhonePlayerData.of(self).chatRead().getLastRead(peer);
-        ChatData.Tail tail = ChatData.get(server).tail(selfId, peer, since);
+        // 附属读会话时也采用本人可见记录，与手机预览和未读保持一致。
+        ChatData.Tail tail = ChatData.tail(ChatService.getMessages(self, peer), peer, since);
         OptionalLong last = tail.last() == null ? OptionalLong.empty() : OptionalLong.of(tail.last().time());
         return Optional.of(new PhoneConversation(selfId, contact(server, friends, peer), tail.unread(), last));
     }

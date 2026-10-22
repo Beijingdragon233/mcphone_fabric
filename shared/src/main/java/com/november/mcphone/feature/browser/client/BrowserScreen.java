@@ -1,9 +1,6 @@
 package com.november.mcphone.feature.browser.client;
 
 import com.november.mcphone.platform.client.Draw;
-import com.november.mcphone.platform.client.EditBoxes;
-import com.november.mcphone.platform.client.KeyModifiers;
-import com.november.mcphone.platform.client.Transforms;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneSkin;
 import com.november.mcphone.core.client.PhoneTheme;
@@ -11,7 +8,6 @@ import com.november.mcphone.feature.browser.client.BrowserBackends;
 import com.november.mcphone.feature.browser.client.IBrowser;
 import com.november.mcphone.feature.browser.client.IBrowserBackend;
 import com.november.mcphone.core.client.GuiUtil;
-import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -207,14 +203,18 @@ public final class BrowserScreen extends PhoneScreenBase {
                     viewX + viewW / 2, viewY + viewH / 2 + 2, FontPalette.subtle());
         }
 
-        EditBoxes.render(urlBox, g, mouseX, mouseY, partialTick);
+        urlBox.render(g, mouseX, mouseY, partialTick);
     }
 
-    /** 把浏览器纹理贴到视口上。着色器、纹理绑定与渲染管线差异全部留在平台 Draw。 */
+    /**
+     * 把浏览器那张纹理贴到视口上。全类唯一版本相关的方法（BufferBuilder 写法随 MC 版本变），移植时改这里就够。
+     * 用矩阵重载而不是裸坐标：GuiGraphics 的位姿此刻未必是单位阵。
+     */
     private void drawBrowser(GuiGraphics g) {
         int texture = browser.textureId();
         if (texture <= 0) return;
-        Draw.browserTexture(g, texture, viewX, viewY, viewW, viewH);
+
+        Draw.browserFrame(g,texture,viewX,viewY,viewW,viewH);
     }
 
     /** 顶部那一条：后退、前进、刷新，加地址栏 */
@@ -260,10 +260,9 @@ public final class BrowserScreen extends PhoneScreenBase {
 
         if (hovered) g.fill(x, y, x + NAV_BTN_W, y + h, PhoneTheme.COLOR_APP_PRESSED);
 
-        // 「禁用」= 这一张贴图整体淡到 DISABLED_ALPHA；alpha 走参数（兜底那个字符符号不淡，
-        // 它换的是 COLOR_BUTTON_DISABLED 那个颜色 —— 与从前那句 setColor 当场还原后一模一样）
-        boolean drawn = PhoneSkin.draw(g, element, x, y, NAV_BTN_W, h,
-                enabled ? 1.0F : DISABLED_ALPHA);
+        if (!enabled) g.setColor(1.0F, 1.0F, 1.0F, DISABLED_ALPHA);
+        boolean drawn = PhoneSkin.draw(g, element, x, y, NAV_BTN_W, h);
+        if (!enabled) g.setColor(1.0F, 1.0F, 1.0F, 1.0F);
         if (drawn) return;
 
         int color = !enabled ? PhoneTheme.COLOR_BUTTON_DISABLED
@@ -274,11 +273,11 @@ public final class BrowserScreen extends PhoneScreenBase {
         float gw = font.width(glyph) * sc;
         float gh = font.lineHeight * sc;
 
-        Transforms.push(g);
-        Transforms.translate(g, x + (NAV_BTN_W - gw) / 2f, y + (h - gh) / 2f);
-        Transforms.scale(g, sc, sc);
+        g.pose().pushPose();
+        g.pose().translate(x + (NAV_BTN_W - gw) / 2f, y + (h - gh) / 2f, 0);
+        g.pose().scale(sc, sc, 1f);
         g.drawString(font, glyph, 0, 0, color, false);
-        Transforms.pop(g);
+        g.pose().popPose();
     }
 
     /** 正在加载时右上角亮一个点：亮了说明点击送到了、导航发起了，没亮说明点击没到网页 */
@@ -370,21 +369,20 @@ public final class BrowserScreen extends PhoneScreenBase {
 
     /**
      * 此刻按着哪些修饰键。mouseScrolled 的签名里没有 modifiers，只能自己查，
-     * 不查的话 Ctrl+滚轮缩放永远不触发。三个查询走 platform/client/KeyModifiers：老三支是
-     * Screen 上那三个静态方法，26.3 是 Minecraft 的实例方法加自己补的 macOS 换键，四支同语义。
+     * 不查的话 Ctrl+滚轮缩放永远不触发。Screen 的这几个静态方法在 macOS 上把 Command 当 Ctrl，不用分平台。
      */
     private static int currentModifiers() {
         int mods = 0;
-        if (KeyModifiers.shift()) mods |= MOD_SHIFT;
-        if (KeyModifiers.ctrl()) mods |= MOD_CTRL;
-        if (KeyModifiers.alt()) mods |= MOD_ALT;
+        if (hasShiftDown()) mods |= MOD_SHIFT;
+        if (hasControlDown()) mods |= MOD_CTRL;
+        if (hasAltDown()) mods |= MOD_ALT;
         return mods;
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (urlBox.isFocused()) {
-            if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER) {   // GLFW_KEY_ENTER / KP_ENTER
+            if (keyCode == 257 || keyCode == 335) {   // GLFW_KEY_ENTER / KP_ENTER
                 navigateToTypedUrl();
                 return true;
             }
@@ -392,7 +390,7 @@ public final class BrowserScreen extends PhoneScreenBase {
         }
 
         // ESC 关界面，不转发给网页
-        if (keyCode == InputConstants.KEY_ESCAPE) {
+        if (keyCode == 256) {
             onClose();
             return true;
         }

@@ -5,8 +5,6 @@ import com.mojang.blaze3d.platform.Window;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhoneLocation;
-import com.november.mcphone.platform.client.CameraGui;
-import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -170,8 +168,8 @@ public final class PhoneHud {
             syncSize(mc);
         }
 
-        var shown = Screens.current(mc);
-        boolean isScreen = shown == phone;
+        boolean isScreen = mc.screen == phone;
+        if (!isScreen) phone.tick();
 
         // 全屏那副面孔正开着：人已经在正经操作手机了，Alt 在这儿没有意义
         if (isScreen && !phone.isHudMode()) return;
@@ -181,7 +179,7 @@ public final class PhoneHud {
         // 只在【什么界面都没开】时才翻。全屏那副面孔中途开出别的界面是正常操作——
         // 设置里点「位置」会开位置编辑器，退出来还该回到那一页。这时候要是把它翻回
         // HUD 模式，编辑器一关，全屏的手机就画到角落里去了
-        if (!isScreen && !phone.isHudMode() && shown == null) {
+        if (!isScreen && !phone.isHudMode() && mc.screen == null) {
             phone.setHudMode(true);
         }
 
@@ -199,7 +197,7 @@ public final class PhoneHud {
         if (!interactPressed) return;
 
         // 背包、聊天框开着时不抢。玩家正在那儿操作，凭空把手机拽到最上面只会打断他
-        if (Screens.current(mc) != null) return;
+        if (mc.screen != null) return;
 
         startInteracting(mc);
     }
@@ -212,10 +210,10 @@ public final class PhoneHud {
         Minecraft mc = Minecraft.getInstance();
 
         // 这一条得自己写，理由见类注释
-        if (CameraGui.hidden(mc)) return;
+        if (mc.options.hideGui) return;
 
         // 有界面开着就不画，理由见类注释
-        if (Screens.current(mc) != null) return;
+        if (mc.screen != null) return;
 
         syncSize(mc);
 
@@ -239,7 +237,7 @@ public final class PhoneHud {
         // ——那一下不该把他正看着的手机也一并合上。等他自己关掉，下一 tick 自然走到收
         // 手机那条路上。手机在这期间离开副手也照此办理，与从背包里开的那部一个规矩：
         // 界面开着就开着，不会因为物品没了自己合上
-        if (phone != null && Screens.current(mc) == phone && !phone.isHudMode()) return phone.location();
+        if (phone != null && mc.screen == phone && !phone.isHudMode()) return phone.location();
 
         boolean auto = PhoneHudPlacement.enabled() && PhoneItem.isDevice(player.getOffhandItem());
 
@@ -292,8 +290,7 @@ public final class PhoneHud {
     private static void onTogglePressed(Minecraft mc) {
         // 全屏那副面孔开着时不管：人已经在正经用手机了，收起的路是 ESC。
         // 背包、聊天框开着时也不管，别去抢别人正在操作的界面
-        var shown = Screens.current(mc);
-        if (shown != null && !(shown == phone && phone.isHudMode())) return;
+        if (mc.screen != null && !(mc.screen == phone && phone.isHudMode())) return;
 
         if (phone != null) {
             manual = Override.HIDE;
@@ -317,7 +314,7 @@ public final class PhoneHud {
         if (closing == null) return;
 
         // removed() 认得 hudOwned，不会重复拆，见 PhoneScreen.removed()
-        if (Screens.current(mc) == closing) mc.setScreen(null);
+        if (mc.screen == closing) mc.setScreen(null);
         closing.shutdown();
     }
 
@@ -337,6 +334,23 @@ public final class PhoneHud {
         manual = Override.NONE;
         lastAuto = false;
         if (closing != null) closing.shutdown();
+    }
+
+    /** 方块键把正在使用的同一部手机交给 HUD，保留页面、草稿及滚动状态。 */
+    public static void showAsHud(PhoneScreen current) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != current || mc.player == null || mc.level == null
+                || !PhoneItem.isDevice(current.location().resolve(mc.player))) return;
+
+        if (phone != current) dismiss(mc);
+        phone = current;
+        // 先同步自动状态，避免下一 tick 把这次明确的显示请求清掉。
+        lastAuto = PhoneHudPlacement.enabled() && PhoneItem.isDevice(mc.player.getOffhandItem());
+        manual = Override.SHOW;
+        interacting = false;
+        // removed() 前先托管，退出全屏只归还鼠标，不会关掉当前页面。
+        phone.adoptByHud();
+        mc.setScreen(null);
     }
 
     /**
@@ -367,7 +381,7 @@ public final class PhoneHud {
     private static void stopInteracting(Minecraft mc) {
         interacting = false;
         // setScreen(null) 会把鼠标重新抓回去，视角控制随之恢复
-        if (Screens.current(mc) == phone) mc.setScreen(null);
+        if (mc.screen == phone) mc.setScreen(null);
     }
 
     /**

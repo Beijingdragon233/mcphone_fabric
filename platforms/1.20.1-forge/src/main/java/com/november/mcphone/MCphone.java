@@ -119,6 +119,23 @@ public final class MCphone {
         MinecraftForge.EVENT_BUS.addListener(
                 com.november.mcphone.feature.chat.ChatImageUploads::onPlayerLoggedOut);
 
+        // S17：连接 epoch 成对（登录建、登出忘）。两者必须写在同一处，漏一个的后果见 ScriptHost.newEpoch。
+        // 客户端拿到的 epoch 经握手（Handshake.Begin）下发 —— 那一半在 Stage 2。
+        MinecraftForge.EVENT_BUS.addListener(
+                (net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent e) -> {
+                    if (e.getEntity() instanceof net.minecraft.server.level.ServerPlayer p) {
+                        long epoch = com.november.mcphone.core.script.server.ScriptHost.newEpoch(p);
+                        // S17 Stage 2：把 serverId / epoch / 部署表随握手下发（只含该玩家被授权的动作，UX）
+                        com.november.mcphone.core.script.server.HandshakeService.pushTo(p, epoch);
+                    }
+                });
+        MinecraftForge.EVENT_BUS.addListener(
+                (net.minecraftforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent e) -> {
+                    if (e.getEntity() instanceof net.minecraft.server.level.ServerPlayer p) {
+                        com.november.mcphone.core.script.server.ScriptHost.forget(p.getUUID());
+                    }
+                });
+
         // 开服时清掉没有消息认领的图片文件，理由见 ChatImageStore.sweepOrphans
         MinecraftForge.EVENT_BUS.addListener(
                 com.november.mcphone.feature.chat.ChatImageStore::onServerStarted);
@@ -131,21 +148,33 @@ public final class MCphone {
                 (net.minecraftforge.event.server.ServerStartedEvent e) -> {
                     com.november.mcphone.core.script.server.economy.EconomyRuntime.start(e.getServer());
                     com.november.mcphone.core.script.server.ScriptWorkers.start();
+                    // 脚本宿主（S15g）：建 StrikeTracker（必须主线程）、管线、登记进 ScriptRpcHandler
+                    com.november.mcphone.core.script.server.ScriptHost.start(e.getServer());
                 });
         // 货币网关先关、再停 worker：worker 可能正等着主线程替它执行一笔货币调用，
         // 反过来主线程就要白等到 worker 超时（见 CurrencyGateway.close）
         MinecraftForge.EVENT_BUS.addListener(
                 (net.minecraftforge.event.server.ServerStoppingEvent e) -> {
                     com.november.mcphone.core.script.server.economy.EconomyRuntime.stop();
+                    // 先摘管线（在飞的求值还有机会落地），再停 worker
+                    com.november.mcphone.core.script.server.ScriptHost.stop();
                     com.november.mcphone.core.script.server.ScriptWorkers.stop();
-                    com.november.mcphone.core.script.net.ScriptRpcHandler.clear();
                 });
         // 超时托管每 5 分钟扫一次（见 EconomyRuntime.tick），只在 tick 结束那一相位调一次
         MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.TickEvent.ServerTickEvent e) -> {
             if (e.phase == net.minecraftforge.event.TickEvent.Phase.END) com.november.mcphone.core.script.server.economy.EconomyRuntime.tick();
         });
+        MinecraftForge.EVENT_BUS.addListener((net.minecraftforge.event.TickEvent.ServerTickEvent e) -> {
+            if (e.phase == net.minecraftforge.event.TickEvent.Phase.END) {
+                tickDiscLoop(e.getServer().getPlayerList().getPlayers());
+            }
+        });
         MinecraftForge.EVENT_BUS.addListener(
                 (net.minecraftforge.event.RegisterCommandsEvent e) -> com.november.mcphone.core.script.server.economy.EconomyCommand.register(e.getDispatcher()));
+        // 脚本后端的 OP 管理命令（S17，§14.4）：部署/授权的 Stage 1 审批入口
+        MinecraftForge.EVENT_BUS.addListener(
+                (net.minecraftforge.event.RegisterCommandsEvent e) ->
+                        com.november.mcphone.core.script.server.ScriptAdminCommand.register(e.getDispatcher()));
 
         // 放在自家注册之后：兼容模块可能要看我们已经注册了什么
         com.november.mcphone.compat.CompatModules.init(modBus);
@@ -166,6 +195,24 @@ public final class MCphone {
                 () -> () -> MCphoneClient.init(context));
 
         LOGGER.info("[MCphone] Forge 1.20.1 已加载 v{}，见 docs/PORTING.md", version);
+    }
+
+    /** 接续唱片仓单曲循环；状态变化后立刻同步本轮的新终点。 */
+    private static void tickDiscLoop(Iterable<net.minecraft.server.level.ServerPlayer> players) {
+        for (net.minecraft.server.level.ServerPlayer player : players) {
+            try {
+                if (com.november.mcphone.feature.music.DiscService.tickLoop(player)) {
+                    com.november.mcphone.feature.music.DiscService.syncState(player);
+                }
+            } catch (VirtualMachineError fatal) {
+                throw fatal;
+            } catch (Throwable failure) {
+                // 与 C2S 的 handleSafely 同一个理由，而这里是【每 tick × 每个玩家】的扇出：
+                // 一个人身上出的事（例如仓里有个会让 JukeboxSong.fromStack 抛的物品栈）不隔离的话，
+                // 排在他后面的玩家这一 tick 全被跳过，而且每 tick 复现 —— 是跨玩家的影响。
+                LOGGER.error("[MCphone] 唱片循环的每 tick 扇出失败 player={}", player.getUUID(), failure);
+            }
+        }
     }
 
     /** 本模组版本号，如 "0.1.0"。模组构造前调用会得到空串。 */

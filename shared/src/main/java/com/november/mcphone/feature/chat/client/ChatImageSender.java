@@ -1,7 +1,6 @@
 package com.november.mcphone.feature.chat.client;
 
 import com.november.mcphone.MCphone;
-import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.core.client.GifCodec;
 import com.november.mcphone.core.client.ImageCodec;
 import com.november.mcphone.core.net.MCphoneNetwork;
@@ -123,7 +122,7 @@ public final class ChatImageSender {
     private static final int MAX_QUEUED = 4;
 
     /** 排着等发的一张 */
-    private record Queued(UUID peer, Path photo) {}
+    private record Queued(UUID peer, Path photo, boolean group) {}
 
     /** 只有主线程碰它：点击、拖放、客户端 tick 都在主线程 */
     private static final Deque<Queued> QUEUE = new ArrayDeque<>();
@@ -140,23 +139,25 @@ public final class ChatImageSender {
     private static final long COOLDOWN_MS = 2_000L;
 
     private static long sendingSince;
+    private static final ChatUploadSession SESSION = new ChatUploadSession();
 
     /** 冷却到期的时刻 */
     private static long readyAt;
 
     /** 刚发上去的那张图的字节，等回声带着 id 回来时塞进缓存，见 {@link #onNewMessage} */
     private static byte[] pendingPng;
+    private static UUID pendingGroup, pendingRequest;
 
     /** 这会儿有一张正在发，或者刚发完还在冷却。再点的会排队，见 {@link #send} */
     public static boolean isBusy() {
         long now = System.currentTimeMillis();
+        expireUpload(now);
+        return sendingSince != 0L || now < readyAt;
+    }
 
-        if (sendingSince != 0L) {
-            if (now - sendingSince <= SEND_TIMEOUT_MS) return true;
-            // 服务端拒收时不会有回声（拒收的理由它已经单独说过了），不能让界面永远卡在"发送中"
-            finish();
-        }
-        return now < readyAt;
+    private static void expireUpload(long now) {
+        // 服务端拒收时没有回声；慢压缩完成前也可能已超时，不能靠页面是否仍在查询来判断。
+        if (sendingSince != 0L && now - sendingSince > SEND_TIMEOUT_MS) finish();
     }
 
     /** 队伍也满了，这一下真的收不下。界面据此把「+」画成灰的并且点不动 */
@@ -174,14 +175,18 @@ public final class ChatImageSender {
      * @param photo 相册或表情目录里那张图的路径
      */
     public static void send(UUID peer, Path photo) {
+        send(peer, photo, false);
+    }
+    public static void sendGroup(UUID group, Path photo) { send(group, photo, true); }
+    private static void send(UUID peer, Path photo, boolean group) {
         if (peer == null || photo == null) return;
 
         if (isBusy()) {
             if (isFull()) tell("mcphone.chat.image_too_fast");
-            else QUEUE.add(new Queued(peer, photo));
+            else QUEUE.add(new Queued(peer, photo, group));
             return;
         }
-        start(peer, photo);
+        start(peer, photo, group);
     }
 
     /**
@@ -199,13 +204,18 @@ public final class ChatImageSender {
         if (QUEUE.isEmpty() || isBusy()) return;
 
         Queued next = QUEUE.poll();
-        start(next.peer(), next.photo());
+        start(next.peer(), next.photo(), next.group());
     }
 
     /** 真的开始发这一张：压缩在后台，发包回渲染线程 */
-    private static void start(UUID peer, Path photo) {
+    private static void start(UUID peer, Path photo, boolean group) {
+        var connection = Minecraft.getInstance().getConnection();
+        if (connection == null) return;
+        var ticket = SESSION.start(connection);
         sendingSince = System.currentTimeMillis();
         pendingPng = null;
+        pendingGroup = group ? peer : null;
+        pendingRequest = group ? UUID.randomUUID() : null;
 
         // 上限在这里取，不在后台线程里取：那是服主的配置（连上来时同步过来的），
         // 读它是主线程的事，而且一次上传从头到尾该按同一个数来
@@ -222,7 +232,7 @@ public final class ChatImageSender {
                 attempt = Attempt.failed("mcphone.chat.image_unreadable");
             }
             Attempt done = attempt;
-            Minecraft.getInstance().execute(() -> upload(peer, done));
+            Minecraft.getInstance().execute(() -> upload(peer, ticket, done));
         });
     }
 
@@ -389,18 +399,16 @@ public final class ChatImageSender {
     }
 
     /** 切片发上去。在渲染线程 */
-    private static void upload(UUID peer, Attempt attempt) {
+    private static void upload(UUID peer, ChatUploadSession.Ticket ticket, Attempt attempt) {
+        expireUpload(System.currentTimeMillis());
+        // clear、超时或新上传都能让旧结果失效；只看非空连接会把旧服务器的任务发到新服务器。
+        if (!SESSION.accepts(ticket, Minecraft.getInstance().getConnection())) return;
         ImageCodec.Encoded encoded = attempt.encoded();
         if (encoded == null) {
             tell(attempt.failureKey());
             finish();
             return;
         }
-        if (Minecraft.getInstance().getConnection() == null) {
-            finish();   // 压缩那会儿工夫里断线了
-            return;
-        }
-
         byte[] png = encoded.png();
         int chunkCount = (png.length + ChatImage.CHUNK_BYTES - 1) / ChatImage.CHUNK_BYTES;
 
@@ -411,7 +419,9 @@ public final class ChatImageSender {
             byte[] chunk = new byte[to - from];
             System.arraycopy(png, from, chunk, 0, chunk.length);
 
-            MCphoneNetwork.sendToServer(new SendChatImagePacket(
+            if (pendingGroup != null) GroupTransport.send(new com.november.mcphone.feature.chat.group.net.GroupCommand.Upload(
+                    pendingRequest, pendingGroup, encoded.width(), encoded.height(), encoded.frames(), encoded.frameMs(), index, chunkCount, chunk));
+            else MCphoneNetwork.sendToServer(new SendChatImagePacket(
                     peer, encoded.width(), encoded.height(), encoded.frames(), encoded.frameMs(),
                     index, chunkCount, chunk));
         }
@@ -426,9 +436,10 @@ public final class ChatImageSender {
      * 回声里只有图片 id（见 ImageBody），不这么做的话，发件人会看着自己刚发出去的图
      * 转一圈"加载中"，再从服务器把自己上传的东西下回来。
      *
-     * 由 {@link ChatNotifier#onMessage} 转调——那里本来就是"每条新消息都会经过"的地方。
+     * 由 {@link ChatClientEvents#onMessage} 转调，上传状态不依赖通知是否显示。
      */
     public static void onNewMessage(ChatMessage message) {
+        if (pendingGroup != null) return;
         if (pendingPng == null) return;
         if (!(message.body() instanceof ImageBody image)) return;
 
@@ -438,6 +449,18 @@ public final class ChatImageSender {
         ChatImageCache.seed(image.image(), pendingPng);
         finish();
     }
+    public static void onGroupMessage(com.november.mcphone.feature.chat.group.net.GroupReply.Message reply) {
+        if (pendingPng == null || !java.util.Objects.equals(pendingGroup, reply.summary().id())
+                || !java.util.Objects.equals(pendingRequest, reply.request())) return;
+        var message = reply.summary().last().orElseThrow().message();
+        var player = Minecraft.getInstance().player;
+        if (player == null || !message.sender().equals(player.getUUID()) || !(message.body() instanceof ImageBody image)) return;
+        ChatImageCache.seed(image.image(), pendingPng); finish();
+    }
+    public static void onGroupResult(com.november.mcphone.feature.chat.group.net.GroupReply.Result reply) {
+        if (pendingRequest != null && pendingRequest.equals(reply.request())
+                && reply.status() != com.november.mcphone.feature.chat.group.GroupStatus.OK) { tell(reply.status().key()); finish(); }
+    }
 
     /**
      * 退出世界时清掉，免得下一个服务器里冒出一次莫名其妙的"发送中"，也不必带着冷却过去。
@@ -446,22 +469,26 @@ public final class ChatImageSender {
      * 压好的字节留着（{@link #ENCODED}）——那只跟文件有关，跟在哪个服务器无关。
      */
     public static void clear() {
+        SESSION.cancel();
         sendingSince = 0L;
         pendingPng = null;
         readyAt = 0L;
         QUEUE.clear();
+        pendingGroup = pendingRequest = null;
     }
 
     /** 一次上传就此结束（成了、超时了、或者压根没发出去），并开始冷却 */
     private static void finish() {
+        SESSION.cancel();
         sendingSince = 0L;
         pendingPng = null;
+        pendingGroup = pendingRequest = null;
         readyAt = System.currentTimeMillis() + COOLDOWN_MS;
     }
 
     private static void tell(String translationKey) {
         var player = Minecraft.getInstance().player;
         // 与服务端拒收时同一个位置：动作栏。玩家的眼睛正看着手机屏幕，聊天框那一行他看不见
-        if (player != null) ClientMessages.show(player, Component.translatable(translationKey), true);
+        if (player != null) com.november.mcphone.platform.PlayerAccess.message(player, Component.translatable(translationKey), true);
     }
 }

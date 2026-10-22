@@ -56,7 +56,10 @@ public final class NetworkHandler {
 
     // ---- 由 MCphone 构造函数调用 ----
     public static void register(final RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar registrar = event.registrar("2");
+        // "3"：S17 Stage 2 的握手下发里，部署项加了 approvalRevision / approvedAt 两个 varlong。
+        // 字段格式变了就抬（不只是包顺序）；旧客户端会把批准轴当动作表长度解码，表现为
+        // "握手批次永远收不齐、本服看起来没部署"。Fabric 那一支没有这个闸，改在 begin.scriptApi。
+        PayloadRegistrar registrar = event.registrar("8");
 
         // C2S: 玩家选了壁纸
         MCphoneNetwork.registerToServer(
@@ -121,12 +124,20 @@ public final class NetworkHandler {
         // 【最末尾】脚本 RPC 的三个包（§15.3）。追加在全部现有包之后，所以不动
         // 协议版本号；插在中间是能编过的，代价是老客户端把 A 包当 B 包解码
         com.november.mcphone.core.script.net.ScriptNetworking.register(registrar);
+        com.november.mcphone.feature.chat.group.net.GroupNetworking.register(registrar);
+        com.november.mcphone.feature.chat.profile.net.ProfileNetworking.register(registrar);
     }
 
     //  处理函数
 
     /** 两只手必须逐一更新，否则同时打开 HUD 和全屏设备时会误灭其中一台。 */
     private static void handlePhoneScreenOn(PhoneScreenOnPacket packet, ServerPlayer player) {
+        // 这里【不】限流：SCREEN_STATE 是绝对状态而不是增量，而客户端只在状态变化时发一次、
+        // 失败不重发（PhoneScreenOnSync.send 先把 lastSent 改成新值）。按 250 ms 丢一次，服务端
+        // 亮屏位就永久停在旧值（重登/换世界才自愈），而半秒内翻两次手机是正常操作。
+        // 代价：改过的客户端可以按任意频率发，每次是一次 getInventory().contains(...) 全背包
+        // 谓词扫描（约 41 格、微秒量级）—— 不值得拿"状态永久错误"去换。
+        if (!PhoneItem.isCarriedBy(player)) return;
         for (InteractionHand hand : InteractionHand.values()) {
             ItemStack held = player.getItemInHand(hand);
             if (packet.isLit(hand) && PhoneItem.isDevice(held)) {
@@ -139,13 +150,17 @@ public final class NetworkHandler {
 
     /** 服务端收到：记录壁纸选择，广播给该玩家的客户端 */
     private static void handleSetWallpaper(SetWallpaperPacket packet, ServerPlayer player) {
-        PhonePlayerData.of(player).setWallpaper(new WallpaperData(packet.wallpaperFileName()));
+        if (!PhoneItem.isCarriedBy(player)
+                || !RequestThrottle.allow(player, RequestThrottle.Kind.SETTINGS)) return;
+        String wallpaper = WallpaperData.sanitize(packet.wallpaperFileName());
+        if (!packet.wallpaperFileName().isEmpty() && wallpaper.isEmpty()) return;
+        PhonePlayerData.of(player).setWallpaper(new WallpaperData(wallpaper));
 
         // 发回给该玩家确认
-        MCphoneNetwork.sendToPlayer(player, new SyncWallpaperPacket(packet.wallpaperFileName()));
+        MCphoneNetwork.sendToPlayer(player, new SyncWallpaperPacket(wallpaper));
 
         MCphone.LOGGER.debug("玩家 {} 设置壁纸: {}", player.getName().getString(),
-                packet.wallpaperFileName().isEmpty() ? "默认" : packet.wallpaperFileName());
+                wallpaper.isEmpty() ? "默认" : wallpaper);
     }
 
     /**
@@ -161,6 +176,7 @@ public final class NetworkHandler {
      * 不归原版管，故统一调一次 writeBack，由位置自己决定要不要动作。
      */
     private static void handleSetDeviceName(SetDeviceNamePacket packet, ServerPlayer player) {
+        if (!RequestThrottle.allow(player, RequestThrottle.Kind.SETTINGS)) return;
         ItemStack stack = packet.location().resolve(player);
 
         // 那个位置上不是手机就什么都不做：位置由客户端给出，可能已经

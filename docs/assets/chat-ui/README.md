@@ -1,0 +1,48 @@
+# 聊天图标原稿
+
+来自用户提供的 `chat-ui-black-white-24px-corrected.zip`，原始 SVG 取自包内 `original/`，游戏贴图取自 `white/`，均保持文件内容不变。图标库为 [Pixelarticons](https://github.com/halfmage/pixelarticons)，MIT 许可及版权说明见 `shared/src/main/resources/THIRD-PARTY.txt`。
+
+| 原稿 | 使用位置 | 游戏贴图（相对 textures/） |
+| --- | --- | --- |
+| message.svg | 聊天栏目 | chat/ui/message.png |
+| contact.svg | 联系人栏目 | chat/ui/contact.png |
+| compass.svg | 发现占位 | chat/ui/compass.png |
+| user.svg | 个人页占位 | chat/ui/user.png |
+| search.svg | 消息与联系人搜索 | chat/ui/search.png |
+| plus.svg | 保留旧版原稿；实际加号见 material-96px/add.svg | — |
+
+PNG 为 24×24 透明白色图标，绘制尺寸由 `ChatLayout.ICON_SIZE` 管理。白色底图乘界面颜色，支持粉色活动项、灰色禁用项及玩家设置的字体颜色；资源包仍可覆盖相同 PNG 路径。
+
+本次仅使用已有页面对应的六个图标。包里的群聊、支付、公众号等素材没有对应页面，尚不接入。返回、更多、加号、笑脸和语音已换成用户提供的 96×96 Material Symbols / Iconoir 素材，见 `material-96px/`。分别使用 back、more、add、mood 和 voice-circle；白色 PNG 原样打包，代码只调整显示尺寸及着色，缺图时仍有几何兜底。原稿与许可保留，黑色版本及未使用的麦克风、替代表情不打入模组。
+
+首页的半透明底板由 `ChatGlass` 统一绘制：上下渐变、细分圆角、细描边、顶沿高光和一像素轻阴影。图标 PNG 本身不加底色；头像框、会话卡片、搜索框与栏目栏各用对应的透明调色板。首页加号恢复为独立透明图标，搜索放大镜单独按 6×6 绘制并与文字居中对齐。深色字体预设会切换浅色面板，其余预设用莓紫面板，不额外加载模糊着色器。
+
+尺寸与卡片间距集中在 `ChatLayout`，页面组装和点击范围在 `ChatList`。栏目、标题、入口与搜索标签按默认字体的可见轮廓居中，计算保留小数；发现与个人页仍为占位，消息和联系人搜索已接入真实名称筛选。
+
+首页与群邀请的加号使用 `ChatUi.Icon.ADD` 的细线几何，没有圆圈；聊天附件仍使用原来的圆圈加号。选择好友的勾号使用 `CHECK` 几何，避免字体中的特殊字符导致偏移，勾选框完整位于好友卡片内。返回、添加好友及邀请图标使用中性色，悬停使用粉色强调；已有白色返回贴图仍支持资源包替换。
+
+会话卡片为一行名称与一行消息摘要，长内容省略，不折成第二行摘要。`ChatLayout.Card` 统一计算头像、名称、时间和底行操作的位置：名称与时间居中对齐，摘要、传送图标和未读角标共用底行中心。传送的纵向点击范围只占底行，不能跨到名称与时间；横向点击边距也从摘要宽度中预留。默认字体下卡片高 20 逻辑像素。
+
+圆角轮廓使用八倍局部坐标，绘制时等比缩回，命中与排版仍按逻辑像素。`ChatGlass` 只细分弧线与描边，直线区域保持普通步距，并最多缓存 64 组轮廓；不放大整部手机的渲染缓冲。发送按钮使用同一套轮廓。
+
+聊天气泡与输入框的矢量原稿在 `surfaces/`，PNG 可在仓库根运行 `java tools/ui/GenerateChatSurfaces.java .` 重建。气泡、输入框与未读角标共四张 PNG，基础 RGBA 共 825344 字节，未计引擎缓存或驱动开销。八倍图的元数据为 `{"mcphone_skin":{"border":24,"scale":8}}`，四角在界面上仍占三逻辑像素。资源包声明 `scale` 时应同时提供 PNG 与 mcmeta；旧包没有该属性按倍率 1 处理，只覆盖 PNG 时也不会误继承本体的八倍倍率。
+
+消息头像、气泡和图片共用 `ChatLayout.MessageRow` 定位：顶部预留昵称行，短内容底边对齐头像，长内容向下延伸。实际群聊数据与业务尚未实现，预留区域不显示虚构昵称。
+
+首页头像外框使用方角细边框，玩家头部保持方形，不裁圆。在线状态用外框边角的 2×2 小方点表示，减少对脸部的遮挡。皮肤由各平台 `PlayerSkins` 读取原版资料，共用 `RememberedPlayerSkins`：每秒记录在线玩家资料，最多保留 512 项，好友下线后继续使用最后已加载的皮肤。原版的异步加载占位不覆盖旧的真实皮肤；自己断线时释放旧 PlayerInfo，但当前客户端内已知的皮肤引用仍可用于重新进服。没有见过资料的离线玩家仍使用默认头像，不额外查询 Mojang，也不向磁盘保存玩家图片。
+
+输入框高度为 12 逻辑像素，偏黑半透明渐变配浅粉白文字。默认 mcmeta 的 `text_color` 为 `#FFF2F7`；只覆盖旧 PNG 的资源包不会继承本体的文字颜色，仍使用原有回退。
+
+
+右键菜单使用用户提供的 `clipboard-actions-black-white-96px.zip`。白色 copy、delete、paste PNG 原样打包在 `chat/ui/`，SVG 与来源记录在 `clipboard-actions-96px/`。复制/删除来自 Material Symbols，粘贴来自 Lucide；许可见第三方说明。图标占 8×8 逻辑像素，与标签间隔 4 像素；可见轮廓的水平补偿分别为 +1/6、0、-1/6 像素。文字去掉字体底部留白后与图标共用行中心。
+
+接收气泡为提亮灰蓝、发送气泡为莓紫，主体覆盖率约 75%；输入框保留偏黑底，主体覆盖率约 67%。三者均带半逻辑像素浅色描边和轻阴影，由 `GenerateChatSurfaces` 同步生成 SVG 和八倍 PNG。选区采用冷蓝底与四分之一逻辑像素浅蓝底沿，保持原有文字原点和字素命中。视觉验收仍需不同壁纸、手机缩放、GUI 缩放下的游戏截图。
+
+首页「+」菜单使用参照用户截图自行绘制的「创建群聊」「添加好友」图标，原稿位于 `home-menu/`，96×96 白色透明 PNG 位于 `chat/ui/create_group.png`、`chat/ui/add_contact.png`。两者笔宽一致，与标签共用行中心；可在仓库根运行 `java tools/ui/GenerateChatHomeIcons.java .` 重建。此组为项目手绘素材，适用项目 MIT 许可，不使用截图裁切图。
+
+首页菜单复用 `ChatContextMenuView` 的列对齐及边界避让，继续使用半透明粉色面板。点击「添加好友」进入已有页面，点击「创建群聊」进入名称与好友选择页；首页和联系人页均支持真实名称搜索。群聊数据、协议与权限见 [群聊架构](../../CHAT-GROUPS.md)。菜单开启期间点击外部、滚轮及 ESC 先收起菜单，不穿透会话、传送或机身导航。
+# 「我」菜单图标补充
+
+用户提供的 `menu-actions-96px-heroicons` 图标用于收藏、GitHub、赞助、设置，按此顺序排列。设置选用 D 款六齿齿轮；白色 PNG 原样复制，随文字主题着色。
+
+96px 原稿、黑白参考图和来源记录见 `menu-actions-96px/`。收藏和赞助来自 Material Symbols（Apache-2.0），设置来自 Heroicons（MIT），GitHub 来自 Simple Icons（CC0）；许可在资源的 `licenses/` 目录。

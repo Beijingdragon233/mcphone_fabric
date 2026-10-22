@@ -1,7 +1,6 @@
 package com.november.mcphone.feature.terminal.client;
 
 import com.november.mcphone.platform.client.Draw;
-import com.november.mcphone.platform.client.PhoneContainerScreenBase;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneChassis;
 import com.november.mcphone.core.client.PhoneScreenOpener;
@@ -12,6 +11,7 @@ import com.november.mcphone.feature.terminal.net.TerminalActionPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import com.november.mcphone.platform.client.PhoneContainerScreenBase;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
@@ -37,7 +37,6 @@ public class TerminalSlotScreen extends PhoneContainerScreenBase<TerminalSlotMen
     private Button openButton;
 
     public TerminalSlotScreen(TerminalSlotMenu menu, Inventory playerInventory, Component title) {
-        // 尺寸走构造：26.x 上 imageWidth/imageHeight 是 final
         super(menu, playerInventory, title, TerminalSlotMenu.IMAGE_WIDTH, TerminalSlotMenu.IMAGE_HEIGHT);
         this.titleLabelX = 8;
         this.titleLabelY = 6;

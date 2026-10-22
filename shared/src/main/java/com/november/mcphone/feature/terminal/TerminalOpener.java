@@ -1,7 +1,7 @@
 package com.november.mcphone.feature.terminal;
 
 import com.november.mcphone.MCphone;
-import com.november.mcphone.platform.client.ClientMessages;
+import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.feature.terminal.integration.TerminalIntegration;
 import com.november.mcphone.feature.terminal.integration.TerminalSource;
 import com.november.mcphone.feature.terminal.integration.Terminals;
@@ -51,6 +51,7 @@ public final class TerminalOpener {
 
     /** 开一台终端：按上面那两级挑。卡槽界面的「打开终端」按钮走这条，点 App 只在卡槽装了终端时走 */
     public static void open(ServerPlayer player) {
+        if (!PhoneItem.isCarriedBy(player)) return;
         // 开之前先给卡槽里那台补满电，"没电打不开"这件事因此根本不会发生。空着、不吃电、
         // 服主关了开关都会直接返回，见 TerminalCharger
         TerminalCharger.topUp(player);
@@ -78,7 +79,7 @@ public final class TerminalOpener {
 
         // 三、哪儿都没有。把卡槽摆出来，比一句"你没有终端"有用
         if (!incapable.isEmpty()) {
-            ClientMessages.show(player,
+            com.november.mcphone.platform.PlayerAccess.message(player,
                     Component.translatable("mcphone.terminal.no_remote", incapable.getHoverName()), false);
         }
         openSlotMenu(player);
@@ -86,6 +87,7 @@ public final class TerminalOpener {
 
     /** 打开终端卡槽界面 */
     public static void openSlotMenu(ServerPlayer player) {
+        if (!PhoneItem.isCarriedBy(player)) return;
         player.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, ignored) -> new TerminalSlotMenu(containerId, playerInventory),
                 Component.translatable("mcphone.terminal.slot_title")));
@@ -111,7 +113,7 @@ public final class TerminalOpener {
             // enqueueWork 排给主线程的任务里 —— 让它冒出去就是一次服务端崩溃，
             // 起因只是某个玩家点了一下手机上的 App。
             MCphone.LOGGER.error("用 {} 打开终端时出错", integration.modId(), t);
-            ClientMessages.show(player,
+            com.november.mcphone.platform.PlayerAccess.message(player,
                     Component.translatable("mcphone.terminal.open_failed", integration.displayName()), false);
             return true;   // 已经给过反馈了，别再往下找、也别再开卡槽界面
         }

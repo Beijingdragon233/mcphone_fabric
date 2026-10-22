@@ -5,7 +5,6 @@ import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.ResourceLocation;
@@ -40,6 +39,11 @@ public final class Draw {
 
     private Draw() {}
 
+    /** 26.1 将 PoseStack 的栈底判定从 clear 改名为 isEmpty。 */
+    public static boolean poseAtBase(com.mojang.blaze3d.vertex.PoseStack stack) {
+        return stack.clear();
+    }
+
     /**
      * 画一个铺满给定矩形的带贴图四边形，uv 走满 0..1，颜色纯白不透明。
      *
@@ -57,17 +61,6 @@ public final class Draw {
         buffer.addVertex(matrix, x + w, y, 0).setUv(1f, 0f).setColor(255, 255, 255, 255);
         buffer.addVertex(matrix, x, y, 0).setUv(0f, 0f).setColor(255, 255, 255, 255);
         BufferUploader.drawWithShader(buffer.build());
-    }
-
-    public static void browserTexture(GuiGraphics g, int texture,
-                                      int x, int y, int w, int h) {
-        if (texture <= 0) return;
-        RenderSystem.disableDepthTest();
-        RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexColorShader);
-        RenderSystem.setShaderTexture(0, texture);
-        texturedQuad(g.pose().last().pose(), x, y, w, h);
-        RenderSystem.setShaderTexture(0, 0);
-        RenderSystem.enableDepthTest();
     }
 
     /**
@@ -97,57 +90,44 @@ public final class Draw {
         return !g.containsPointInScissor(0, 0);
     }
 
-    /**
-     * 画一张贴图（或它的一块），带一个【整体不透明度】。共用代码里所有画贴图的动作都从这里过。
-     *
-     * <p>这一支上它就是从前那三句 GL 状态加一句 blit，外加 alpha 不是 1 时那对成 setColor：
-     * {@code GuiGraphics#setColor(float,float,float,float)} 就是一句
-     * {@code RenderSystem.setShaderColor}（{@code GuiGraphics.java:243-246}）—— 一段【全局】
-     * 着色器颜色，用完必须当场还原。26.x 把那句删了、颜色改成每次绘制各带一个，
-     * 于是同一个意思在两支上没有一行写得一样，这就是它待在这一层的全部理由。
-     *
-     * <p>为什么还要自己开混合：{@code blit(ResourceLocation, ...)} 这条路从头到尾没碰过混合状态，
-     * 而 GUI 里每画完一次 fill 或一行字，收尾都会 disableBlend —— 半透明贴图于是被当成不透明画。
-     * 收尾关掉而不是恢复原状：原版自己那条带色的 blit 就是 enable → 画 → disable。
-     */
-    public static void textured(GuiGraphics g, ResourceLocation tex,
-                                int x, int y, int w, int h,
-                                float u, float v, int srcW, int srcH, int texW, int texH,
-                                float alpha) {
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        if (alpha != 1.0F) g.setColor(1.0F, 1.0F, 1.0F, alpha);
-        g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
-        if (alpha != 1.0F) g.setColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.disableBlend();
+    /** 浏览器纹理由本版本负责提交，共用页面不操作全局 GL 状态。 */
+    public static void browserFrame(GuiGraphics g,int texture,int x,int y,int w,int h) {
+        com.mojang.blaze3d.systems.RenderSystem.disableDepthTest();
+        com.mojang.blaze3d.systems.RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexColorShader);
+        com.mojang.blaze3d.systems.RenderSystem.setShaderTexture(0,texture);
+        try { texturedQuad(g.pose().last().pose(),x,y,w,h); }
+        finally { com.mojang.blaze3d.systems.RenderSystem.setShaderTexture(0,0); com.mojang.blaze3d.systems.RenderSystem.enableDepthTest(); }
     }
 
     public static void tinted(GuiGraphics g, ResourceLocation tex,
                               int x, int y, int w, int h, float u, float v,
                               int srcW, int srcH, int texW, int texH, int argb) {
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        g.setColor((argb >> 16 & 0xFF) / 255f, (argb >> 8 & 0xFF) / 255f,
-                (argb & 0xFF) / 255f, (argb >>> 24) / 255f);
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(
+                ((argb >> 16) & 0xFF) / 255F, ((argb >> 8) & 0xFF) / 255F,
+                (argb & 0xFF) / 255F, ((argb >>> 24) & 0xFF) / 255F);
         try {
             g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
         } finally {
-            g.setColor(1f, 1f, 1f, 1f);
-            RenderSystem.disableBlend();
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
         }
     }
 
     public static void highlighted(GuiGraphics g, ResourceLocation tex,
                                    int x, int y, int w, int h, float u, float v,
                                    int srcW, int srcH, int texW, int texH, float brightness) {
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        g.setColor(brightness, brightness, brightness, 1f);
+        float alpha = Math.max(0F, Math.min(1F, brightness - 1F));
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1F, 1F, 1F, alpha);
         try {
             g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
         } finally {
-            g.setColor(1f, 1f, 1f, 1f);
-            RenderSystem.disableBlend();
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
         }
+    }
+
+    /** 拒绝旧版专用渲染器，避免第三方物品把整页 GUI 渲染打断。 */
+    public static boolean canDrawItemIcon(net.minecraft.world.item.ItemStack stack) {
+        var mc=net.minecraft.client.Minecraft.getInstance();
+        var model=mc.getItemRenderer().getModel(stack,mc.level,mc.player,0);
+        return model!=null&&!model.isCustomRenderer();
     }
 }

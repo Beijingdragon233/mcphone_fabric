@@ -65,9 +65,7 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      # 矩阵横跨 Java 17（1.20.1）、21（1.21.1）与 25（26.3），三个都得在。
-      # 25 是 piston-meta 里 26.3 的 java_version —— 不是猜的，但也得有人真装上，
-      # 否则下面挑 JDK 那一句会拿着空的 JAVA_HOME_25_X64 直接失败。
+      # 矩阵横跨 Java 17（1.20.1）、21（1.21.1）与 25（26.1），三者都得在。
       # ⚠ 这个列表要跟 versions/targets.json 里出现过的 java 值一致。多装一个不要紧，
       # 少装一个会在下面报"JAVA_HOME_17_X64 为空"——挑 JDK 那句取不到就直接失败，
       # 不退回默认 JDK：拿错 JDK 编出来的 class 文件版本不对，而那要等玩家装上才发现。

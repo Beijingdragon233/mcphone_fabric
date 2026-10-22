@@ -56,7 +56,7 @@ public final class PhoneTheme {
     // 以下 FONT_COLOR_* 画在手机自带构件（导航栏、通知、气泡等）的实心底上，
     // 底不变字也不能变——钉死，不随设置走；随「字体颜色」设置变的在 FontPalette。
 
-    /** 状态栏时间/信号。底是 COLOR_SCRIM 压暗层 */
+    /** 状态栏时间与信号、电池兜底图案。底是 COLOR_SCRIM 压暗层 */
     public static final int FONT_COLOR_STATUS = 0xFFFFFFFF;
 
     /** 导航栏 ◀ ● ■ 三个符号。底是 COLOR_NAV_BAR */
@@ -74,7 +74,7 @@ public final class PhoneTheme {
     /** 通知里的发信人名字与右上角条数。底是 COLOR_TOAST_BG */
     public static final int FONT_COLOR_TOAST_TITLE = 0xFFFFFFFF;
 
-    /** 会话列表未读角标里的数字。底是 COLOR_UNREAD_BADGE 那块红 */
+    /** 会话列表未读角标里的数字。底是 COLOR_UNREAD_BADGE 的玫瑰粉色。 */
     public static final int FONT_COLOR_BADGE = 0xFFFFFFFF;
 
     /** 自己发的气泡里的字。底是 COLOR_CHAT_BUBBLE_SELF */
@@ -150,19 +150,27 @@ public final class PhoneTheme {
     // 气泡底与输入栏底是兜底色，贴图见 PhoneSkin.Element 的 CHAT_BUBBLE_SELF / CHAT_BUBBLE_PEER / CHAT_INPUT_BAR
 
     /** 自己发的气泡底 */
-    public static final int COLOR_CHAT_BUBBLE_SELF = 0xFF2E6FDB;
+    public static final int COLOR_CHAT_BUBBLE_SELF = 0xC58A5072;
 
     /** 对方发的气泡底 */
-    public static final int COLOR_CHAT_BUBBLE_PEER = 0xFF3A3A4E;
+    public static final int COLOR_CHAT_BUBBLE_PEER = 0xC1687B94;
 
     /** 对方气泡里的字。比纯白暗一点点，深色气泡上不刺眼 */
     public static final int FONT_COLOR_CHAT_PEER = 0xFFEEEEEE;
 
     /** 会话底部输入栏的底 */
-    public static final int COLOR_CHAT_INPUT_BG = 0xFF26263A;
+    public static final int COLOR_CHAT_INPUT_BG = 0xAA1D1C25;
+
+    /** 气泡和输入框缺贴图时的浅色细描边，与默认矢量表面保持同一色相。 */
+    public static final int COLOR_CHAT_BUBBLE_SELF_EDGE = 0x99F2D2E7;
+    public static final int COLOR_CHAT_BUBBLE_PEER_EDGE = 0x91D5E2F6;
+    public static final int COLOR_CHAT_INPUT_EDGE = 0x75CCD6EA;
+    /** 冷蓝选区与莓紫/灰蓝气泡区分，浅色底沿帮助识别字素范围。 */
+    public static final int COLOR_CHAT_SELECTION = 0xCC2F6FAE;
+    public static final int COLOR_CHAT_SELECTION_EDGE = 0xBFAADFFF;
 
     /** 未读条数角标的底。兜底色，见 PhoneSkin.Element.UNREAD_BADGE */
-    public static final int COLOR_UNREAD_BADGE = 0xFFDD3333;
+    public static final int COLOR_UNREAD_BADGE = 0xFFAC477B;
 
     /** 进度条已播过的那一段 */
     public static final int COLOR_MUSIC_PROGRESS = 0xFF55DD88;

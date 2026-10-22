@@ -2,7 +2,7 @@ package com.november.mcphone.core.client;
 
 import com.google.gson.JsonObject;
 import com.november.mcphone.MCphone;
-import com.november.mcphone.platform.SkinMetadata;
+import com.november.mcphone.platform.client.Draw;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
@@ -30,6 +30,9 @@ public final class PhoneSkin {
      * 整数倍放大的图一样能用，线条细、有弧度的图案这么做更清楚（自带的 frame 是 2 倍，导航栏三个键是 10 倍）。
      */
     public enum Element {
+        /** 通用「打开文件夹」图标。建议 32×32，绘制时缩小到标题栏按钮内。 */
+        OPEN_FOLDER("common/open_folder"),
+
         /**
          * 手机外壳边框。建议 136×216（含边框整机）；中间 120×200 必须透明——外壳最后画、盖在所有内容之上，
          * 中间画的东西（内圆角、刘海）会显示。可见的一圈是外侧 8px，圆角半径建议不超过 11px。
@@ -51,6 +54,12 @@ public final class PhoneSkin {
 
         /** 顶部状态栏背景。建议 120×10 */
         STATUS_BAR("phone/status_bar", "status_bar"),
+
+        /** 状态栏右侧的满电图标。建议 24×24 透明贴图，半尺寸绘制；电池固定满电。 */
+        BATTERY_FULL("phone/battery_full"),
+
+        /** 电池左侧的满格信号图标。建议 24×24 透明贴图，绘制为 10×10；信号固定满格。 */
+        SIGNAL_FULL("phone/signal_full"),
 
         /**
          * 导航栏背景。建议 120×14。
@@ -93,14 +102,38 @@ public final class PhoneSkin {
         /** 对方发来的聊天气泡底。拉伸方式同 {@link #CHAT_BUBBLE_SELF} */
         CHAT_BUBBLE_PEER("chat/bubble_peer", "chat_bubble_peer"),
 
-        /** 会话界面底部输入栏的底。建议 90×14 */
+        /** 会话界面底部输入框的底。按设备宽度自适应，高 12；mcphone_skin.border 可保留边角 */
         CHAT_INPUT_BAR("chat/input_bar", "chat_input_bar"),
 
         /** 会话列表在线好友行的"传送"小图标。建议 7×7，按实际绘制尺寸画（不做平滑缩放）；缺图时画 → 字符 */
         CHAT_TELEPORT("chat/teleport", "chat_teleport"),
 
-        /** 会话界面输入栏左边那个「+」（点开是图片 / 表情）。建议 9×9，与音乐页那几个键等大；缺图时画 + 字符 */
+        /** 会话界面输入栏右边的「+」（空白输入时点开图片 / 表情）。建议 9×9；缺图时画圆圈加号 */
         CHAT_ATTACH("chat/attach", "chat_attach"),
+
+        /** 聊天界面的 24×24 透明图标，资源包可按同一路径覆盖；白色源图允许界面着色。 */
+        CHAT_TAB_MESSAGE("chat/ui/message"),
+        CHAT_TAB_CONTACTS("chat/ui/contact"),
+        CHAT_TAB_DISCOVER("chat/ui/compass"),
+        CHAT_TAB_PROFILE("chat/ui/user"),
+        CHAT_SEARCH("chat/ui/search"),
+        /** 用户提供的 96×96 抗锯齿透明图标，按现有逻辑尺寸绘制并着色。 */
+        CHAT_BACK("chat/ui/back"),
+        CHAT_MORE("chat/ui/more"),
+        CHAT_SMILE("chat/ui/smile"),
+        CHAT_VOICE("chat/ui/voice"),
+        /** 右键菜单的透明图标，按统一 8×8 逻辑尺寸居中并随菜单文字着色。 */
+        CHAT_COPY("chat/ui/copy"),
+        CHAT_DELETE("chat/ui/delete"),
+        CHAT_PASTE("chat/ui/paste"),
+        /** 首页加号菜单的手绘 96×96 透明图标，与菜单标签使用同一颜色。 */
+        CHAT_CREATE_GROUP("chat/ui/create_group"),
+        CHAT_ADD_CONTACT("chat/ui/add_contact"),
+        /** 「我」菜单的用户提供图标，白色源图随主题文字着色。 */
+        CHAT_FAVORITE("chat/ui/favorite"),
+        CHAT_GITHUB("chat/ui/github"),
+        CHAT_SPONSOR("chat/ui/sponsor"),
+        CHAT_SETTINGS("chat/ui/settings"),
 
         /** 收到消息的通知底。建议 160×32（原版通知槽位尺寸） */
         TOAST_BG("phone/toast", "toast_bg"),
@@ -233,9 +266,38 @@ public final class PhoneSkin {
     }
 
     /** 一张已确认存在的贴图及其真实尺寸 */
-    private record SkinTexture(ResourceLocation location, int width, int height, int border) {}
+    private record SkinTexture(ResourceLocation location, int width, int height, int border, int scale, Integer textColor) {}
 
-    /** 可选的源像素边宽；未声明时沿用旧资源包的整张拉伸行为。 */
+    record SkinMetadata(int border, int scale, Integer textColor) {
+        SkinMetadata(int border, int scale) { this(border, scale, null); }
+    }
+
+    /** scale 是源像素相对逻辑像素的倍率。旧包未写时仍为 1，不改变原有边角尺寸。 */
+    static SkinMetadata parseSkinMetadata(JsonObject json) {
+        int border = json.has("border") ? json.get("border").getAsInt() : 0;
+        int scale = json.has("scale") ? json.get("scale").getAsInt() : 1;
+        if (scale < 1 || scale > 16 || (json.has("scale") && json.get("scale").getAsDouble() != scale)) {
+            throw new IllegalArgumentException("scale 必须是 1～16 的整数");
+        }
+        Integer color = null;
+        if (json.has("text_color")) {
+            String hex = json.get("text_color").getAsString().replace("#", "");
+            if (hex.length() != 6 && hex.length() != 8) throw new IllegalArgumentException("text_color 需要六位 RGB 或八位 ARGB");
+            color = (int) Long.parseLong(hex, 16);
+            if (hex.length() == 6) color |= 0xFF000000;
+        }
+        return new SkinMetadata(border, scale, color);
+    }
+
+    static SkinMetadata effectiveSkinMetadata(SkinMetadata metadata, boolean samePack) {
+        // 旧资源包可能只覆盖 PNG，继承到本体的八倍 mcmeta；不能把它的普通图当八倍图缩小边角。
+        // 新 scale 属性随同一资源包的 PNG 与 mcmeta 一起声明；旧 border 单独覆盖仍照常生效。
+        if (samePack) return metadata;
+        return metadata.scale() > 1 ? new SkinMetadata(metadata.border() / metadata.scale(), 1)
+                : new SkinMetadata(metadata.border(), metadata.scale());
+    }
+
+
     /** 探测结果缓存；empty（没有这张贴图）也要缓存，否则缺贴图的元素每帧都要查一次资源管理器 */
     private static final Map<Element, Optional<SkinTexture>> CACHE = new HashMap<>();
 
@@ -250,49 +312,51 @@ public final class PhoneSkin {
 
     /** 画贴图，拉伸到目标区域。真的画了才 true；没有贴图返回 false，调用方自行兜底 */
     public static boolean draw(GuiGraphics g, Element element, int x, int y, int w, int h) {
-        return draw(g, element, x, y, w, h, 1.0F);
+        if (w <= 0 || h <= 0) return false;
+
+        SkinTexture tex = resolve(element).orElse(null);
+        if (tex == null) return false;
+
+        drawTexture(g, tex, x, y, w, h);
+        return true;
     }
 
-    /** Draw a skin texture with the hover brightness used by the old global color state. */
+    public static boolean draw(GuiGraphics g, Element element, int x, int y, int w, int h,
+                               float alpha) {
+        g.setColor(1, 1, 1, alpha);
+        try {
+            return draw(g, element, x, y, w, h);
+        } finally {
+            g.setColor(1, 1, 1, 1);
+        }
+    }
+
     public static boolean drawHighlight(GuiGraphics g, Element element,
                                         int x, int y, int w, int h) {
         if (w <= 0 || h <= 0) return false;
         SkinTexture tex = resolve(element).orElse(null);
         if (tex == null) return false;
-        if (tex.border() > 0) {
-            GuiUtil.drawNineSliceHighlight(g, tex.location(), x, y, w, h,
-                    tex.width(), tex.height(), tex.border(), PhoneTheme.SKIN_HOVER_BRIGHTNESS);
-        } else {
-            GuiUtil.drawHighlight(g, tex.location(), x, y, w, h,
-                    tex.width(), tex.height(), PhoneTheme.SKIN_HOVER_BRIGHTNESS);
-        }
+        Draw.highlighted(g, tex.location(), x, y, w, h, 0, 0,
+                tex.width(), tex.height(), tex.width(), tex.height(),
+                PhoneTheme.SKIN_HOVER_BRIGHTNESS);
         return true;
     }
 
-    /**
-     * 同上，外加【整体不透明度】：0.35 就是「禁用」那一档，进度动画就传当前那一帧的进度。
-     *
-     * <p>为什么这一维在参数上而不是从前那句 {@code g.setColor(...)}：那句是【全局】着色器颜色，
-     * 用的时候必须成对还原，而且它管不住【画之后】的东西；26.x 直接把那句删了，颜色改成
-     * 每一次绘制各带一个。走参数，四支才是同一件事，也再不会漏还原。
-     */
-    public static boolean draw(GuiGraphics g, Element element, int x, int y, int w, int h,
-                               float alpha) {
-        if (w <= 0 || h <= 0) return false;
-
-        SkinTexture tex = resolve(element).orElse(null);
-        if (tex == null) return false;
-
-        if (tex.border() > 0) {
-            // 走 GuiUtil 而不是 g.blit：老三支那句 blit 不开混合，半透明贴图会被当成不透明画；
-            // 这一层还顺带把 alpha 递下去（各支怎么落地见 platform/client/Draw#textured）
-            GuiUtil.drawNineSlice(g, tex.location(), x, y, w, h,
-                    tex.width(), tex.height(), tex.border(), alpha);
-        } else {
-            GuiUtil.drawTexture(g, tex.location(), x, y, w, h,
-                    tex.width(), tex.height(), alpha);
+    private static void drawTexture(GuiGraphics g, SkinTexture tex, int x, int y, int w, int h) {
+        // 八倍源图在八倍坐标绘制后缩回；九宫格边角因此仍是逻辑尺寸，不会跟长消息被拉大。
+        g.pose().pushPose();
+        try {
+            g.pose().translate(x, y, 0);
+            g.pose().scale(1f / tex.scale(), 1f / tex.scale(), 1f);
+            if (tex.border() > 0) {
+                GuiUtil.drawNineSlice(g, tex.location(), 0, 0, w * tex.scale(), h * tex.scale(),
+                        tex.width(), tex.height(), tex.border());
+            } else {
+                GuiUtil.drawTexture(g, tex.location(), 0, 0, w * tex.scale(), h * tex.scale(), tex.width(), tex.height());
+            }
+        } finally {
+            g.pose().popPose();
         }
-        return true;
     }
 
     /**
@@ -341,7 +405,7 @@ public final class PhoneSkin {
         // 贴图自己声明了 border 就照它来 —— 那是【源图像素】，与聊天气泡那类 1× 贴图
         // 同一套规矩。资源包既然写了元数据，就该是它说了算，行为与从前一字不差
         if (tex.border() > 0) {
-            GuiUtil.drawNineSlice(g, tex.location(), x, y, w, h, tex.width(), tex.height(), tex.border());
+            drawTexture(g, tex, x, y, w, h);
             return true;
         }
 
@@ -353,6 +417,12 @@ public final class PhoneSkin {
     /** 这个元素有没有贴图。给贴图与兜底形状不一样的地方用（如相册删除键），画之前就要知道走哪一支 */
     public static boolean has(Element element) {
         return resolve(element).isPresent();
+    }
+
+    /** 浅色输入底需要深字；旧资源包未声明时仍用原来的白字，不猜测贴图颜色。 */
+    public static int textColor(Element element, int fallback) {
+        SkinTexture texture = resolve(element).orElse(null);
+        return texture != null && texture.textColor() != null ? texture.textColor() : fallback;
     }
 
     /** 画贴图；没有贴图则用兜底色填满同一区域 */
@@ -373,9 +443,13 @@ public final class PhoneSkin {
     public static void drawOrFill(GuiGraphics g, Element element,
                                   int x, int y, int w, int h, int fallbackColor,
                                   boolean highlight) {
-        boolean drawn = highlight
-                ? drawHighlight(g, element, x, y, w, h)
-                : draw(g, element, x, y, w, h);
+        if (highlight) {
+            float b = PhoneTheme.SKIN_HOVER_BRIGHTNESS;
+            g.setColor(b, b, b, 1.0F);
+        }
+        boolean drawn = draw(g, element, x, y, w, h);
+        // 必须在画兜底色之前还原：setColor 会一路乘到后面画的每一样东西上
+        if (highlight) g.setColor(1.0F, 1.0F, 1.0F, 1.0F);
 
         if (!drawn) g.fill(x, y, x + w, y + h, fallbackColor);
     }
@@ -416,15 +490,25 @@ public final class PhoneSkin {
                 return Optional.empty();
             }
             int border = 0;
+            int scale = 1;
+            Integer textColor = null;
             try {
-                int requested = SkinMetadata.border(res.get());
+                SkinMetadata metadata = PhoneSkinMetadata.read(res.get());
+                ResourceLocation metaLocation = ResourceLocation.fromNamespaceAndPath(
+                        loc.getNamespace(), loc.getPath() + ".mcmeta");
+                boolean samePack = mc.getResourceManager().getResource(metaLocation)
+                        .map(meta -> meta.sourcePackId().equals(res.get().sourcePackId())).orElse(false);
+                metadata = effectiveSkinMetadata(metadata, samePack);
+                int requested = metadata.border();
                 if (requested > 0 && requested <= (Math.min(size[0], size[1]) - 1) / 2) {
                     border = requested;
                 }
+                scale = metadata.scale();
+                textColor = metadata.textColor();
             } catch (Exception e) {
                 MCphone.LOGGER.warn("[MCphone] {} 的圆角元数据无效，使用整张拉伸: {}", loc, e.toString());
             }
-            return Optional.of(new SkinTexture(loc, size[0], size[1], border));
+            return Optional.of(new SkinTexture(loc, size[0], size[1], border, scale, textColor));
         } catch (Exception e) {
             MCphone.LOGGER.warn("[MCphone] 读取贴图 {} 失败: {}", loc, e.toString());
             return Optional.empty();
