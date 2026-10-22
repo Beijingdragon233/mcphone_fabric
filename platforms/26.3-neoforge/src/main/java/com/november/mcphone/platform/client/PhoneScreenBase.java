@@ -97,7 +97,8 @@ public abstract class PhoneScreenBase extends Screen {
         PhoneInputs.mouse = e;
         PhoneInputs.doubleClick = twice;
         try {
-            return mouseClicked(e.x(), e.y(), e.button());
+            // 26.3 原生左键是 1；共享页面沿用旧接口的 0 基按钮值。
+            return mouseClicked(e.x(), e.y(), pageButton(e.button()));
         } finally {
             PhoneInputs.mouse = previous;
             PhoneInputs.doubleClick = previousTwice;
@@ -105,25 +106,25 @@ public abstract class PhoneScreenBase extends Screen {
     }
 
     public boolean mouseClicked(double x, double y, int b) {
-        return super.mouseClicked(PhoneInputs.mouse(x, y, pageButton(b)), PhoneInputs.doubleClick);
+        return super.mouseClicked(PhoneInputs.mouse(x, y, b), PhoneInputs.doubleClick);
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent e) {
-        return mouseReleased(e.x(), e.y(), e.button());
+        return mouseReleased(e.x(), e.y(), pageButton(e.button()));
     }
 
     public boolean mouseReleased(double x, double y, int b) {
-        return super.mouseReleased(PhoneInputs.mouse(x, y, pageButton(b)));
+        return super.mouseReleased(PhoneInputs.mouse(x, y, b));
     }
 
     @Override
     public boolean mouseDragged(MouseButtonEvent e, double dx, double dy) {
-        return mouseDragged(e.x(), e.y(), e.button(), dx, dy);
+        return mouseDragged(e.x(), e.y(), pageButton(e.button()), dx, dy);
     }
 
     public boolean mouseDragged(double x, double y, int b, double dx, double dy) {
-        return super.mouseDragged(PhoneInputs.mouse(x, y, pageButton(b)), dx, dy);
+        return super.mouseDragged(PhoneInputs.mouse(x, y, b), dx, dy);
     }
 
     @Override
