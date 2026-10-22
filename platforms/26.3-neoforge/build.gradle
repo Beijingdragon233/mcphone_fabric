@@ -151,6 +151,17 @@ tasks.named('processResources', ProcessResources).configure {
 }
 
 repositories {
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = "MCPhoneVendored"
+                url = new File(repoRoot, 'vendor/maven').toURI()
+            }
+        }
+        filter {
+            includeGroup "fr.delthas"
+        }
+    }
     maven {
         name = "Modrinth"
         url = "https://api.modrinth.com/maven"
