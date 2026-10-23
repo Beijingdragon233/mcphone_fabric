@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.music.net;
 
 import com.november.mcphone.core.PhoneItem;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.core.PhonePlayerData;
 import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.core.net.RequestThrottle;
@@ -99,7 +100,7 @@ public final class MusicNetworking {
         };
         if (key == null) return;
 
-        player.displayClientMessage(Component.translatable(key), true);
+        ClientMessages.show(player, Component.translatable(key), true);
     }
 
     /** 主动推一份最新状态。唱片仓菜单走原版容器同步不经过这里，关掉菜单时靠它刷新手机界面 */

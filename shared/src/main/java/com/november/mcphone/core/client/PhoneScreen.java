@@ -548,7 +548,8 @@ public final class PhoneScreen extends PhoneScreenBase {
     }
 
     private boolean addonInteractive() {
-        return minecraft != null && minecraft.screen == this && minecraft.isWindowActive();
+        return minecraft != null && com.november.mcphone.platform.client.Screens.current(minecraft) == this
+                && minecraft.isWindowActive();
     }
 
     private void openAddonPage(IPhonePage page) {

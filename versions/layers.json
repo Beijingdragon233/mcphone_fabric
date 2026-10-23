@@ -69,6 +69,17 @@
     "populated": true,
     "note": "1.21（数据包格式 48）把数据包的目录名从复数改成单数：recipes→recipe、advancements→advancement、loot_tables→loot_table、tags/items→tags/item、functions→function。这条边界与 1.20.5+ 那条【不是同一条】，所以是单独一层 —— 塞进 1.20.5+ 的话，一个 1.20.6 的目标挂上那层就会拿到单数目录名，而它那儿要的是复数，而且不报错：那条配方/进度只是静默地不存在。"
   },
+  "26.3+": {
+    "since": "26.3",
+    "populated": true,
+    "note": "26.3 将 Item.use 的返回类型从 InteractionResultHolder<ItemStack> 改为 InteractionResult，并调整 tooltip 回调。只把 PhoneItem 拆到这一层，1.21+ 的其余代码继续共用。"
+  },
+  "26.3-neoforge": {
+    "since": "26.3",
+    "loader": "NeoForge",
+    "populated": true,
+    "note": "26.3 的 NeoForge 专用版本层：按键事件、注册事件与终端发现都直接引用 NeoForge 类型，不能放进跨加载器的 26.3+ 层。"
+  },
   "forge": {
     "loader": "Forge",
     "populated": true,
@@ -81,7 +92,13 @@
   },
   "fabric": {
     "loader": "Fabric",
-    "populated": false,
-    "note": "Fabric 各个 Minecraft 版本共用的代码。与版本轴那几层对称：那边是「同版本、三个加载器共用」，这边是「同加载器、各版本共用」。眼下是空的 —— 本仓还没有第二个 Fabric 目标可以对照，哪些代码在 Fabric 的两个版本之间真的一样是猜不出来的。等第二个 Fabric 目标并进来，拿它逐文件比对，逐字相同的才搬进来。"
+    "populated": true,
+    "note": "Fabric 各个 Minecraft 版本共用的代码。1.21.1-fabric 与 26.3-fabric 逐文件比对后，只把正文逐字相同、且两边都编译通过的代码搬进来；版本或加载器 API 有差异的仍留在各自平台。"
+  },
+  "fabric-1.20.5+": {
+    "since": "1.20.5",
+    "loader": "Fabric",
+    "populated": true,
+    "note": "Fabric 与 1.20.5+ 原版 API 的交集层。1.21.1-fabric 与 26.3-fabric 已逐文件比对，目前只放同时依赖 Fabric 网络 API 与 CustomPacketPayload 的共用代码。"
   }
 }

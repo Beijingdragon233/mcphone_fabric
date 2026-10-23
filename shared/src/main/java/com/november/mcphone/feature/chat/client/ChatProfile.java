@@ -111,7 +111,8 @@ public final class ChatProfile {
             } else switch(ChatProfileUi.Icon.values()[i]) {
                 case FAVORITE -> { favoritesReturn=Page.HOME;favorites.close();change(Page.FAVORITES); }
                 case SETTINGS -> change(Page.SETTINGS);
-                case GITHUB -> net.minecraft.Util.getPlatform().openUri("https://github.com/november521/mcphone");
+                case GITHUB -> com.november.mcphone.platform.client.SystemFiles.openUri(
+                        "https://github.com/Beijingdragon233/mcphone_fabric");
                 case SPONSOR -> { var current=Minecraft.getInstance().player;
                     if (current!=null) com.november.mcphone.platform.PlayerAccess.message(current,Component.translatable("mcphone.chat.profile.sponsor_pending"),true); }
             }

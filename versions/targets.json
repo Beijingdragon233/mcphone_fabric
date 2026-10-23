@@ -21,7 +21,7 @@
     "一个都编不过。也就是说这个字段决定 shared/ 在一个新目标上是全活还是全灭。",
     "",
     "这件事原先只记在 README 的一句散文里，不在模型里、没有闸。现在 guard-version 会查：",
-    "每个目标都要写，而且六个必须一模一样。",
+    "每个目标都要写，而且所有目标必须一模一样。",
     "",
     "Parchment 不在此列：它只补参数名，不改类型名与方法名，加不加都不影响能不能编过。",
     "",
@@ -164,7 +164,69 @@
       "1.20.3+",
       "1.20.5+",
       "1.21+",
-      "fabric"
+      "fabric",
+      "fabric-1.20.5+"
+    ]
+  },
+  "26.3-forge": {
+    "minecraft": "26.3",
+    "loader": "Forge",
+    "loader_version": null,
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "8.8",
+    "project": "platforms/26.3-forge",
+    "buildable": false,
+    "unverified": [
+      "gradle"
+    ],
+    "note": "不打算做。本仓约定是 1.21 及以后走 NeoForge，Forge 只留在 1.20.1 那一档；这一行为的是把「26.x 上没有 Forge」写成看得见的一条，而不是让谁哪天想起来再补。取证：maven.neoforged.net 的 neoforge 目录下 26.3 有 26.3.0.0-beta、26.3.0.1、26.3.0.2、26.3.0.3-beta 四个构建，而 26.x 的线上稳定版是 26.1.2.109 与 26.2.0.88；Forge 侧没有 26.3 的构建。loader_version 的这个 null 是决定、不是待查项，所以没列进 unverified。gradle 8.8 是照抄 1.20.1-forge 那行的占位值。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "forge"
+    ]
+  },
+  "26.3-neoforge": {
+    "minecraft": "26.3",
+    "loader": "NeoForge",
+    "loader_version": "26.3.0.95",
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "9.2.1",
+    "project": "platforms/26.3-neoforge",
+    "buildable": true,
+    "note": "26.3 已完成从骨架到可发布目标的收口。2026-10-22 使用 NeoForge 26.3.0.95、Java 25、ModDevGradle 2.0.147 完成完整构建：73 个任务、42 份断言测试全部通过；真实服务器启动到 Done (2.185s)，真实客户端启动到主菜单资源加载完成，13 个 App 注册，AE2 与 Tom's Simple Storage 终端联动接通。真实 26.3 联动包括 Waystones 26.3.0.1+neoforge-26.3、Balm 26.3.0.3+neoforge-26.3、Shogi 26.3.0.3+neoforge-26.3、Curios 17.0.0-beta.3+26.3、AE2 26.3.1-alpha、GuideME 26.3.4-alpha、AE2WTLib API/运行时 26.3.1-beta、Tom's Simple Storage 26.3-2.12.3。MCEF、Refined Storage、Patchouli、NetMusic 仍没有 26.3 构件，原源码在挂载阶段排除，26.3+ 层门面明确报告不可用，没有静默 no-op。客户端冒烟还修正了 26.3 分类注册 API 与 range_dispatch 的 property 字符串格式。旧目标回归通过：1.20.1 Forge 41 份、1.21.1 Fabric 42 份、1.21.1 NeoForge 42 份断言测试；平台孪生 131 对、shared 中立 364 文件、SPI 18 个类及全部结构闸通过。详细逐轮记录见 docs/PORTING-26.3.md。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "neoforge",
+      "26.3+",
+      "26.3-neoforge"
+    ]
+  },
+  "26.3-fabric": {
+    "minecraft": "26.3",
+    "loader": "Fabric",
+    "loader_version": "0.19.5",
+    "server_config_sync": true,
+    "mappings": "official",
+    "java": 25,
+    "gradle": "9.8.2",
+    "project": "platforms/26.3-fabric",
+    "buildable": true,
+    "note": "2026-10-23 使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.164.0+26.3、Java 25 完成编译与打包。26.3 原版不再混淆，因此不配置 mappings；物品亮屏模型使用原版 condition + has_component，不注册自定义 ItemProperties。compileJava、114 份断言测试、jar、内嵌引擎、服务文件、dist 隔离、共享层与接缝文档检查通过；客户端真实启动并进入单人世界，13 个 App 注册完成，专用服务器通过 EULA 检查前的模组初始化并记录“手机已就绪”。真实 Fabric 26.3 联动为 Waystones 26.3.0.1、Balm 26.3.0.3、Shogi 26.3.0.3、Tom's Simple Storage 26.3-2.12.2；Curios、AE2、Refined Storage、Patchouli、MCEF、NetMusic 没有 Fabric 26.3 构件，相应能力显式不可用或在挂载阶段排除。server_config_sync 仍沿用 Fabric 已知限制。",
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "fabric",
+      "fabric-1.20.5+",
+      "26.3+"
     ]
   },
   "26.1.2-forge": {

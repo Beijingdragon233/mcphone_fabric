@@ -1,6 +1,7 @@
 package com.november.mcphone.platform.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.settings.KeyModifier;
 
 /**
@@ -27,5 +28,9 @@ public final class KeyModifiers {
     /** 这个键本身是不是一个修饰键（Ctrl / Shift / Alt）。 */
     public static boolean isModifierKey(InputConstants.Key key) {
         return KeyModifier.isKeyCodeModifier(key);
+    }
+
+    public static boolean shift() {
+        return Minecraft.getInstance().hasShiftDown();
     }
 }

@@ -1,4 +1,4 @@
-# MCphone
+# MCphone-More versions
 
 把一部能用的智能手机塞进 Minecraft —— 拍照、翻相册、换壁纸、听歌、聊天、装 App。
 
@@ -23,7 +23,7 @@ wiki 是文档的唯一真源，仓库里不再另存一份。
 十五个内建 App：相机、相册、音乐、聊天、时钟、天气、记事本、末影箱、传送石、浏览器、阅读、任务书、终端、应用商店、设置。
 手机放进副手可挂到画面上；主屏可拖动排序与分页；界面可缩放；整套 UI 可用资源包换肤。
 
-**MCphone 自己一个前置都没有。** 装了 Curios、Waystones、MCEF、NetMusic、Patchouli、GuideME、
+**MCphone-More versions 自己一个前置都没有。** 装了 Curios、Waystones、MCEF、NetMusic、Patchouli、GuideME、
 沉浸工程、FTB Quests、AE2 / Refined Storage / Tom's Simple Storage 会各多一块内容，不装一切照常。
 详见 [wiki → 可选依赖](../../wiki/Getting-Started#可选依赖)。
 

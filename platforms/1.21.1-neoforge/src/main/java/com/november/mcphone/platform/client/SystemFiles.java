@@ -29,4 +29,8 @@ public final class SystemFiles {
     public static void openInFileManager(Path dir) {
         Util.getPlatform().openPath(dir);
     }
+
+    public static void openUri(String uri) {
+        Util.getPlatform().openUri(uri);
+    }
 }

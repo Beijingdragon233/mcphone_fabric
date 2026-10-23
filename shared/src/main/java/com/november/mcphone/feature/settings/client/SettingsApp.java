@@ -2,6 +2,7 @@ package com.november.mcphone.feature.settings.client;
 
 import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.core.client.PhoneScreen;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 
 /**
@@ -24,7 +25,7 @@ public final class SettingsApp extends PhoneApp {
 
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
+        if (Screens.current(Minecraft.getInstance()) instanceof PhoneScreen ps) {
             ps.navigateTo(PhoneScreen.Mode.SETTINGS);
         }
     }

@@ -2,6 +2,7 @@ package com.november.mcphone.core.script.client;
 
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.PhoneScreen;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.ResourceLocation;
 
@@ -34,7 +35,7 @@ public final class LocalScriptUpdates {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.level == null) return;
         // 商店/详情页会缓存图标引用；手机界面关闭后再提交，避免正在显示的元数据变成失效纹理。
-        if (mc.screen instanceof PhoneScreen) return;
+        if (Screens.current(mc) instanceof PhoneScreen) return;
         if (pending != null) {
             if (!pending.isDone()) return;
             CompletableFuture<List<ScriptApp>> finished = pending;

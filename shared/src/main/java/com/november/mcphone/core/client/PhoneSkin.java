@@ -2,6 +2,7 @@ package com.november.mcphone.core.client;
 
 import com.google.gson.JsonObject;
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.client.Draw;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
@@ -317,6 +318,27 @@ public final class PhoneSkin {
         if (tex == null) return false;
 
         drawTexture(g, tex, x, y, w, h);
+        return true;
+    }
+
+    public static boolean draw(GuiGraphics g, Element element, int x, int y, int w, int h,
+                               float alpha) {
+        g.setColor(1, 1, 1, alpha);
+        try {
+            return draw(g, element, x, y, w, h);
+        } finally {
+            g.setColor(1, 1, 1, 1);
+        }
+    }
+
+    public static boolean drawHighlight(GuiGraphics g, Element element,
+                                        int x, int y, int w, int h) {
+        if (w <= 0 || h <= 0) return false;
+        SkinTexture tex = resolve(element).orElse(null);
+        if (tex == null) return false;
+        Draw.highlighted(g, tex.location(), x, y, w, h, 0, 0,
+                tex.width(), tex.height(), tex.width(), tex.height(),
+                PhoneTheme.SKIN_HOVER_BRIGHTNESS);
         return true;
     }
 
