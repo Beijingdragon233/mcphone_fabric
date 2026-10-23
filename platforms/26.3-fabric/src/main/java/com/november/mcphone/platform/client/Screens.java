@@ -14,9 +14,9 @@ import net.minecraft.client.gui.screens.Screen;
  * 而 {@code versions/name-renames.json} 那三族规则都是「标识符 → 标识符」，
  * 写不出「中间多一段 {@code .gui}、末尾多一对括号」这种形变 —— 所以只能建接缝。
  *
- * <p>这一层只管【读】。开界面那条路（老 {@code Minecraft#setScreen(Screen)} 对
- * 26.x {@code Minecraft#setScreenAndShow(Screen)}）不在这里，那是真改名，
- * 走改名表的 methodRenames。
+ * <p>这一层把读写都收在一处。26.x 的 {@code Minecraft#setScreenAndShow(Screen)}
+ * 会在切屏后立刻强制渲染一帧；普通切屏不需要那一次补帧，所以这里直接落到
+ * {@code Gui#setScreen(Screen)}。
  */
 public final class Screens {
 
@@ -34,5 +34,17 @@ public final class Screens {
      */
     public static Screen current(Minecraft mc) {
         return mc.gui.screen();
+    }
+
+    /**
+     * 切换界面，不强制补帧。
+     *
+     * <p>26.3 的 {@code Minecraft#setScreenAndShow()} 实际是
+     * {@code gui.setScreen()} 再调一次 {@code renderFrame(false)}。副手 HUD
+     * 在 Alt 开关时每按一次就会因此多渲染一帧，表现为闪一下；这里只切状态，
+     * 下一帧照常由主循环绘制。
+     */
+    public static void set(Minecraft mc, Screen screen) {
+        mc.gui.setScreen(screen);
     }
 }

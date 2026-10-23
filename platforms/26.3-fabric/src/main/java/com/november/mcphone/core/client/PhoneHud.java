@@ -322,9 +322,8 @@ public final class PhoneHud {
         if (closing == null) return;
 
         // removed() 认得 hudOwned，不会重复拆，见 PhoneScreen.removed()
-        // 26.x 上 Minecraft 只剩 setScreenAndShow（shared/ 那一份由改名表负责，
-        // 而挂载只重写 shared 与四个层的副本，本平台自己的文件得直接写真名）
-        if (Screens.current(mc) == closing) mc.setScreenAndShow(null);
+        // 不调用 setScreenAndShow：那会立刻强制补一帧，Alt 开关时会闪。
+        if (Screens.current(mc) == closing) Screens.set(mc, null);
         closing.shutdown();
     }
 
@@ -358,7 +357,7 @@ public final class PhoneHud {
         manual = Override.SHOW;
         interacting = false;
         phone.adoptByHud();
-        mc.setScreenAndShow(null);
+        Screens.set(mc, null);
     }
 
     /**
@@ -374,7 +373,7 @@ public final class PhoneHud {
 
         interacting = false;
         phone.setHudMode(false);
-        Minecraft.getInstance().setScreenAndShow(phone);
+        Screens.set(Minecraft.getInstance(), phone);
         return true;
     }
 
@@ -382,14 +381,14 @@ public final class PhoneHud {
 
     private static void startInteracting(Minecraft mc) {
         interacting = true;
-        mc.setScreenAndShow(phone);
+        Screens.set(mc, phone);
         putCursorOnPhone(mc);
     }
 
     private static void stopInteracting(Minecraft mc) {
         interacting = false;
-        // setScreenAndShow(null) 会把鼠标重新抓回去，视角控制随之恢复
-        if (Screens.current(mc) == phone) mc.setScreenAndShow(null);
+        // 只切界面，不强制补帧；鼠标仍由 Gui.setScreen(null) 重新抓回
+        if (Screens.current(mc) == phone) Screens.set(mc, null);
     }
 
     /**
