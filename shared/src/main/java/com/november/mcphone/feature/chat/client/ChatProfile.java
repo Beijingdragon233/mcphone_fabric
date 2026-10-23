@@ -112,7 +112,7 @@ public final class ChatProfile {
                 case FAVORITE -> { favoritesReturn=Page.HOME;favorites.close();change(Page.FAVORITES); }
                 case SETTINGS -> change(Page.SETTINGS);
                 case GITHUB -> com.november.mcphone.platform.client.SystemFiles.openUri(
-                        "https://github.com/november521/mcphone");
+                        "https://github.com/Beijingdragon233/mcphone_fabric");
                 case SPONSOR -> { var current=Minecraft.getInstance().player;
                     if (current!=null) com.november.mcphone.platform.PlayerAccess.message(current,Component.translatable("mcphone.chat.profile.sponsor_pending"),true); }
             }

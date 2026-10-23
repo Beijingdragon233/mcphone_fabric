@@ -3082,3 +3082,85 @@ pipeline（`RenderPipelines.GUI_NAUSEA_OVERLAY` = `GUI_TEXTURED_SNIPPET` + `Blen
   单测复跑为 0.51ms；Linux CI 仍是权威结果。
 - 尚未进行这一版 jar 的进游戏逐页复测；聊天、输入法、裁剪、相机和附属 API
   仍需在真实客户端/服务端中验收。
+
+## 五十、26.3 Fabric 无混淆适配与真实进世界验证
+
+### 一、构建栈与源码边界
+
+- 新增 `platforms/26.3-fabric`，使用 Fabric Loom `1.19.3`、Gradle `9.8.2`、
+  Fabric Loader `0.19.5`、Fabric API `0.164.0+26.3`、Java 25。26.3 原版
+  不再混淆，`build.gradle` 不声明 mappings，access widener 使用 `official`。
+- 物品亮屏模型改用原版 `minecraft:condition` + `minecraft:has_component`
+  读取 `mcphone:screen_on`，删除自定义 `ItemProperties`；这不是视觉降级，
+  26.3 的物品模型系统原生支持组件条件。
+- 第二个 Fabric 目标让原本空置的 `fabric` 加载器层有了真实内容。逐文件比对后，
+  3 份跨版本同形代码进入 `layers/loader/fabric/`，`ClientNetworking` 因同时依赖
+  Fabric 网络 API 与 1.20.5+ 原版类型进入新的 `fabric-1.20.5+` 交集层。
+  Mixin 的注入签名在 1.21.1 与 26.3 不同，继续留在各自平台。
+
+### 二、运行期修复
+
+- 26.3 的 `Item.Properties` 在构造时必须带物品 ID；Fabric 手工注册不会自动补，
+  首次服务器启动在 `PhoneItem` 处报 `Item id not set`。`ModItems` 现在用
+  `ResourceKey.create(Registries.ITEM, id)` 显式设置。
+- 26.3 的鼠标入口从 `MouseHandler.onPress` 改为
+  `onButton(long, MouseButtonInfo, int)`，键盘入口改为
+  `keyPress(long, int, KeyEvent)`；两份 Fabric Mixin 分别按各自版本签名注入。
+- 26.3 的 `SoundEngine.play` 返回 `PlayResult`，注入回调必须是
+  `CallbackInfoReturnable`；修正后网络音乐流包装不再在类加载阶段失败。
+- `fabric.mod.json` 的联动建议键按真实 mod id 修正为 `toms_storage`。
+
+### 三、验证
+
+- 26.3 Fabric 完整 `build`：`BUILD SUCCESSFUL`，150 个任务，114 份断言全部通过；
+  正式包内嵌 Rhino 校验通过，SPI 18 个类、dist 615 个非 client 类隔离通过，
+  shared 495 文件保持版本与加载器中立。
+- 客户端真实启动到单人世界：60 个模组加载，资源与音效引擎启动，13 个 App 注册，
+  服务端握手、存档 App 安装状态与 Tom's Storage 终端联动完成；日志没有 MCphone
+  Mixin、注册或资源崩溃。手机界面内的逐页点击仍需人工交互验收。
+- 专用服务器真实启动通过模组初始化并记录“MCphone 模组加载完成 —— 手机已就绪”；
+  随后停在 Minecraft 自带 `eula=false` 检查，未替用户接受 EULA。
+- 1.21.1 Fabric 完整回归同时通过：114 份断言、构建、加载器孪生与接缝文档检查；
+  平台孪生 161 对、差异 12816 行，26.3 Fabric 与 1.21.1 Fabric 接缝各 93 个。
+- 本轮 jar：`platforms/26.3-fabric/build/libs/mcphone-1.11.2.jar`，
+  4,753,835 字节，SHA256
+  `5C02076EC3DEB97747E5ADC8819732310594618EDD02A3CE79F96287C23F02D2`。
+  jar 内不含 MCEF、Refined Storage、AE2、Patchouli、NetMusic 的外部类。
+
+### 四、边界
+
+- Curios、AE2、Refined Storage、Patchouli、MCEF、NetMusic 没有 Fabric 26.3
+  构件，对应能力显式不可用或在挂载阶段排除，没有添加静默 no-op 桩。
+- 专用服务器未继续生成世界，因为那需要接受 EULA；单人客户端已提供同版本的
+  真实服务端逻辑启动证据。
+
+## 五十一、副手 HUD 的矩阵泄漏
+
+- 26.3 的 HUD 元素共用同一个 `GuiGraphicsExtractor`。`PhoneScreen` 在手机缩放与
+  平移内完成最后一批绘制后，`PhoneGraphics` 已把原生矩阵同步到手机坐标系；此前
+  `PhoneHud.render` 没有恢复这一层，后续血量、聊天等原版 HUD 会继续沿用手机变换，
+  表现成副手手机出现时整块 UI 一起错位。
+- `PhoneHud.render` 现在用 `PhoneGraphics.withIsolatedPose` 包住整帧手机绘制，
+  由 `finally` 恢复调用方矩阵。相机 HUD 使用同样的提取器和绘制方式，也一并隔离，
+  包括拍照干净帧提前 `return` 的路径。
+- 26.3 Fabric 与 26.3 NeoForge 的两份 `PhoneHud`、`CameraHandler` 同步修复。新增
+  `HudGraphicsPoseTest` 覆盖正常、异常和嵌套绘制后的矩阵恢复；Fabric 全量断言从
+  114 份增加到 115 份。
+- 本轮 Fabric jar：4,754,060 字节，SHA256
+  `A9E017DA8299108217FC757D4B7F85BA1817F0C4E7C7DD81640DF3B910103DC4`。
+
+## 五十二、作者、仓库与显示名
+
+- 仓库根 `gradle.properties` 统一提供 `mod_authors=250325` 与
+  `mod_repo_url=https://github.com/Beijingdragon233/mcphone_fabric`。各平台不再
+  各写一份作者或 GitHub 地址；CI 的仓库级键检查也覆盖这两个字段。
+- 对外显示名改为 `MCphone-More versions`。`mod_id` 仍为 `mcphone`，包名、网络
+  协议、存档标识与 jar 文件名不变，因此不破坏已有存档和更新识别。
+- Fabric 的 `authors`、`homepage`、`issues`、`sources`，NeoForge 的
+  `authors`、`displayURL`、`issueTrackerURL`，Forge 的 `authors`，以及游戏内
+  关于页、物品栏分类、按键分类和资料页 GitHub 入口均已切换。MIT 原始版权行、
+  历史审计基线与已归档附属仓库的出处说明保留，不冒充为当前仓库。
+- 六个目标的元数据生成全部通过。26.3 Fabric 完整校验通过：151 个任务、
+  115 份断言，jar 内实际读取到新名称、作者与仓库地址。
+- 本轮 jar：4,754,131 字节，SHA256
+  `B20DAACBA83A1A7DDD81EB53AA2EFABC5A2B2361B3BB124E71F0C6529A464CA2`。

@@ -92,14 +92,14 @@ public final class AboutPage {
         GuiUtil.enableScissor(g, x, top, x + w, bottom);
 
         // ---- 名字与版本 ----
-        g.drawString(font, "MCphone", x, y, FontPalette.title(), false);
+        g.drawString(font, "MCphone-More versions", x, y, FontPalette.title(), false);
         y += font.lineHeight + 1;
 
         // 版本运行时取，不写死——这一页存在的理由就是原来那句写死了
         g.drawString(font, "v" + MCphone.getVersion(), x, y, FontPalette.price(), false);
         y += font.lineHeight + 4;
 
-        y = row(g, font, x, y, w, "mcphone.about.author", "november521");
+        y = row(g, font, x, y, w, "mcphone.about.author", "250325");
         y = row(g, font, x, y, w, "mcphone.about.game",
                 WorldVersions.currentName());
         y = row(g, font, x, y, w, "mcphone.about.apps",

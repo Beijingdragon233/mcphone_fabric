@@ -57,27 +57,30 @@ public final class CameraHandler {
         int w = mc.getWindow().getGuiScaledWidth();
         int h = mc.getWindow().getGuiScaledHeight();
 
-        // 坐标戳画在下面那个 return 【之前】—— 那个 return 的意思正是"这一帧要被拍下来"，
-        // 而它是相机里唯一要留在照片上的东西。位置换到 return 之后，照片上就没有坐标了，
-        // 而取景时照样看得见：这个错法在开发环境里看不出来。见 CameraStamp 的类注释
-        var graphics = new PhoneGraphics(event.getGuiGraphics());
-        CameraStamp.render(graphics, mc.font, w, h);
+        // 相机覆盖层和副手手机一样，画完后不能把手机/取景框的矩阵留给后续 HUD。
+        // 用 finally 包住还有一层作用：拍照的干净帧会提前 return，矩阵也照样恢复。
+        PhoneGraphics.withIsolatedPose(event.getGuiGraphics(), graphics -> {
+            // 坐标戳画在下面那个 return 【之前】—— 那个 return 的意思正是"这一帧要被拍下来"，
+            // 而它是相机里唯一要留在照片上的东西。位置换到 return 之后，照片上就没有坐标了，
+            // 而取景时照样看得见：这个错法在开发环境里看不出来。见 CameraStamp 的类注释
+            CameraStamp.render(graphics, mc.font, w, h);
 
-        // 拍照期间必须跳过取景框，否则会被拍进照片
-        if (CameraMode.suppressOverlay()) {
-            CameraMode.markCleanFrame();
-            return;
-        }
+            // 拍照期间必须跳过取景框，否则会被拍进照片
+            if (CameraMode.suppressOverlay()) {
+                CameraMode.markCleanFrame();
+                return;
+            }
 
-        CameraOverlay.render(
-                graphics,
-                mc.font,
-                w,
-                h,
-                System.currentTimeMillis(),
-                // 模糊后处理要它来插值。false ＝ 不算暂停时的那一份，相机模式下
-                // 游戏本来就没暂停，两者一样，取跟着游戏时间的那个更合语义
-                event.getPartialTick().getGameTimeDeltaPartialTick(false));
+            CameraOverlay.render(
+                    graphics,
+                    mc.font,
+                    w,
+                    h,
+                    System.currentTimeMillis(),
+                    // 模糊后处理要它来插值。false ＝ 不算暂停时的那一份，相机模式下
+                    // 游戏本来就没暂停，两者一样，取跟着游戏时间的那个更合语义
+                    event.getPartialTick().getGameTimeDeltaPartialTick(false));
+        });
     }
 
     /** 安全网：打开任意界面就退出相机模式，否则玩家会卡在没有 HUD 的状态里 */

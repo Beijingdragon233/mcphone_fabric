@@ -160,13 +160,14 @@
     "project": "platforms/1.21.1-fabric",
     "buildable": true,
     "note": "社区 PR #2 的移植实现，已按本仓结构收进 platforms/1.21.1-fabric/。loader_version 0.19.5 由构建本身验着（Fabric Loader 就装在这个版本上编过）。gradle 9.7.1 是实测出来的：fabric-loom 1.17.20 要求 Gradle >= 9.5，往上第一个能用的发行版是 9.7.1 —— 这个目标不能跟着仓库根的 wrapper（那个是给 1.20.1-forge 的 8.8 与 neoforge 的共用档），平台自带 wrapper。",
-      "layers": [
-        "1.20.3+",
-        "1.20.5+",
-        "1.21+",
-        "fabric"
-      ]
-    },
+    "layers": [
+      "1.20.3+",
+      "1.20.5+",
+      "1.21+",
+      "fabric",
+      "fabric-1.20.5+"
+    ]
+  },
   "26.3-forge": {
     "minecraft": "26.3",
     "loader": "Forge",
@@ -215,19 +216,17 @@
     "server_config_sync": true,
     "mappings": "official",
     "java": 25,
-    "gradle": "9.7.1",
+    "gradle": "9.8.2",
     "project": "platforms/26.3-fabric",
-    "buildable": false,
-    "unverified": [
-      "loader_version",
-      "gradle"
-    ],
-    "note": "排在 26.3-neoforge 之后做，按本仓约定 NeoForge 是 26.x 的主路径。Fabric 侧的工件已经在：piston-meta 有 26.3 的 intermediary，Fabric API 有 0.160.6+26.3。loader_version 0.19.5 沿用 1.21.1-fabric 那行 —— Fabric Loader 与 Minecraft 版本无关，但它没在 26.3 上编过，所以标着。gradle 9.7.1 同理：那个数是给 fabric-loom 1.17.20 测出来的，26.3 要用哪一版 Loom、那一版对 Gradle 的要求是多少，都得查过再填。server_config_sync 这里写 true 沿用的是仓库里已记着的那个已知问题（Fabric 没有把 SERVER 档配置推给客户端的机制，那三处按钮显隐是错的且不报错），不是 26.3 上新查的事实。",
+    "buildable": true,
+    "note": "2026-10-23 使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.164.0+26.3、Java 25 完成编译与打包。26.3 原版不再混淆，因此不配置 mappings；物品亮屏模型使用原版 condition + has_component，不注册自定义 ItemProperties。compileJava、114 份断言测试、jar、内嵌引擎、服务文件、dist 隔离、共享层与接缝文档检查通过；客户端真实启动并进入单人世界，13 个 App 注册完成，专用服务器通过 EULA 检查前的模组初始化并记录“手机已就绪”。真实 Fabric 26.3 联动为 Waystones 26.3.0.1、Balm 26.3.0.3、Shogi 26.3.0.3、Tom's Simple Storage 26.3-2.12.2；Curios、AE2、Refined Storage、Patchouli、MCEF、NetMusic 没有 Fabric 26.3 构件，相应能力显式不可用或在挂载阶段排除。server_config_sync 仍沿用 Fabric 已知限制。",
     "layers": [
       "1.20.3+",
       "1.20.5+",
       "1.21+",
-      "fabric"
+      "fabric",
+      "fabric-1.20.5+",
+      "26.3+"
     ]
   },
   "26.1.2-forge": {

@@ -220,9 +220,14 @@ public final class PhoneHud {
 
         syncSize(mc);
 
+        // 26.3 的 HUD 元素共用同一个 GuiGraphicsExtractor。手机最后提交绘制时，
+        // 原生矩阵会停在手机的缩放与平移上；不在这一层隔离，后面的血量、聊天等
+        // 原版 HUD 会继续沿用那套变换，看起来就是整块 UI 跟着手机错位。
+        //
         // false ＝ 不算暂停时的那一份。手机挂着的时候游戏没暂停，两者一样，
         // 取跟着游戏时间走的那个更合语义（相机那条覆盖层同理）
-        phone.renderAsHud(new PhoneGraphics(g), delta.getGameTimeDeltaPartialTick(false));
+        PhoneGraphics.withIsolatedPose(g, graphics ->
+                phone.renderAsHud(graphics, delta.getGameTimeDeltaPartialTick(false)));
     }
 
     //  开关手机

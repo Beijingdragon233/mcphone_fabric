@@ -236,7 +236,12 @@ def boundary = tasks.register('verifyPrivateEngineBoundary', VerifyPrivateEngine
     group = 'verification'; dependsOn tasks.named('classes')
     classes.from(sourceSets.main.output.classesDirs)
 }
-def releaseTaskName = plugins.hasPlugin('fabric-loom') ? 'remapJar' : plugins.hasPlugin('net.minecraftforge.gradle') ? 'jarJar' : 'jar'
+// 26.3 起官方无混淆 Loom 使用 net.fabricmc.fabric-loom，jar 本身即发布产物；
+// 旧版 fabric-loom 仍要先打中间包再走 remapJar。
+def releaseTaskName = plugins.hasPlugin('net.fabricmc.fabric-loom') ? 'jar'
+        : plugins.hasPlugin('fabric-loom') ? 'remapJar'
+        : plugins.hasPlugin('net.minecraftforge.gradle') ? 'jarJar'
+        : 'jar'
 def packaged = tasks.register('verifyPrivateEnginePackage', VerifyPrivateEnginePackage) {
     group = 'verification'
     dependsOn tasks.named(releaseTaskName), identity, boundary

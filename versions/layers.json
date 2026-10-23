@@ -92,7 +92,13 @@
   },
   "fabric": {
     "loader": "Fabric",
-    "populated": false,
-    "note": "Fabric 各个 Minecraft 版本共用的代码。与版本轴那几层对称：那边是「同版本、三个加载器共用」，这边是「同加载器、各版本共用」。眼下是空的 —— 本仓还没有第二个 Fabric 目标可以对照，哪些代码在 Fabric 的两个版本之间真的一样是猜不出来的。等第二个 Fabric 目标并进来，拿它逐文件比对，逐字相同的才搬进来。"
+    "populated": true,
+    "note": "Fabric 各个 Minecraft 版本共用的代码。1.21.1-fabric 与 26.3-fabric 逐文件比对后，只把正文逐字相同、且两边都编译通过的代码搬进来；版本或加载器 API 有差异的仍留在各自平台。"
+  },
+  "fabric-1.20.5+": {
+    "since": "1.20.5",
+    "loader": "Fabric",
+    "populated": true,
+    "note": "Fabric 与 1.20.5+ 原版 API 的交集层。1.21.1-fabric 与 26.3-fabric 已逐文件比对，目前只放同时依赖 Fabric 网络 API 与 CustomPacketPayload 的共用代码。"
   }
 }
