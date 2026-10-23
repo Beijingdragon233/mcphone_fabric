@@ -477,6 +477,7 @@ public final class PhoneHud {
         int w = mc.getWindow().getGuiScaledWidth();
         int h = mc.getWindow().getGuiScaledHeight();
         if (phone.width == w && phone.height == h) return;
-        phone.init();
+        // 26.3 的无参 init() 不写 width/height，HUD 首次创建会一直按 0 尺寸布局。
+        phone.init(mc, w, h);
     }
 }

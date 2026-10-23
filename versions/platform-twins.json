@@ -29,7 +29,7 @@
     "com/november/mcphone/core/client/ClientConfig.java": 833,
     "com/november/mcphone/core/client/KeyModifier.java": 40,
     "com/november/mcphone/core/client/MCphoneKeyBindings.java": 49,
-    "com/november/mcphone/core/client/PhoneHud.java": 248,
+    "com/november/mcphone/core/client/PhoneHud.java": 244,
     "com/november/mcphone/core/client/PhoneItemProperties.java": 62,
     "com/november/mcphone/core/client/PhoneSkinMetadata.java": 52,
     "com/november/mcphone/core/menu/ModMenus.java": 75,
