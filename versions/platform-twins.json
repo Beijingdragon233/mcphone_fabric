@@ -7,7 +7,7 @@
   ],
   "pairs": {
     "com/november/mcphone/MCphone.java": 612,
-    "com/november/mcphone/MCphoneClient.java": 500,
+    "com/november/mcphone/MCphoneClient.java": 494,
     "com/november/mcphone/api/client/ui/PhoneMultiLineEditBox.java": 128,
     "com/november/mcphone/compat/CompatModule.java": 8,
     "com/november/mcphone/compat/CompatModules.java": 30,
@@ -34,7 +34,7 @@
     "com/november/mcphone/core/client/PhoneSkinMetadata.java": 52,
     "com/november/mcphone/core/menu/ModMenus.java": 75,
     "com/november/mcphone/core/net/MCphoneNetwork.java": 371,
-    "com/november/mcphone/core/net/NetworkHandler.java": 371,
+    "com/november/mcphone/core/net/NetworkHandler.java": 373,
     "com/november/mcphone/core/net/PhoneScreenOnPacket.java": 26,
     "com/november/mcphone/core/net/RequestThrottle.java": 12,
     "com/november/mcphone/core/net/SyncPhoneTerminalPacket.java": 4,
