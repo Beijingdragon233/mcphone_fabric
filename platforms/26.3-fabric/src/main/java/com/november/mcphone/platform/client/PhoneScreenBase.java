@@ -22,7 +22,9 @@ public abstract class PhoneScreenBase extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int x, int y, float a) {
-        render(new PhoneGraphics(g), x, y, a);
+        // 手机页面绘制时会把缩放矩阵写回原版提取器；界面退出时必须恢复，
+        // 否则同一帧后续的 F3 调试层会沿用手机的缩放与平移。
+        PhoneGraphics.withIsolatedPose(g, graphics -> render(graphics, x, y, a));
     }
 
     public void render(PhoneGraphics g, int x, int y, float a) {
@@ -32,7 +34,7 @@ public abstract class PhoneScreenBase extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor g, int x, int y, float a) {
         if (shouldDrawBackground()) {
-            renderBackground(new PhoneGraphics(g), x, y, a);
+            PhoneGraphics.withIsolatedPose(g, graphics -> renderBackground(graphics, x, y, a));
         }
     }
 
