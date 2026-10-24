@@ -3,20 +3,22 @@ import groovy.json.JsonSlurper
 // Minecraft 26.2 uses RecipeUnlockedTrigger.TriggerInstance.recipe, while
 // 26.3 uses recipes. Validate the effective resource set after processResources
 // so a copied 26.3 advancement cannot silently fail at world load.
+def resourcesRoot = layout.buildDirectory.dir('resources/main')
+def advancementFiles = fileTree(resourcesRoot) {
+    include 'data/**/advancement/**/*.json'
+}
+
 tasks.register('verifyRecipeUnlockedAdvancementSchema') {
     description = '校验 26.2 的 recipe_unlocked 条件使用单数 recipe 字段'
     group = 'verification'
 
     dependsOn tasks.named('processResources')
-    def resourcesDir = layout.buildDirectory.dir('resources/main')
-    inputs.dir(resourcesDir)
+    inputs.files(advancementFiles)
 
     doLast {
-        def root = resourcesDir.get().asFile
+        def root = resourcesRoot.get().asFile
         def wrong = []
-        fileTree(root) {
-            include 'data/**/advancement/**/*.json'
-        }.each { file ->
+        advancementFiles.files.each { file ->
             def json = new JsonSlurper().parse(file)
             def criteria = json instanceof Map ? json.criteria : null
             if (!(criteria instanceof Map)) return
