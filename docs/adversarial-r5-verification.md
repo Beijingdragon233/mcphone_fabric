@@ -375,4 +375,3 @@ java.lang.UnsupportedOperationException
 | `guard-version` job | 未跑（`next-version.test.sh`、发布说明冻结、`mod_version` 守卫、`targets.json`/`layers.json` 校验、第三方 API 证据） | 会跑 |
 
 另：**本 PR 若要以 `master` / `main` 为目标** —— `build.yml` 的触发条件写的是 `branches: [master, main]`，指向别的分支**不会触发 CI**。
-

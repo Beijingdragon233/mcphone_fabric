@@ -277,7 +277,7 @@ jobs:
           BAD=""
           for f in platforms/*/gradle.properties; do
             [ -f "$f" ] || continue
-            HIT=$(grep -nE '^(mod_id|mod_name|mod_license|mod_group_id|mod_version)=' "$f" || true)
+            HIT=$(grep -nE '^(mod_id|mod_name|mod_license|mod_group_id|mod_version|mod_authors|mod_repo_url)=' "$f" || true)
             [ -n "$HIT" ] && BAD="${BAD}${f}:"$'\n'"${HIT}"$'\n'
           done
           if [ -n "$BAD" ]; then

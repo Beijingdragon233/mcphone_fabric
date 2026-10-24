@@ -10,7 +10,7 @@ import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneScreenRegistry;
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.platform.ModPresence;
-import net.minecraft.SharedConstants;
+import com.november.mcphone.platform.WorldVersions;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -92,16 +92,16 @@ public final class AboutPage {
         GuiUtil.enableScissor(g, x, top, x + w, bottom);
 
         // ---- 名字与版本 ----
-        g.drawString(font, "MCphone", x, y, FontPalette.title(), false);
+        g.drawString(font, "MCphone-More versions", x, y, FontPalette.title(), false);
         y += font.lineHeight + 1;
 
         // 版本运行时取，不写死——这一页存在的理由就是原来那句写死了
         g.drawString(font, "v" + MCphone.getVersion(), x, y, FontPalette.price(), false);
         y += font.lineHeight + 4;
 
-        y = row(g, font, x, y, w, "mcphone.about.author", "november521");
+        y = row(g, font, x, y, w, "mcphone.about.author", "250325");
         y = row(g, font, x, y, w, "mcphone.about.game",
-                SharedConstants.getCurrentVersion().getName());
+                WorldVersions.currentName());
         y = row(g, font, x, y, w, "mcphone.about.apps",
                 String.valueOf(PhoneScreenRegistry.getAppCount()));
 

@@ -1,5 +1,6 @@
 package com.november.mcphone.platform.client;
 
+import com.mojang.blaze3d.audio.Library;
 import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.client.sounds.JOrbisAudioStream;
 
@@ -30,5 +31,9 @@ public final class VanillaAudio {
     /** 交出去的流由调用方负责关。 */
     public static AudioStream openOgg(InputStream in) throws IOException {
         return new JOrbisAudioStream(in);
+    }
+
+    public static void initialize(Library library) {
+        library.init(null, false);
     }
 }

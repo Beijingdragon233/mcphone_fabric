@@ -1,6 +1,5 @@
 package com.example.mcphoneaddon;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.november.mcphone.api.MCphoneApi;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.app.RequiredMod;
@@ -81,11 +80,7 @@ public final class AddonApiExamples {
         @Override
         public void renderIcon(GuiGraphics g, int x, int y, int size, float partialTick) {
             int frame = (int) ((System.currentTimeMillis() / FRAME_MS) % FRAMES);
-            RenderSystem.enableBlend();
-            RenderSystem.defaultBlendFunc();
-            g.blit(getIconTexture(), x, y, size, size,
-                    frame * size, 0, size, size, size * FRAMES, size);
-            RenderSystem.disableBlend();
+            IconBlitter.blit(g, getIconTexture(), x, y, size, frame, FRAMES);
         }
     }
 

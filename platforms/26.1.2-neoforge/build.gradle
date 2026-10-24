@@ -36,7 +36,7 @@ if (!repoPropsFile.exists()) {
 }
 def repoProps = new Properties()
 repoPropsFile.withInputStream { repoProps.load(it) }
-['mod_id', 'mod_name', 'mod_license', 'mod_group_id', 'mod_version'].each { k ->
+['mod_id', 'mod_name', 'mod_license', 'mod_group_id', 'mod_version', 'mod_authors', 'mod_repo_url'].each { k ->
     if (!repoProps.containsKey(k)) {
         throw new GradleException("仓库根的 gradle.properties 缺 ${k}")
     }
@@ -355,6 +355,8 @@ var generateModMetadata = tasks.register("generateModMetadata", ProcessResources
             mod_name               : mod_name,
             mod_license            : mod_license,
             mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_repo_url           : mod_repo_url,
     ]
     inputs.properties replaceProperties
     expand replaceProperties

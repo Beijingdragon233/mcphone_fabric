@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.reader.client.source;
 
 import com.november.mcphone.platform.ModPresence;
+import com.november.mcphone.platform.RegistryItems;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -85,7 +86,7 @@ public interface ExternalBook {
     static Component itemTitle(ResourceLocation itemId, Component fallback) {
         if (itemId == null) return fallback;
 
-        Item item = BuiltInRegistries.ITEM.get(itemId);
+        Item item = RegistryItems.get(itemId);
         if (item == Items.AIR) return fallback;
 
         return new ItemStack(item).getHoverName();

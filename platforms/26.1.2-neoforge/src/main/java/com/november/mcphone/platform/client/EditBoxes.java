@@ -1,6 +1,13 @@
 package com.november.mcphone.platform.client;
 
+import com.november.mcphone.api.client.ui.PhoneMultiLineEditBox;
+import com.november.mcphone.platform.client.port.PhoneGraphics;
+import com.november.mcphone.platform.client.port.PhoneInputs;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
 
 /**
  * 单行输入框上的一些跨版本对不上的动作。
@@ -24,5 +31,54 @@ public final class EditBoxes {
     /** 光标移到末尾，不选中。 */
     public static void moveCursorToEnd(EditBox box) {
         box.moveCursorToEnd(false);
+    }
+
+    public static boolean click(AbstractWidget w, double mx, double my, int pageButton) {
+        return w.mouseClicked(PhoneInputs.mouse(mx, my, pageButton), false);
+    }
+
+    public static boolean drag(AbstractWidget w, double mx, double my, int pageButton,
+                               double dx, double dy) {
+        return w.mouseDragged(PhoneInputs.mouse(mx, my, pageButton), dx, dy);
+    }
+
+    public static boolean key(AbstractWidget w, int keyCode, int scanCode, int modifiers) {
+        return w.keyPressed(new KeyEvent(keyCode, scanCode, modifiers));
+    }
+
+    public static boolean character(AbstractWidget w, char c, int modifiers) {
+        return w.charTyped(new CharacterEvent(c));
+    }
+
+    public static boolean click(PhoneMultiLineEditBox w, double mx, double my, int pageButton) {
+        return w.mouseClicked(mx, my, pageButton);
+    }
+
+    public static boolean drag(PhoneMultiLineEditBox w, double mx, double my, int pageButton,
+                               double dx, double dy) {
+        return w.mouseDragged(mx, my, pageButton, dx, dy);
+    }
+
+    public static boolean key(PhoneMultiLineEditBox w, int keyCode, int scanCode, int modifiers) {
+        return w.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    public static boolean character(PhoneMultiLineEditBox w, char c, int modifiers) {
+        return w.charTyped(c, modifiers);
+    }
+
+    public static void render(AbstractWidget w, PhoneGraphics g, int mouseX, int mouseY,
+                              float partialTick) {
+        w.extractRenderState(g.nativeGraphics(), mouseX, mouseY, partialTick);
+    }
+
+    public static void render(AbstractWidget w, GuiGraphicsExtractor g, int mouseX, int mouseY,
+                              float partialTick) {
+        w.extractRenderState(g, mouseX, mouseY, partialTick);
+    }
+
+    public static void render(PhoneMultiLineEditBox w, PhoneGraphics g, int mouseX, int mouseY,
+                              float partialTick) {
+        w.render(g, mouseX, mouseY, partialTick);
     }
 }

@@ -104,7 +104,7 @@ public abstract class PhoneApp implements IPhoneApp {
     @Override
     public String getDescription() {
         String key = "mcphone.app." + path + ".desc";
-        return I18n.exists(key) ? I18n.get(key) : "";
+        return net.minecraft.locale.Language.getInstance().has(key) ? I18n.get(key) : "";
     }
 
     @Override

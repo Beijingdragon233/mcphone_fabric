@@ -1,10 +1,12 @@
 package com.november.mcphone.platform;
 
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import top.theillusivec4.curios.api.CuriosApi;
 import top.theillusivec4.curios.api.type.capability.ICuriosItemHandler;
 
 import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
  * 拿到某个实体的饰品栏 —— 全仓唯一碰 {@link CuriosApi#getCuriosInventory} 的地方。
@@ -29,8 +31,32 @@ public final class CuriosInventories {
 
     private CuriosInventories() {}
 
+    public record Slot(String slotId, int index, ItemStack stack) {}
+
+    public static boolean isEquipped(LivingEntity entity, Predicate<ItemStack> filter) {
+        return of(entity).map(inventory -> inventory.isEquipped(filter)).orElse(false);
+    }
+
+    public static Optional<Slot> findFirst(LivingEntity entity, Predicate<ItemStack> filter) {
+        return of(entity)
+                .flatMap(inventory -> inventory.findFirstCurio(filter))
+                .map(result -> new Slot(result.slotContext().identifier(),
+                        result.slotContext().index(), result.stack()));
+    }
+
+    public static ItemStack stackAt(LivingEntity entity, String slotId, int index) {
+        return of(entity)
+                .flatMap(inventory -> inventory.findCurio(slotId, index))
+                .map(result -> result.stack())
+                .orElse(ItemStack.EMPTY);
+    }
+
+    public static void setEquipped(LivingEntity entity, String slotId, int index, ItemStack stack) {
+        of(entity).ifPresent(inventory -> inventory.setEquippedCurio(slotId, index, stack));
+    }
+
     /** 某个实体的饰品栏；没有则空。<b>调用前必须已经确认 Curios 在场。</b> */
-    public static Optional<ICuriosItemHandler> of(LivingEntity entity) {
+    private static Optional<ICuriosItemHandler> of(LivingEntity entity) {
         // 9.x 直接就是 Optional
         return CuriosApi.getCuriosInventory(entity);
     }

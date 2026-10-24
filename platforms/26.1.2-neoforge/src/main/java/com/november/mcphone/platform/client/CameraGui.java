@@ -1,5 +1,7 @@
 package com.november.mcphone.platform.client;
 
+import net.minecraft.client.Minecraft;
+
 /**
  * 相机取景时原版 HUD 怎么藏 —— <b>两支的答案正好相反</b>。
  *
@@ -23,5 +25,13 @@ public final class CameraGui {
     /** 进入取景时 {@code Minecraft.options.hideGui} 该置成什么。 */
     public static boolean hideGuiWhileFraming() {
         return true;
+    }
+
+    public static boolean hidden(Minecraft mc) {
+        return mc.options.hideGui;
+    }
+
+    public static void setHidden(Minecraft mc, boolean hidden) {
+        mc.options.hideGui = hidden;
     }
 }

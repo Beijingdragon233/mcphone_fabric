@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.store;
 
 import com.november.mcphone.MCphone;
+import com.november.mcphone.platform.RegistryItems;
 import com.november.mcphone.api.cost.IAppPriceProvider;
 import com.november.mcphone.api.cost.ICost;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -31,7 +32,7 @@ public final class BuiltinAppPrices implements IAppPriceProvider {
 
         out.put(app("ender_chest"), ICost.of(Items.ENDER_CHEST, 1));
 
-        Item warpStone = BuiltInRegistries.ITEM.get(WARP_STONE_ITEM);
+        Item warpStone = RegistryItems.get(WARP_STONE_ITEM);
         if (warpStone != Items.AIR) {
             out.put(app("waystone"), ICost.of(warpStone, 1));
         }
