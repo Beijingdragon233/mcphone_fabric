@@ -69,6 +69,22 @@
     "populated": true,
     "note": "1.21（数据包格式 48）把数据包的目录名从复数改成单数：recipes→recipe、advancements→advancement、loot_tables→loot_table、tags/items→tags/item、functions→function。这条边界与 1.20.5+ 那条【不是同一条】，所以是单独一层 —— 塞进 1.20.5+ 的话，一个 1.20.6 的目标挂上那层就会拿到单数目录名，而它那儿要的是复数，而且不报错：那条配方/进度只是静默地不存在。"
   },
+  "26.2+": {
+    "since": "26.2",
+    "populated": true,
+    "note": "26.2 将 Item.use 的返回类型从 InteractionResultHolder<ItemStack> 改为 InteractionResult，并调整 tooltip 回调。只把 PhoneItem 拆到这一层，1.21+ 的其余代码继续共用。"
+  },
+  "26.2-common+": {
+    "since": "26.2",
+    "populated": true,
+    "note": "26.2 与 26.3 共用的版本层：NetMusic、MCEF 与 Patchouli 在 26.x 都没有可用构件，这三个不可用门面逐字相同，因此不留在两个版本层里各抄一份。"
+  },
+  "26.2-neoforge": {
+    "since": "26.2",
+    "loader": "NeoForge",
+    "populated": true,
+    "note": "26.2 的 NeoForge 专用版本层：按键事件、注册事件与终端发现都直接引用 NeoForge 类型，不能放进跨加载器的 26.2+ 层。"
+  },
   "26.3+": {
     "since": "26.3",
     "populated": true,

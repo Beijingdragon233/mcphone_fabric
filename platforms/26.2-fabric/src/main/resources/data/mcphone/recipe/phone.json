@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "G": "minecraft:glass",
+    "R": "minecraft:red_dye",
+    "Y": "minecraft:yellow_dye",
+    "B": "minecraft:blue_dye",
+    "I": "minecraft:iron_ingot",
+    "X": "minecraft:redstone"
+  },
+  "pattern": [
+    "GGG",
+    "RYB",
+    "IXI"
+  ],
+  "result": {
+    "count": 1,
+    "id": "mcphone:phone"
+  }
+}

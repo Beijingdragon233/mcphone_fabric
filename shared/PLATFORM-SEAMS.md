@@ -890,3 +890,206 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.port.PhoneTextureState`
 
 <!-- 26.3-fabric 结束 -->
+
+<!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.2-neoforge -->
+
+#### 共用代码引用了的（47）
+
+**新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
+
+- `MCphone`　—— 加载器导入
+- `api.client.ui.PhoneMultiLineEditBox`
+- `compat.WaystonesCompat`
+- `core.ModDataComponents`　—— 1.20.5+ 原版、加载器导入
+- `core.ModSounds`　—— 加载器导入
+- `core.PhonePlayerData`　—— 注入的方法
+- `core.PhoneSavedData`
+- `core.ServerConfig`　—— 加载器导入
+- `core.client.AppHotkeys`　—— 加载器导入
+- `core.client.ClientConfig`　—— 加载器导入
+- `core.client.KeyModifier`
+- `core.client.PhoneHud`　—— 加载器导入
+- `core.client.PhoneSkinMetadata`
+- `core.menu.ModMenus`　—— 加载器导入
+- `core.net.MCphoneNetwork`　—— 1.20.5+ 原版、加载器导入
+- `core.net.NetworkHandler`　—— 加载器导入
+- `feature.camera.client.CameraFlash`
+- `feature.music.DiscService`　—— 1.20.5+ 原版、加载器导入
+- `feature.music.net.MusicNetworking`　—— 加载器导入
+- `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
+- `feature.terminal.integration.ae2.Ae2Integration`
+- `platform.CuriosInventories`
+- `platform.LootAccess`
+- `platform.ModPresence`　—— 加载器导入
+- `platform.PacketIds`
+- `platform.PlayerAbilities`
+- `platform.PlayerEffects`
+- `platform.RegistryItems`
+- `platform.Slots`
+- `platform.StackCodecs`
+- `platform.WorldVersions`
+- `platform.client.CameraGui`
+- `platform.client.DiscSongs`
+- `platform.client.Draw`
+- `platform.client.EditBoxes`
+- `platform.client.ImageTextures`
+- `platform.client.KeyModifiers`　—— 加载器导入
+- `platform.client.PhoneContainerScreenBase`
+- `platform.client.PhoneScreenBase`
+- `platform.client.PlayerFaces`
+- `platform.client.PlayerSkins`
+- `platform.client.Screens`
+- `platform.client.SystemFiles`
+- `platform.client.Toasts`
+- `platform.client.Transforms`
+- `platform.client.VanillaAudio`
+- `platform.client.WorldTime`
+
+#### 平台内部的（35）
+
+只在这个平台自己的代码里用到。新平台不必提供同名类型。
+
+- `MCphoneClient`　—— 加载器导入
+- `core.ModAttachments`　—— 加载器导入
+- `core.ModCreativeTabs`　—— 加载器导入
+- `core.ModItems`　—— 加载器导入
+- `core.client.PhoneItemProperties`　—— 加载器导入
+- `core.script.net.ScriptNetworking`　—— 加载器导入
+- `feature.camera.client.CameraHandler`　—— 加载器导入
+- `feature.chat.net.ChatNetworking`　—— 加载器导入
+- `feature.notes.net.NotesNetworking`　—— 加载器导入
+- `feature.store.net.StoreNetworking`　—— 加载器导入
+- `feature.terminal.integration.ae2.Ae2wtlibSupport`
+- `feature.terminal.integration.ae2.TerminalSlotLocator`
+- `feature.terminal.net.TerminalNetworking`　—— 加载器导入
+- `platform.CommandPermissions`
+- `platform.Nbt`
+- `platform.PlayerAccess`
+- `platform.Predicates`
+- `platform.Profiles`
+- `platform.ServerTeleports`
+- `platform.SkinMetadata`
+- `platform.WorldIds`
+- `platform.client.ClientMessages`
+- `platform.client.ClientTicks`　—— 加载器导入
+- `platform.client.ItemIcons`
+- `platform.client.PhoneKeyInput`
+- `platform.client.PhoneSoundDevice`
+- `platform.client.PhoneToastBase`
+- `platform.client.PhoneWeather`
+- `platform.client.WeatherValues`
+- `platform.client.port.PhoneDynamicTexture`
+- `platform.client.port.PhoneEditBox`
+- `platform.client.port.PhoneGraphics`
+- `platform.client.port.PhoneInputs`
+- `platform.client.port.PhonePlayerFaceRenderer`
+- `platform.client.port.PhoneTextureState`
+
+<!-- 26.2-neoforge 结束 -->
+
+<!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.2-fabric -->
+
+#### 共用代码引用了的（48）
+
+**新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
+
+- `MCphone`　—— 加载器导入
+- `api.client.ui.PhoneMultiLineEditBox`
+- `compat.WaystonesCompat`
+- `core.ModAttachments`　—— 加载器导入
+- `core.ModDataComponents`　—— 1.20.5+ 原版
+- `core.ModSounds`
+- `core.PhonePlayerData`
+- `core.PhoneSavedData`
+- `core.ServerConfig`
+- `core.client.AppHotkeys`
+- `core.client.ClientConfig`　—— 加载器导入
+- `core.client.PhoneHud`　—— 加载器导入
+- `core.client.PhoneSkinMetadata`
+- `core.menu.ModMenus`
+- `core.net.MCphoneNetwork`　—— 1.20.5+ 原版、加载器导入
+- `core.net.NetworkHandler`
+- `feature.camera.client.CameraFlash`
+- `feature.chat.ChatImageStore`
+- `feature.music.DiscService`　—— 1.20.5+ 原版
+- `feature.music.net.MusicNetworking`
+- `feature.terminal.TerminalCharger`
+- `feature.terminal.integration.Terminals`
+- `platform.CuriosInventories`
+- `platform.LootAccess`
+- `platform.ModPresence`　—— 加载器导入
+- `platform.PacketIds`
+- `platform.PlayerAbilities`
+- `platform.PlayerEffects`
+- `platform.RegistryItems`
+- `platform.Slots`
+- `platform.StackCodecs`
+- `platform.WorldVersions`
+- `platform.client.CameraGui`
+- `platform.client.DiscSongs`
+- `platform.client.Draw`
+- `platform.client.EditBoxes`
+- `platform.client.ImageTextures`
+- `platform.client.KeyModifiers`
+- `platform.client.PhoneContainerScreenBase`
+- `platform.client.PhoneScreenBase`
+- `platform.client.PlayerFaces`
+- `platform.client.PlayerSkins`
+- `platform.client.Screens`
+- `platform.client.SystemFiles`
+- `platform.client.Toasts`
+- `platform.client.Transforms`
+- `platform.client.VanillaAudio`
+- `platform.client.WorldTime`
+
+#### 平台内部的（45）
+
+只在这个平台自己的代码里用到。新平台不必提供同名类型。
+
+- `MCphoneClient`　—— 加载器导入
+- `compat.CompatModule`
+- `compat.CompatModules`
+- `core.ModCreativeTabs`
+- `core.ModItems`
+- `core.client.AppHotkeyHandler`
+- `core.client.KeyModifier`
+- `core.client.MCphoneKeyBindings`　—— 加载器导入
+- `core.net.RequestThrottle`
+- `core.net.SyncPhoneTerminalPacket`　—— 1.20.5+ 原版
+- `core.net.SyncServerConfigPacket`　—— 1.20.5+ 原版
+- `core.script.net.ScriptNetworking`
+- `feature.camera.client.CameraHandler`
+- `feature.chat.ChatImageUploads`
+- `feature.chat.group.net.GroupNetworking`
+- `feature.chat.net.ChatNetworking`
+- `feature.chat.profile.net.ProfileNetworking`　—— 加载器导入
+- `feature.notes.net.NotesNetworking`
+- `feature.store.net.StoreNetworking`
+- `feature.terminal.net.TerminalNetworking`
+- `mixin.client.KeyboardHandlerMixin`
+- `mixin.client.MouseHandlerMixin`
+- `mixin.client.SoundEngineMixin`
+- `platform.CommandPermissions`
+- `platform.Nbt`
+- `platform.PlayerAccess`
+- `platform.Predicates`
+- `platform.Profiles`
+- `platform.ServerTeleports`
+- `platform.SkinMetadata`
+- `platform.WorldIds`
+- `platform.client.ClientMessages`
+- `platform.client.ClientTicks`　—— 加载器导入
+- `platform.client.ItemIcons`
+- `platform.client.PhoneKeyInput`
+- `platform.client.PhoneSoundDevice`
+- `platform.client.PhoneToastBase`
+- `platform.client.PhoneWeather`
+- `platform.client.WeatherValues`
+- `platform.client.port.PhoneDynamicTexture`
+- `platform.client.port.PhoneEditBox`
+- `platform.client.port.PhoneGraphics`
+- `platform.client.port.PhoneInputs`
+- `platform.client.port.PhonePlayerFaceRenderer`
+- `platform.client.port.PhoneTextureState`
+
+<!-- 26.2-fabric 结束 -->

@@ -1,0 +1,186 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+    id 'idea'
+}
+
+def repoRoot = file('../..')
+def repoPropsFile = new File(repoRoot, 'gradle.properties')
+if (!repoPropsFile.exists()) {
+    throw new GradleException("找不到 ${repoPropsFile.canonicalPath}。仓库级身份在仓库根。")
+}
+def repoProps = new Properties()
+repoPropsFile.withInputStream { repoProps.load(it) }
+['mod_id', 'mod_name', 'mod_license', 'mod_group_id', 'mod_version', 'mod_authors', 'mod_repo_url'].each { key ->
+    if (!repoProps.containsKey(key)) {
+        throw new GradleException("仓库根的 gradle.properties 缺 ${key}")
+    }
+    ext[key] = repoProps.getProperty(key)
+}
+
+apply from: "${projectDir}/../../gradle/mcphone-layers.gradle"
+apply from: "${projectDir}/../../gradle/mcphone-renames.gradle"
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+}
+
+repositories {
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
+    maven {
+        name = 'modmaven'
+        url = 'https://modmaven.dev'
+        content {
+            includeGroup 'de.mari_023'
+        }
+    }
+    mavenCentral()
+}
+
+def excludedOptionalSources = []
+if (!project.hasProperty('mcef_version')) {
+    excludedOptionalSources +=
+            'shared/src/main/java/com/november/mcphone/feature/browser/client/McefBackend.java'
+}
+if (!project.hasProperty('refinedstorage_version')) {
+    excludedOptionalSources += [
+            'layers/version/1.20.5+/src/main/java/com/november/mcphone/feature/terminal/integration/refinedstorage/TerminalSlotReference.java',
+            'layers/version/1.20.5+/src/main/java/com/november/mcphone/feature/terminal/integration/refinedstorage/TerminalSlotReferenceFactory.java'
+    ]
+}
+
+mcphoneMountSharedJava(sourceSets.main.java,
+        (['shared/src/main/java': new File(repoRoot, 'shared/src/main/java')] +
+         mcphoneLayers.collectEntries { layer ->
+             [("${layer.relDir}/src/main/java"): layer.javaDir]
+         }), excludedOptionalSources)
+
+sourceSets.main.resources {
+    srcDir('../../shared/src/main/resources')
+    mcphoneLayers.each { layer -> srcDir layer.resourcesDir }
+    srcDir('src/generated/resources')
+    exclude('**/*.bbmodel')
+    exclude('src/generated/**/.cache')
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude 'data/mcphone/advancement/recipes/**'
+    filteringCharset = 'UTF-8'
+    def replaceProperties = [
+            minecraft_version: minecraft_version,
+            loader_version   : loader_version,
+            fabric_version   : fabric_version,
+            mod_id           : mod_id,
+            mod_name         : mod_name,
+            mod_license      : mod_license,
+            mod_version      : mod_version,
+            mod_authors      : mod_authors,
+            mod_repo_url     : mod_repo_url,
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['fabric.mod.json']) {
+        expand replaceProperties
+    }
+}
+
+loom {
+    accessWidenerPath = file('src/main/resources/mcphone.accesswidener')
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+
+    include implementation("fr.delthas:javamp3:${javamp3_version}")
+    include implementation("com.formdev:flatlaf:${flatlaf_version}")
+
+    // Real Fabric 26.2 integrations.
+    compileOnly "maven.modrinth:waystones:${waystones_version}"
+    compileOnly "maven.modrinth:balm:${balm_version}"
+    compileOnly "maven.modrinth:shogi:${shogi_version}"
+    compileOnly "maven.modrinth:toms-storage:${toms_version}"
+    localRuntime "maven.modrinth:waystones:${waystones_version}"
+    localRuntime "maven.modrinth:balm:${balm_version}"
+    localRuntime "maven.modrinth:shogi:${shogi_version}"
+    localRuntime "maven.modrinth:toms-storage:${toms_version}"
+
+    // No Fabric 26.2 artifact exists. Compile against the Mojang-named
+    // NeoForge API jars only; no runtime mod is installed.
+    compileOnly "maven.modrinth:curios:${curios_version}"
+    compileOnly "maven.modrinth:ae2:${ae2_version}"
+    compileOnly "maven.modrinth:guideme:${guideme_version}"
+    compileOnly "de.mari_023:ae2wtlib_api:${ae2wtlib_version}"
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 25
+    options.compilerArgs << '-Xmaxerrs' << '100000'
+}
+
+apply from: '../../gradle/mcphone-engine-dependency.gradle'
+apply from: "${projectDir}/../../gradle/mcphone-checks.gradle"
+apply from: "${projectDir}/../../gradle/mcphone-recipe-unlocked-check.gradle"
+apply from: "${projectDir}/../../gradle/mcphone-sign.gradle"
+
+if (mcphoneNameRenames.values().every { it.isEmpty() }) {
+    throw new GradleException('26.2 Fabric 必须启用按目标改名挂载。')
+}
+
+def assertDocMounts = ['docs': new File(repoRoot, 'docs')]
+mcphoneLayers.each { layer ->
+    if (layer.docsDir.isDirectory()) {
+        assertDocMounts["${layer.relDir}/docs"] = layer.docsDir
+    }
+}
+def platformDocs = new File(projectDir, 'docs')
+if (platformDocs.isDirectory()) {
+    assertDocMounts['platforms/26.2-fabric/docs'] = platformDocs
+}
+
+def mountAssertTestsRenamed = mcphoneRegisterRenamedMount(
+        'mountAssertTestsRenamed',
+        assertDocMounts,
+        layout.buildDirectory.dir('generated/assert-tests-renamed'),
+        false)
+
+tasks.named('compileAssertTests', JavaCompile).configure {
+    dependsOn mountAssertTestsRenamed
+    setSource(mountAssertTestsRenamed.map { it.generatedDir })
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/repo"
+        }
+    }
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
