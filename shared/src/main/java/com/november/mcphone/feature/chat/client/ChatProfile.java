@@ -29,8 +29,10 @@ public final class ChatProfile {
         open(current==null?null:current.getUUID(),current==null?"":current.getName().getString(),false);
     }
     public void openPlayer(UUID id) {
-        String fallback=id.toString().substring(0,8);
-        open(id,fallback,true);
+        openPlayer(id,"");
+    }
+    public void openPlayer(UUID id,String knownName) {
+        open(id,knownName.isBlank()?id.toString().substring(0,8):knownName,true);
     }
     private void open(UUID id,String name,boolean external) {
         close();player=id;this.external=external;page=external?Page.DETAILS:Page.HOME;detailsReturn=Page.HOME;
@@ -47,7 +49,10 @@ public final class ChatProfile {
         if (external || page==Page.HOME) return false;
         change(page==Page.DETAILS?detailsReturn:page==Page.FAVORITES?favoritesReturn:Page.HOME);return true;
     }
-    private void change(Page next) { page=next;rows=List.of();card=back=null;navigation.clear();details.clearHits(); }
+    private void change(Page next) {
+        if(page==Page.FAVORITES && next!=Page.FAVORITES) favorites.close();
+        page=next;rows=List.of();card=back=null;navigation.clear();details.clearHits();
+    }
     public void render(GuiGraphics g,int left,int top,int sw,int sh,int statusH,int navH,int mx,int my,Font font,float tick) {
         if (player==null) return;
         details.poll(System.currentTimeMillis());

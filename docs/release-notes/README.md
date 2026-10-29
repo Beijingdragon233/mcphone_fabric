@@ -1,5 +1,48 @@
 # 发版说明怎么写
 
+## 游戏内更新日志（从本功能加入起）
+
+同一份 Markdown 用于 GitHub Release 和包内日志，不另写 JSON。每份新说明使用：
+
+```markdown
+# 下一版本
+<!-- date: 2026-10-23 -->
+
+## 简体中文
+### 新增
+- 功能说明。仅影响某个平台时写 `[Forge 1.20.1]` 等前缀。
+### 修复
+- 修复说明，可包含 [详情](https://github.com/november521/mcphone)。
+
+## English
+### Added
+- Feature description, with a platform prefix where applicable.
+### Fixed
+- Fix description with an optional [link](https://github.com/november521/mcphone).
+```
+
+日期为可选的人工维护字段；未填写不显示，不能用每次构建时间冒充发布日期。
+分类标题可自定，空分类应删除。条目写在单行，游戏内自动换行。支持文字、平台标注、
+HTTP(S) Markdown 链接，不支持图片、嵌套列表和任意 Markdown 排版。
+两种语言都必须有分类和条目；不完整或无法解析的新日志使构建失败，避免漏打包。
+
+`generatePhoneChangelog` 在四个平台的资源处理前运行，将双语说明转换到构建目录，
+不改源文件。历史版本从新到旧显示；没有双语章节的冻结旧日志不会补录。
+`next.md` 显示为“待发布”，可手动预览，不绑定当前正式版本号。
+发版流程将其改名为 `v<基准号>.md` 后，游戏才按运行时版本精确找到日志。
+测试版沿用该基准号正文但不自动弹出；GitHub 发布继续直接使用同一文件。
+
+查看记录保存在本机 `config/mcphone/changelog/<玩家 UUID>/<环境摘要>.txt`，
+单人环境按世界目录、多人数环境按服务器地址隔离。仅保存上次展示版本，不排序版本，
+不保存历史进度或同步服务器。弹窗真正绘制成功后记录，保存失败写入游戏日志，
+下次打开可以再次提醒。手动浏览历史不更改提醒记录。
+
+验证：在任一平台工程运行 `verifyPhoneChangelogFormat assertTestChangelogTest`。
+游戏内还需核对手机/平板、窗口缩放、长正文滚动和链接，弹窗外点击不关闭，
+Esc 先收弹窗，再按才退出手机；未操作的副手 HUD 不应消耗提醒。
+
+## 既有发版规则
+
 **一个小版本一份，不是一次发布一份。**
 
 文件名按**基准号**走：`v1.10.2.md` 这一份被 `1.10.2-alpha.1`、`1.10.2-beta.1`、

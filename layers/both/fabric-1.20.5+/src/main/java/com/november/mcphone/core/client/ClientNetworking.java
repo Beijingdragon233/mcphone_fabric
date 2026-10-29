@@ -25,6 +25,13 @@ public final class ClientNetworking {
 
     /** S2C：装桥 + 领接收器，由 MCphoneClient.onInitializeClient 调用 */
     public static void register() {
+        // 新客户端连接旧服务端也要明确拒绝，不能等到发送新格式才失败。
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler,sender,client) -> {
+            if (ClientPlayNetworking.canSend(com.november.mcphone.feature.chat.net.RequestConversationsPacket.TYPE)
+                    && (!ClientPlayNetworking.canSend(com.november.mcphone.feature.chat.net.SendChatMessagePacket.TYPE)
+                    || !ClientPlayNetworking.canSend(com.november.mcphone.feature.chat.group.net.GroupRequestPacket.TYPE)))
+                handler.getConnection().disconnect(net.minecraft.network.chat.Component.translatable("mcphone.chat.protocol_mismatch"));
+        });
         com.november.mcphone.core.net.MCphoneNetwork.installClient(
                 ClientPlayNetworking::send,
                 new com.november.mcphone.core.net.MCphoneNetwork.S2CInstaller() {

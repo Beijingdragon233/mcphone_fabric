@@ -151,3 +151,14 @@ Material Symbols / Simple Icons / Heroicons - 「我」菜单图标
 授权     收藏、赞助：Apache-2.0，见 licenses/material-symbols-Apache-2.0.txt。
          GitHub：CC0，见 licenses/simple-icons-CC0.txt。
          设置：MIT，Copyright (c) Tailwind Labs, Inc.，见 licenses/heroicons-MIT.txt。
+
+
+================================================================
+Lucide - 圆环左引号引用图标
+================================================================
+用途     美西螈消息菜单“引用”。位置 assets/mcphone/textures/chat/ui/reply.png。
+来源     https://github.com/lucide-icons/lucide/tree/0.468.0/icons
+         circle.svg 与 quote.svg，原稿保存在 docs/assets/chat-ui/reply/。
+调整     圆环保留原样；引号绕中心旋转 180 度、缩放为 0.6，改为实心。
+         原始 path 坐标不变；组合后转为 96×96 白色透明 PNG，随主题着色。
+授权     ISC；保留 Feather 部分 MIT 声明，完整许可见 licenses/lucide-reply-ISC.txt。

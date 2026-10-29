@@ -22,7 +22,7 @@ final class ChatMessageIdentity {
             UUID id = message.id();
             if (MISSING_ID.equals(id) || used.contains(id)) {
                 String seed = "mcphone/message/" + conversation.toStorageKey() + "/" + i + "/"
-                        + message.sender() + "/" + message.time() + "/" + message.body();
+                        + message.sender() + "/" + message.time() + "/" + legacyBody(message.body());
                 int attempt = 0;
                 do { id = UUID.nameUUIDFromBytes((seed + "/" + attempt++).getBytes(StandardCharsets.UTF_8)); }
                 while (used.contains(id) || MISSING_ID.equals(id));
@@ -33,5 +33,14 @@ final class ChatMessageIdentity {
             result.add(message);
         }
         return new Migration(result, changed);
+    }
+
+    /** 冻结 1.11.2 的迁移种子；record 新增字段不能改变尚未回存的旧消息身份。 */
+    private static String legacyBody(MessageBody body) {
+        if (body instanceof TextBody text) return "TextBody[text=" + text.text() + "]";
+        if (body instanceof ImageBody image) return "ImageBody[image=" + image.image()
+                + ", width=" + image.width() + ", height=" + image.height()
+                + ", frames=" + image.frames() + ", frameMs=" + image.frameMs() + "]";
+        throw new IllegalArgumentException("旧消息迁移不支持正文类型：" + body.kind());
     }
 }

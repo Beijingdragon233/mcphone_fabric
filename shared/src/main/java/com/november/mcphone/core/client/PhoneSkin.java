@@ -124,6 +124,8 @@ public final class PhoneSkin {
         CHAT_VOICE("chat/ui/voice"),
         /** 右键菜单的透明图标，按统一 8×8 逻辑尺寸居中并随菜单文字着色。 */
         CHAT_COPY("chat/ui/copy"),
+        /** 圆环内的左引号，透明白色素材随菜单文字着色。 */
+        CHAT_REPLY("chat/ui/reply"),
         CHAT_DELETE("chat/ui/delete"),
         CHAT_PASTE("chat/ui/paste"),
         /** 首页加号菜单的手绘 96×96 透明图标，与菜单标签使用同一颜色。 */

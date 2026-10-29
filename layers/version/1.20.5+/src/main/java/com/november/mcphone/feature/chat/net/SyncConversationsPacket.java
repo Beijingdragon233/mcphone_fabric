@@ -18,7 +18,7 @@ public record SyncConversationsPacket(List<ConversationSummary> conversations)
 
     public static final CustomPacketPayload.Type<SyncConversationsPacket> TYPE =
             new CustomPacketPayload.Type<>(
-                    ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "sync_conversations"));
+                    ResourceLocation.fromNamespaceAndPath(MCphone.MODID, "sync_conversations_reply_v1"));
 
     public static final StreamCodec<ByteBuf, SyncConversationsPacket> STREAM_CODEC =
             StreamCodec.composite(

@@ -196,10 +196,7 @@ public final class ChatNetworking {
      * 发件人也要收到回声才显示自己那条——客户端不做乐观插入，免得被丢弃的消息留在界面上。
      */
     private static void handleSendMessage(SendChatMessagePacket packet, ServerPlayer sender) {
-        ChatMessage message = ChatService.sendMessage(sender, packet.target(), packet.text());
-        if (message == null) return;
-
-        ChatDelivery.deliver(sender, packet.target(), message);
+        ChatDelivery.sendText(sender,packet.target(),packet.text(),packet.reply(),packet.ticket());
     }
 
     /**

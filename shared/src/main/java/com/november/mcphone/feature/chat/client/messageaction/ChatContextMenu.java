@@ -14,8 +14,15 @@ final class ChatContextMenu {
     ChatMessageTarget target() { return target; }
     void open(ChatMessageTarget target,double x,double y) { open(target,x,y,false); }
     void open(ChatMessageTarget target,double x,double y,boolean favorite) {
+        open(target,x,y,favorite,false);
+    }
+    void open(ChatMessageTarget target,double x,double y,boolean favorite,boolean reply) {
         this.target=target;
-        items=target.copyable()?(favorite?List.of(ChatMessageAction.COPY,ChatMessageAction.FAVORITE,ChatMessageAction.DELETE):List.of(ChatMessageAction.COPY,ChatMessageAction.DELETE)):List.of(ChatMessageAction.DELETE);
+        var expanded=new java.util.ArrayList<ChatMessageAction>();
+        if(target.copyable()) expanded.add(ChatMessageAction.COPY);
+        if(favorite) expanded.add(ChatMessageAction.FAVORITE);
+        if(reply) expanded.add(ChatMessageAction.REPLY);
+        expanded.add(ChatMessageAction.DELETE);items=List.copyOf(expanded);
         view.open(x,y);
     }
     boolean dismiss() { boolean wasOpen=view.dismiss(); target=null; items=List.of(); return wasOpen; }
@@ -27,8 +34,9 @@ final class ChatContextMenu {
                 "mcphone.chat.message_action."+switch(action) {
                     case COPY -> target.selectedText().isEmpty()?"copy_message":"copy_selection";
                     case FAVORITE -> "favorite";
+                    case REPLY -> "reply";
                     case DELETE -> pending?"deleting":"delete_message";
-                },switch(action) { case COPY -> ChatContextMenuView.Icon.COPY; case FAVORITE -> ChatContextMenuView.Icon.FAVORITE; case DELETE -> ChatContextMenuView.Icon.DELETE; },
+                },switch(action) { case REPLY -> ChatContextMenuView.Icon.REPLY; case COPY -> ChatContextMenuView.Icon.COPY; case FAVORITE -> ChatContextMenuView.Icon.FAVORITE; case DELETE -> ChatContextMenuView.Icon.DELETE; },
                 !pending || action!=ChatMessageAction.DELETE)).toList();
     }
     void render(GuiGraphics g,Font font,int x,int y,int width,int height,int mx,int my,

@@ -7,7 +7,7 @@ import com.november.mcphone.feature.store.net.RequestPurchasedAppsPacket;
 /** 验证实际业务消息仍使用原来的协议 ID，而不是被原版工厂改成 minecraft 命名空间。 */
 public final class PhonePayloadTypesTest {
     public static void main(String[] args) {
-        check(SyncMessagesPacket.TYPE.id().toString().equals("mcphone:sync_messages_v2"));
+        check(SyncMessagesPacket.TYPE.id().toString().equals("mcphone:sync_messages_v3"));
         check(RequestNoteListPacket.TYPE.id().toString().equals("mcphone:request_note_list"));
         check(RequestPurchasedAppsPacket.TYPE.id().toString().equals("mcphone:request_purchased_apps"));
         System.out.println("全部通过：3 条实际消息标识断言");

@@ -17,6 +17,7 @@ public final class LocalStreamChannelTest {
     public static void main(String[] args) throws Exception {
         noVanillaChannelDependency();
         lifecycle();
+        recoverUnderrun();
         emptyAndShortStreams();
         startupFailures();
         readFailureDuringPlayback();
@@ -97,6 +98,41 @@ public final class LocalStreamChannelTest {
             channel.pause();
             channel.close();
             assertReleased(stream, driver, "短流/暂停关闭");
+        }
+    }
+
+    private static void recoverUnderrun() throws Exception {
+        var driver = new Driver();
+        try (var channel = LocalStreamChannel.open(new Stream(20),driver)) {
+            channel.play();
+            driver.state = AL10.AL_STOPPED; driver.processed = 4;
+            channel.updateStream();
+            eq(AL10.AL_PLAYING,driver.state,"游戏卡顿耗尽缓冲后恢复同一曲目");
+            eq(2,driver.plays,"只重新启动一次声源");
+            channel.updateStream();eq(2,driver.plays,"没有新的断流不能反复重新播放");
+            channel.pause();driver.processed = 4;
+            channel.updateStream();eq(2,driver.plays,"补流不能覆盖用户暂停意图");
+            channel.stop();driver.processed = 4;
+            channel.updateStream();eq(2,driver.plays,"显式停止后也不自动恢复");
+        }
+        driver = new Driver();
+        try (var channel = LocalStreamChannel.open(new Stream(4),driver)) {
+            channel.play();driver.processed = 4;channel.updateStream();
+            check(channel.stopped(),"真正的 EOF 正常停止");
+            eq(1,driver.plays,"EOF 没有新缓冲，不能自动重启形成空循环");
+        }
+        driver = new Driver();
+        var pausedStream = new Stream(9);
+        try (var channel = LocalStreamChannel.open(pausedStream,driver)) {
+            channel.play();
+            driver.state = AL10.AL_STOPPED; driver.processed = 4;
+            channel.pause();
+            channel.unpause();
+            eq(1,driver.plays,"断流期间点击暂停再继续，不直接重播已消费的旧缓冲");
+            channel.updateStream();
+            eq(AL10.AL_PLAYING,driver.state,"断流期间暂停再继续，补流后仍能恢复播放");
+            eq(2,driver.plays,"继续只恢复一次同一声源");
+            eq(8,pausedStream.reads,"继续前先补充四块新数据");
         }
     }
 

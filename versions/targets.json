@@ -199,7 +199,7 @@
     "gradle": "9.2.1",
     "project": "platforms/26.2-neoforge",
     "buildable": true,
-    "note": "由 26.3 双加载器实现向下移植的 NeoForge 目标。2026-10-24 使用 NeoForge 26.2.0.93、ModDevGradle 2.0.147、Gradle 9.2.1、Java 25 完成完整 build：154 个任务、114 份断言测试全部通过，SPI、dist 隔离、共享层、接缝文档、双胞胎 161 对、数据包目录名与 recipe_unlocked 条件字段校验通过；产物 mcphone-1.11.2.jar 为 3,769,025 字节，SHA-256 231C2869345ED0715FB0E3D33E3A86B49B2B63D0032C5E46366389BE57C43EF2。真实专用服务器启动到 Done (0.258s)，RCON 正常关闭；26.2 的 RecipeUnlockedTrigger 已迁移到单数 recipe 字段，旧字段的两条进度解析错误消失。真实 26.2 联动包括 Waystones 26.2.0.12、Balm 26.2.0.9、Shogi 26.2.0.8、Curios 16.0.0、AE2 26.2.1-alpha、GuideME 26.2.2-alpha、AE2WTLib 26.2.0-beta、Tom's Simple Storage 26.2-2.11.3。尚未做客户端真实启动。",
+    "note": "2026-10-29 将上游 v1.12.0（upstream/main 897bd9a4）合入 26.2 双端，保留 26.2 版本层与 NeoForge 加载器接缝。使用 NeoForge 26.2.0.93、ModDevGradle 2.0.147、Gradle 9.2.1、Java 25 完成完整 build：181 个任务、139 份断言测试全部通过，SPI、dist 隔离、共享层、接缝文档、双胞胎 160 对、数据包目录名与 recipe_unlocked 条件字段校验通过；产物 mcphone-1.12.0.jar 为 3,936,607 字节，SHA-256 631E0EFF674472A6F1247571DFE5C5C1F9202CEC2675523EC3A4EC9C6E7AD349。真实专用服务器启动到 Done (0.608s)，MCphone 初始化完成并经 RCON 正常关服；真实客户端启动到主菜单，OpenGL、资源包、音效与 MCphone 客户端注册正常。真实 26.2 联动包括 Waystones 26.2.0.12、Balm 26.2.0.9、Shogi 26.2.0.8、Curios 16.0.0、AE2 26.2.1-alpha、GuideME 26.2.2-alpha、AE2WTLib 26.2.0-beta、Tom's Simple Storage 26.2-2.11.3。尚未在真实客户端进世界逐项点验手机 UI。",
     "layers": [
       "1.20.3+",
       "1.20.5+",
@@ -220,7 +220,7 @@
     "gradle": "9.8.2",
     "project": "platforms/26.2-fabric",
     "buildable": true,
-    "note": "2026-10-24 使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.161.0+26.2、Java 25 完成完整 build：154 个任务、115 份断言测试全部通过，SPI、dist 隔离、双胞胎 161 对、接缝文档、数据包目录名与 recipe_unlocked 条件字段校验通过；产物 mcphone-1.11.2.jar 为 4,754,886 字节，SHA-256 25C9E34D66E136C2E74F9C14EB9B405C42934BC2B15F6E18F71FDB4474738DA3。真实专用服务器启动到 Done (2.215s)，RCON 正常关闭；26.2 的 RecipeUnlockedTrigger 已迁移到单数 recipe 字段，旧字段的两条进度解析错误消失。尚未做客户端真实启动。",
+    "note": "2026-10-29 将上游 v1.12.0（upstream/main 897bd9a4）合入 26.2 双端，保留 Fabric 加载器层与 26.2 原生输入接缝。使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.161.0+26.2、Java 25 完成完整 build：181 个任务、140 份断言测试全部通过，SPI、dist 隔离、双胞胎 160 对、接缝文档、数据包目录名与 recipe_unlocked 条件字段校验通过；产物 mcphone-1.12.0.jar 为 4,924,075 字节，SHA-256 67A1A4FC4586DEB34EFA14182522E1A363045C2052AE7D2683339AB660C6AFD0。真实专用服务器启动到 Done (0.502s)，MCphone 初始化完成并经 RCON 正常关服；真实客户端启动到主菜单，OpenGL、资源包、音效与 MCphone 客户端注册正常。尚未在真实客户端进世界逐项点验手机 UI。",
     "layers": [
       "1.20.3+",
       "1.20.5+",

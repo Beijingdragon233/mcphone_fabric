@@ -65,6 +65,18 @@ public final class GroupClientCacheTest {
         check(GroupClientCache.consume(op) == null, "离开页面的迟到结果不触发导航");
         GroupClientCache.track(op); GroupClientCache.accept(new GroupReply.Result(op, H, GroupStatus.OK));
         check(GroupClientCache.consume(op).status() == GroupStatus.OK && GroupClientCache.consume(op) == null, "操作结果仅消费一次");
+        var submission=UUID.randomUUID();GroupClientCache.track(submission);
+        GroupClientCache.accept(new GroupReply.Message(UUID.randomUUID(),7,summary(H,one)));
+        check(GroupClientCache.consume(submission)==null,"另一请求的消息不能确认本次引用");
+        GroupClientCache.accept(new GroupReply.Message(submission,7,summary(H,one)));
+        var confirmation=GroupClientCache.consume(submission);
+        check(confirmation!=null&&confirmation.status()==GroupStatus.OK&&confirmation.group().equals(H),"自己的消息推送携带票据确认");
+        check(GroupClientCache.consume(submission)==null,"消息确认只消费一次");
+        GroupClientCache.track(submission);GroupClientCache.accept(new GroupReply.Result(submission,H,GroupStatus.OK));
+        check(GroupClientCache.consume(submission).status()==GroupStatus.OK,"去重后的重试可以仅用结果确认，无需再广播消息");
+        GroupClientCache.track(submission);GroupClientCache.cancel(submission);
+        GroupClientCache.accept(new GroupReply.Message(submission,7,summary(H,one)));
+        check(GroupClientCache.consume(submission)==null,"关闭提交后迟到推送不能复活票据");
         GroupClientCache.accept(new GroupReply.Directory(List.of(summary(H, one))));
         GroupClientCache.accept(new GroupReply.Directory(List.of()));
         check(GroupClientCache.removed() && GroupClientCache.messages().isEmpty(), "离群/解散摘要移除当前会话内容");
@@ -105,6 +117,11 @@ public final class GroupClientCacheTest {
         check(GroupClientCache.groups().isEmpty() && GroupClientCache.messages().isEmpty() && GroupClientCache.info() == null, "收到邀请不能赋予客户端成员、消息或详情");
         GroupClientCache.close(); check(GroupClientCache.invitations().size() == 1, "关闭会话不丢邀请收件箱");
         GroupClientCache.clear(); check(GroupClientCache.invitations().isEmpty() && !GroupClientCache.noticesLoaded(), "切服清除邀请与加载状态");
+        var pendingIds=java.util.stream.IntStream.range(0,GroupClientPolicy.MAX_PENDING_OPERATIONS).mapToObj(i->new UUID(10,i)).toList();
+        pendingIds.forEach(GroupClientCache::track);GroupClientCache.track(pendingIds.get(pendingIds.size()-1));
+        GroupClientCache.accept(new GroupReply.Result(pendingIds.get(0),G,GroupStatus.OK));
+        check(GroupClientCache.consume(pendingIds.get(0))!=null,"满容量时重试已有票据不能逐出另一请求");
+        GroupClientCache.clear();
         System.out.println("全部通过：" + checks + " 条断言");
     }
 }

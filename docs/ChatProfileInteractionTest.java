@@ -28,6 +28,7 @@ public final class ChatProfileInteractionTest {
   var contacts=new ChatContacts();field(field(contacts,"navigation"),"bounds",new ChatLayout.Rect(10,100,119,18));contacts.mouseClicked(110,105,0);
   check(contacts.consumeAction()==ChatContacts.Action.PROFILE,"联系人可直接进入我页");
   var sent=new ArrayList<ProfileWire.Query>();var details=new ChatProfileDetails(sent::add);details.open(id,"fallback",true);
+  check(details.name().equals("fallback")&&!details.loaded(),"服务端资料到达前先显示调用方已知名字");
   check(sent.size()==1&&!sent.get(0).update(),"打开先读服务端公开资料");reply(sent.get(0),ProfileWire.Status.OK,"原介绍");details.poll(System.currentTimeMillis());
   check(details.loaded()&&details.introduction().equals("原介绍"),"只有服务端成功结果更新资料");
   field(details,"action",new ChatLayout.Rect(10,10,100,14));details.click(20,15,0);check((boolean)field(details,"editing"),"编辑使用独立草稿");

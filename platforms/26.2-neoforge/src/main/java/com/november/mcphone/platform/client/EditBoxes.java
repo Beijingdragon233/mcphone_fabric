@@ -12,6 +12,9 @@ import net.minecraft.client.input.KeyEvent;
 public final class EditBoxes {
     private EditBoxes() {}
 
+    /** The caret uses elapsed time on this version. */
+    public static void tick(EditBox box) {}
+
     public static void moveCursorToEnd(EditBox box) {
         box.moveCursorToEnd(false);
     }

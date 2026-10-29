@@ -20,8 +20,9 @@ public sealed interface GroupCommand {
             if (members.isEmpty() || members.size() >= GroupLimits.MEMBERS) throw new IllegalArgumentException("建群人数超限"); }
     }
     record History(UUID request, UUID group) implements GroupCommand { public History { required(request, group); } }
-    record SendText(UUID request, UUID group, String text) implements GroupCommand {
-        public SendText { required(request, group); bounded(text, TextBody.MAX_LENGTH); }
+    record SendText(UUID request, UUID group, String text, java.util.Optional<UUID> reply) implements GroupCommand {
+        public SendText(UUID request, UUID group, String text) { this(request,group,text,java.util.Optional.empty()); }
+        public SendText { java.util.Objects.requireNonNull(reply); required(request, group); bounded(text, TextBody.MAX_LENGTH); }
     }
     record Delete(UUID request, UUID group, UUID message) implements GroupCommand { public Delete { required(request, group, message); } }
     record MarkRead(UUID request, UUID group, long sequence) implements GroupCommand { public MarkRead { required(request, group); } }

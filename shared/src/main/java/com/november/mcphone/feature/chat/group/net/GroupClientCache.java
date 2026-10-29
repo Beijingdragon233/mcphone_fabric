@@ -55,7 +55,8 @@ public final class GroupClientCache {
     }
     public static void clear() { close(); groups = List.of(); invitations = List.of(); noticeRequest = null; noticesError = null; noticesLoaded = false; operations.clear(); }
     public static void track(UUID request) {
-        if (operations.size() >= GroupClientPolicy.MAX_PENDING_OPERATIONS) operations.remove(operations.keySet().iterator().next());
+        if (!operations.containsKey(request) && operations.size() >= GroupClientPolicy.MAX_PENDING_OPERATIONS)
+            operations.remove(operations.keySet().iterator().next());
         operations.put(request, null);
     }
     public static void cancel(UUID request) { operations.remove(request); }
@@ -94,6 +95,8 @@ public final class GroupClientCache {
             if (detailGroup == null || Objects.equals(detailGroup, v.group())) updateInfo(v.revision(), v.info());
             setEntries(merge(v.messages(), v.sequence()));
         } else if (reply instanceof GroupReply.Message v) {
+            if (operations.containsKey(v.request()))
+                operations.put(v.request(),new GroupReply.Result(v.request(),v.summary().id(),GroupStatus.OK));
             var next = new ArrayList<>(groups); next.removeIf(g -> g.id().equals(v.summary().id())); next.add(v.summary());
             next.sort(Comparator.comparingLong(GroupSummary::lastTime).reversed().thenComparing(GroupSummary::id));
             groups = List.copyOf(next.subList(0, Math.min(next.size(), GroupLimits.GROUPS_PER_PLAYER)));

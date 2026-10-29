@@ -60,12 +60,36 @@ public final class ChatService {
      * 返回落库后的消息，未通过校验返回 null。
      */
     public static ChatMessage sendMessage(ServerPlayer sender, UUID targetId, String rawText) {
+        return sendMessage(sender,targetId,rawText,Optional.empty());
+    }
+    public static ChatMessage sendMessage(ServerPlayer sender, UUID targetId, String rawText, Optional<UUID> reply) {
+        return sendMessage(sender,targetId,rawText,reply,reply.map(ignored -> UUID.randomUUID()));
+    }
+    public static ChatMessage sendMessage(ServerPlayer sender, UUID targetId, String rawText, Optional<UUID> reply, Optional<UUID> ticket) {
+        if (reply.isPresent() != ticket.isPresent()) return null;
         if (!FriendGuard.mayActOn(sender, targetId)) return null;
-
         String text = TextSanitizer.sanitize(rawText, TextBody.MAX_LENGTH);
         if (text.isEmpty()) return null;
-
-        ChatMessage message = storeText(sender, targetId, text);
+        UUID id = ticket.map(value -> ChatReplyIdentity.messageId(sender.getUUID(),targetId,false,value)).orElseGet(UUID::randomUUID);
+        // 先确认已落库的同一次提交，再找原文；原文可能已经被 100 条上限挤走。
+        if (ticket.isPresent()) {
+            var existing = ChatData.get(sender.level().getServer()).getMessages(sender.getUUID(),targetId).stream()
+                    .filter(m -> m.id().equals(id)).findFirst();
+            if (existing.isPresent()) return ChatReplyIdentity.matches(existing.get(),sender.getUUID(),reply.orElseThrow(),text)
+                    && getMessages(sender,targetId).stream().anyMatch(m -> m.id().equals(id)) ? existing.get() : null;
+        }
+        Optional<ChatQuote> quote = Optional.empty();
+        if (reply.isPresent()) {
+            var original = getMessages(sender,targetId).stream().filter(m -> m.id().equals(reply.get())).findFirst().orElse(null);
+            if (original == null) {
+                com.november.mcphone.platform.PlayerAccess.message(sender,net.minecraft.network.chat.Component.translatable("mcphone.chat.reply.server_unavailable"),true);
+                return null;
+            }
+            var server = sender.level().getServer();
+            quote = Optional.of(ChatQuote.from(original,resolveName(server,FriendData.get(server),original.sender(),server.getPlayerList().getPlayer(original.sender()))));
+        }
+        ChatMessage message = new ChatMessage(id, sender.getUUID(), System.currentTimeMillis(), new TextBody(text,quote));
+        store(sender,targetId,message);
 
         // 自己发的对自己是已读的，否则对方一回复就把中间这段全算成未读
         markReadAt(sender, targetId, message.time());

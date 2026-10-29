@@ -24,6 +24,15 @@ public final class ChatMessageActionsTest {
         menu.open(image, 10, 20);
         check(menu.entries(false).get(0).icon() == ChatContextMenuView.Icon.DELETE, "图片仅显示删除");
         check(menu.entries(false).size() == 1, "图片没有额外的假操作项");
+        menu.open(image,10,20,true,true);
+        check(menu.entries(false).stream().map(ChatContextMenuView.Entry::icon).toList().equals(List.of(
+                ChatContextMenuView.Icon.FAVORITE,ChatContextMenuView.Icon.REPLY,ChatContextMenuView.Icon.DELETE)),
+                "图片可收藏及回复，但不显示复制文字");
+        var favorites=new ArrayList<UUID>();
+        var imageActions=new ChatMessageActions((g,x,y,w,h)->{},ignored->{throw new AssertionError("图片不可复制文字");},
+                (p,m,r)->{},ignored->{},ignored->{},(p,m)->favorites.add(m));
+        imageActions.execute(image,ChatMessageAction.FAVORITE,100);
+        check(favorites.equals(List.of(id)),"收藏图片按消息 ID 回调，不受文字复制条件限制");
         var copied = new ArrayList<String>(); var sent = new ArrayList<Sent>();
         var cancelled = new ArrayList<UUID>(); var notices = new ArrayList<String>();
         var actions = new ChatMessageActions((g,x,y,w,h) -> {}, copied::add,

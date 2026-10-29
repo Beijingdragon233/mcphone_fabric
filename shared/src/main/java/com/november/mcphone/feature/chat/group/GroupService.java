@@ -35,9 +35,33 @@ public final class GroupService {
         data.setDirty(); return room;
     }
     public static GroupMessage sendText(ServerPlayer player, UUID group, String raw) {
+        return sendText(player,group,raw,java.util.Optional.empty());
+    }
+    public static GroupMessage sendText(ServerPlayer player, UUID group, String raw, java.util.Optional<UUID> reply) {
+        return sendText(player,group,raw,reply,UUID.randomUUID());
+    }
+    public static GroupMessage sendText(ServerPlayer player, UUID group, String raw, java.util.Optional<UUID> reply, UUID ticket) {
+        requirePhone(player);
+        var room = read(player,group);
         String text = TextSanitizer.sanitize(raw, TextBody.MAX_LENGTH);
         if (text.isBlank()) throw new GroupFault(GroupStatus.INVALID);
-        return append(player, group, ChatMessage.text(player.getUUID(), text, System.currentTimeMillis()));
+        UUID id = reply.isPresent() ? com.november.mcphone.feature.chat.ChatReplyIdentity.messageId(player.getUUID(),group,true,ticket) : UUID.randomUUID();
+        if (reply.isPresent()) {
+            var existing = room.messages().stream().filter(m -> m.message().id().equals(id)).findFirst();
+            if (existing.isPresent()) {
+                if (!com.november.mcphone.feature.chat.ChatReplyIdentity.matches(existing.get().message(),player.getUUID(),reply.get(),text)
+                        || room.visible(player.getUUID()).stream().noneMatch(m -> m.message().id().equals(id)))
+                    throw new GroupFault(GroupStatus.INVALID);
+                return existing.get();
+            }
+        }
+        java.util.Optional<com.november.mcphone.feature.chat.ChatQuote> quote = java.util.Optional.empty();
+        if (reply.isPresent()) {
+            var original = room.visible(player.getUUID()).stream().filter(m -> m.message().id().equals(reply.get())).findFirst()
+                    .orElseThrow(() -> new GroupFault(GroupStatus.INVALID));
+            quote = java.util.Optional.of(com.november.mcphone.feature.chat.ChatQuote.from(original.message(),original.senderName()));
+        }
+        return append(player, group, new ChatMessage(id, player.getUUID(), System.currentTimeMillis(), new TextBody(text,quote)));
     }
     public static GroupMessage sendImage(ServerPlayer player, UUID group, UUID image, int w, int h, int frames, int ms) {
         return append(player, group, new ChatMessage(player.getUUID(), System.currentTimeMillis(), new ImageBody(image, w, h, frames, ms)));

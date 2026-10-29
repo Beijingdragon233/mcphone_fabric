@@ -43,8 +43,8 @@ public final class ChatDeletionPacketTest {
                 catch(IllegalArgumentException expected) { checks++; }
             } finally {buf.release();}
         }
-        check(SyncMessagesPacket.TYPE.id().getPath().equals("sync_messages_v2"),"历史通道明确升级，旧客户端不会错读新增 ID");
-        check(NewMessagePacket.TYPE.id().getPath().equals("new_chat_message_v2"),"推送通道同样升级");
+        check(SyncMessagesPacket.TYPE.id().getPath().equals("sync_messages_v3"),"引用正文升级历史通道，旧客户端不会错读新增字段");
+        check(NewMessagePacket.TYPE.id().getPath().equals("new_chat_message_v3"),"引用推送通道同样升级");
         System.out.println("全部通过："+checks+" 条断言");
     }
 }

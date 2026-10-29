@@ -116,7 +116,10 @@ final class ChatImageViewer {
 
     static void drawImage(GuiGraphics g, ImageCodec.Texture sheet, UUID id,
                                   int x, int y, int boxW, int boxH) {
-        int frames = ChatImageCache.frames(id);
+        drawImage(g,sheet,ChatImageCache.frames(id),ChatImageCache.frameMs(id),x,y,boxW,boxH);
+    }
+    static void drawImage(GuiGraphics g, ImageCodec.Texture sheet, int frames, int frameMs,
+                          int x, int y, int boxW, int boxH) {
         int cols = ChatImage.cols(frames);
         int fw = sheet.width() / cols;
         int fh = sheet.height() / ChatImage.rows(frames);
@@ -127,7 +130,6 @@ final class ChatImageViewer {
             return;
         }
 
-        int frameMs = ChatImageCache.frameMs(id);
         int index = frameMs <= 0 ? 0 : (int) ((System.currentTimeMillis() / frameMs) % frames);
         GuiUtil.drawFittedRegion(g, sheet, (index % cols) * fw, (index / cols) * fh, fw, fh,
                 x, y, boxW, boxH);

@@ -30,7 +30,7 @@ public final class GroupWire {
         if (value.group() != null) b.writeUUID(value.group());
         if (value instanceof GroupCommand.Create v) {
             b.writeUtf(v.name(), GroupLimits.NAME_LENGTH); Wire.writeList(b, v.members(), GroupLimits.MEMBERS - 1, (id, buf) -> buf.writeUUID(id));
-        } else if (value instanceof GroupCommand.SendText v) b.writeUtf(v.text(), TextBody.MAX_LENGTH);
+        } else if (value instanceof GroupCommand.SendText v) { b.writeUtf(v.text(), TextBody.MAX_LENGTH); com.november.mcphone.feature.chat.net.ChatReplyWire.writeId(b,v.reply()); }
         else if (value instanceof GroupCommand.Delete v) b.writeUUID(v.message());
         else if (value instanceof GroupCommand.MarkRead v) b.writeVarLong(v.sequence());
         else if (value instanceof GroupCommand.Rename v) b.writeUtf(v.name(), GroupLimits.NAME_LENGTH);
@@ -51,7 +51,7 @@ public final class GroupWire {
         var group = b.readUUID();
         return switch (kind) {
             case 2 -> new GroupCommand.History(request, group);
-            case 3 -> new GroupCommand.SendText(request, group, b.readUtf(TextBody.MAX_LENGTH));
+            case 3 -> new GroupCommand.SendText(request, group, b.readUtf(TextBody.MAX_LENGTH), com.november.mcphone.feature.chat.net.ChatReplyWire.readId(b));
             case 4 -> new GroupCommand.Delete(request, group, b.readUUID());
             case 5 -> new GroupCommand.MarkRead(request, group, b.readVarLong());
             case 6 -> new GroupCommand.Details(request, group);

@@ -34,6 +34,9 @@ import com.november.mcphone.feature.reader.client.TxtLibrary;
 import com.november.mcphone.feature.reader.client.TxtReaderPage;
 import com.november.mcphone.feature.reader.client.source.BookSources;
 import com.november.mcphone.feature.settings.client.AboutPage;
+import com.november.mcphone.feature.settings.client.changelog.Changelog;
+import com.november.mcphone.feature.settings.client.changelog.ChangelogClient;
+import com.november.mcphone.feature.settings.client.changelog.ChangelogPage;
 import com.november.mcphone.feature.settings.client.AppManagerDetail;
 import com.november.mcphone.feature.settings.client.AppManagerPage;
 import com.november.mcphone.feature.settings.client.SettingsList;
@@ -64,7 +67,7 @@ import java.util.UUID;
 /** 手机主屏幕 GUI：管理各页面之间的导航（{@link Mode}）、分发输入、兜住附属页面的异常 */
 public final class PhoneScreen extends PhoneScreenBase {
 
-    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, GALLERY, DEVICE_NAME, CHAT, CHAT_PROFILE, CHAT_PLAYER_PROFILE, CHAT_CONTACTS, CHAT_NEW_FRIENDS, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION, CHAT_GROUP_CREATE, CHAT_GROUP_DETAILS, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT, AUTHOR_KEY }
+    public enum Mode { MAIN, SETTINGS, WALLPAPER_PICKER, FONT_COLOR_PICKER, UI_SCALE, HUD, APP_MANAGER, APP_MANAGER_DETAIL, MUSIC_PLAYER, APP_STORE, APP_DETAIL, COMPANION_APPS, ADDON_PAGE, ABOUT, CHANGELOG, GALLERY, DEVICE_NAME, CHAT, CHAT_PROFILE, CHAT_PLAYER_PROFILE, CHAT_CONTACTS, CHAT_NEW_FRIENDS, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION, CHAT_GROUP_CREATE, CHAT_GROUP_DETAILS, CHAT_PHOTO_PICKER, CHAT_STICKER_PICKER, NOTES, NOTE_EDIT, CLOCK, WEATHER, READER, TXT_BOOK, VAULT, AUTHOR_KEY }
 
     private final long openTimeMs;
     private boolean animationDone;
@@ -92,6 +95,10 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     /** 1.9.1 起有滚动状态，不再是纯静态的一页 */
     private final AboutPage aboutPage = new AboutPage();
+    private final ChangelogPage changelogPage = new ChangelogPage();
+    private final ChangelogPage changelogDialog = new ChangelogPage();
+    private boolean changelogChecked, changelogPopup;
+    private Path changelogRecord;
 
     /** 在 App 管理器里点中、正要进详情页的那一个 */
     private IPhoneApp pendingManagedApp;
@@ -118,8 +125,12 @@ public final class PhoneScreen extends PhoneScreenBase {
     private final ChatProfile chatProfile=new ChatProfile();
     private Mode profileReturnMode=Mode.CHAT;
     private UUID profileTarget;
+    private String profileFallback="";
     private void openPlayerProfile(UUID id) {
-        profileTarget=id;profileReturnMode=mode;navigateTo(Mode.CHAT_PLAYER_PROFILE);
+        openPlayerProfile(id,"");
+    }
+    private void openPlayerProfile(UUID id,String knownName) {
+        profileTarget=id;profileFallback=knownName;profileReturnMode=mode;navigateTo(Mode.CHAT_PLAYER_PROFILE);
     }
     private final ChatContacts chatContacts = new ChatContacts();
     private final ChatGroupCreate chatGroupCreate = new ChatGroupCreate();
@@ -290,7 +301,7 @@ public final class PhoneScreen extends PhoneScreenBase {
 
         if (this.mode == Mode.CHAT_PROFILE || this.mode == Mode.CHAT_PLAYER_PROFILE) chatProfile.close();
         if (target == Mode.CHAT_PROFILE) chatProfile.open();
-        if (target == Mode.CHAT_PLAYER_PROFILE) chatProfile.openPlayer(profileTarget);
+        if (target == Mode.CHAT_PLAYER_PROFILE) chatProfile.openPlayer(profileTarget,profileFallback);
         if (this.mode == Mode.CHAT_CONTACTS) chatContacts.close();
         if (target == Mode.CHAT_CONTACTS) chatContacts.open();
         if (this.mode == Mode.CHAT_NEW_FRIENDS) chatNewFriends.close();
@@ -299,9 +310,18 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (this.mode == Mode.CHAT_ADD_CONTACT) chatAddContact.close();
         if (target == Mode.CHAT_ADD_CONTACT) chatAddContact.open();
 
-        if (inConversation()) chatConversation.close();
-        if (target == Mode.CHAT_CONVERSATION) chatConversation.open(pendingConversationPeer);
-        if (target == Mode.CHAT_GROUP_CONVERSATION) chatConversation.openGroup(pendingConversationPeer);
+        boolean keepConversation=false;
+        if (mode == Mode.CHAT_CONVERSATION && target == Mode.CHAT_PLAYER_PROFILE)
+            keepConversation=chatConversation.suspendForProfile(profileTarget);
+        else if (mode == Mode.CHAT_PLAYER_PROFILE && profileReturnMode == Mode.CHAT_CONVERSATION
+                && target == Mode.CHAT_CONVERSATION)
+            keepConversation=chatConversation.resumeFromProfile(pendingConversationPeer);
+        if (!keepConversation) {
+            // 资料页也可能持有暂离的会话；真正离开时按资源归属清理，不只看当前页面。
+            if (chatConversation.peer()!=null) chatConversation.close();
+            if (target == Mode.CHAT_CONVERSATION) chatConversation.open(pendingConversationPeer);
+            if (target == Mode.CHAT_GROUP_CONVERSATION) chatConversation.openGroup(pendingConversationPeer);
+        }
         if (target == Mode.CHAT_CONVERSATION || target == Mode.CHAT_GROUP_CONVERSATION) pendingConversationIsGroup = target == Mode.CHAT_GROUP_CONVERSATION;
         if (mode == Mode.CHAT_GROUP_CREATE) chatGroupCreate.close();
         if (target == Mode.CHAT_GROUP_CREATE) chatGroupCreate.open();
@@ -344,6 +364,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (this.mode == Mode.UI_SCALE) uiScalePage.close();
 
         if (target == Mode.ABOUT) aboutPage.open();
+        if (target == Mode.CHANGELOG) changelogPage.open(ChangelogClient.releases());
 
         // 时钟的"时间停没停"是跨帧累计的判断，离开时清掉
         if (this.mode == Mode.CLOCK) ClockPage.reset();
@@ -377,6 +398,7 @@ public final class PhoneScreen extends PhoneScreenBase {
      */
     @Override
     public void onFilesDrop(List<Path> files) {
+        if (changelogPopup) return;
         // 表情页开着时，拖进来是"收进表情目录"而不是"发出去"：那一页的语境就是攒表情。
         // 这也是表情唯一的游戏内导入方式——弹系统文件选择器要 AWT，在 macOS 上与游戏抢主线程
         if (mode == Mode.CHAT_STICKER_PICKER) {
@@ -548,7 +570,8 @@ public final class PhoneScreen extends PhoneScreenBase {
     }
 
     private boolean addonInteractive() {
-        return minecraft != null && com.november.mcphone.platform.client.Screens.current(minecraft) == this
+        return !changelogPopup && minecraft != null
+                && com.november.mcphone.platform.client.Screens.current(minecraft) == this
                 && minecraft.isWindowActive();
     }
 
@@ -597,6 +620,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** Screen 由原版 tick；后台 HUD 由 PhoneHud tick，二者互斥。 */
     @Override public void tick() {
         super.tick();
+        if (chatConversation.profileSuspended()) chatConversation.tick();
         updateAddonContext();
         if (addonHost.page() != null) callPage(p -> { p.tick(); return true; });
     }
@@ -668,6 +692,7 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     /** 导航栏 ◁ 走这里；ESC 不退层而是直接关机，见 {@link #keyPressed}。真的退了一层才 true */
     private boolean goBackOneLevel() {
+        if (mode == Mode.CHANGELOG) { navigateTo(Mode.SETTINGS); return true; }
         if (mode == Mode.GALLERY && gallery.backToGrid()) return true;
 
         if (mode == Mode.DEVICE_NAME) {
@@ -820,6 +845,7 @@ public final class PhoneScreen extends PhoneScreenBase {
             sessionResumed = true;
             resumeSession();
         }
+        checkChangelog();
     }
 
     /** 续开上次关机时停的那一页，白名单与有效性由 {@link PhoneSession} 把关 */
@@ -842,6 +868,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     public void render(GuiGraphics g, int rawMouseX, int rawMouseY, float partialTick) {
         this.nowMs = System.currentTimeMillis();
         computeLayout();
+        checkChangelog();
 
         // HUD 那副面孔不铺背景。铺了就把世界糊成一片，而它存在的全部意义正是"边玩边看"
         if (shouldDrawBackground()) Draw.screenBackground(this, g, rawMouseX, rawMouseY, partialTick);
@@ -864,7 +891,7 @@ public final class PhoneScreen extends PhoneScreenBase {
      * {@code !hudMode}——同一个 PhoneScreen 实例既可能是全屏那副，也可能是 HUD 那副。
      */
     private boolean fullscreenReading() {
-        return mode == Mode.TXT_BOOK && !hudMode && txtReader.isFullscreen();
+        return !changelogPopup && mode == Mode.TXT_BOOK && !hudMode && txtReader.isFullscreen();
     }
 
     /**
@@ -879,18 +906,27 @@ public final class PhoneScreen extends PhoneScreenBase {
         drawPhone(g, NO_MOUSE, NO_MOUSE, partialTick);
     }
 
-    /**
-     * 把整部手机画出来 —— 壁纸、状态栏、当前这一页、导航栏、外壳。
-     *
-     * 从 {@link #render} 里分出来是因为多了第二个调用方：手机只是挂在副手 HUD 上、
-     * 还没被 Alt 唤起时也要照画不误，而那条路上没有背景可铺。
-     */
+    private void checkChangelog() {
+        // 在接收输入前决定是否显示，避免动画期间已按下的拖动被弹窗截断。
+        // 被动 HUD 的 init/render 不算玩家打开手机。
+        if (!changelogChecked
+                && com.november.mcphone.platform.client.Screens.current(Minecraft.getInstance()) == this) {
+            changelogChecked = true;
+            changelogRecord = ChangelogClient.pendingRecord();
+            if (changelogRecord != null) {
+                changelogDialog.open(List.of(Changelog.current(ChangelogClient.releases(), MCphone.getVersion())));
+                changelogPopup = true;
+            }
+        }
+    }
+
+    /** 手机界面与被动 HUD 共用绘制路径；被动 HUD 不触发新版本提醒。 */
     private void drawPhone(GuiGraphics g, int rawMouseX, int rawMouseY, float partialTick) {
         // 从这里往下，所有页面拿到的都是换算过的坐标——它们按 120×200 算命中，
         // 而屏幕上画出来的是放大过的。{@link #render} 里那句铺背景的用的是原始坐标：
         // 它铺的是整个窗口，不在手机这层缩放里
-        final int mouseX = (int) Math.round(unscaledX(rawMouseX));
-        final int mouseY = (int) Math.round(unscaledY(rawMouseY));
+        final int mouseX = changelogPopup ? NO_MOUSE : (int) Math.round(unscaledX(rawMouseX));
+        final int mouseY = changelogPopup ? NO_MOUSE : (int) Math.round(unscaledY(rawMouseY));
 
         // 下面每一页都要这四个数。取成局部量是为了让分派那一长串看得见页面之间的差别
         // （谁多收一个 partialTick、谁要窗口尺寸），而不是被四个一模一样的常量名淹掉
@@ -918,6 +954,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         renderStatusBar(g);
 
         switch (mode) {
+            case CHANGELOG -> changelogPage.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, font, false);
             case MAIN              -> homeGrid.render(g, phoneLeft, phoneTop, metrics, font,
                     nowMs, mouseX, mouseY, partialTick);
             case SETTINGS          -> {
@@ -1020,6 +1057,13 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         renderNavBar(g, mouseX, mouseY);
+        if (changelogPopup) {
+            changelogDialog.render(g, phoneLeft, phoneTop, metrics.screenW(), sh, statusH, navH, font, true);
+            if (changelogRecord != null) {
+                ChangelogClient.shown(changelogRecord);
+                changelogRecord = null;
+            }
+        }
 
         // 外壳最后画，盖在不透明的状态栏与导航栏之上；仍在 pushPose 内，开机动画要一起缩放。
         // 外壳圈的是【整块屏幕】，不是页面能用的那块，所以这里也不能用上面的 sw
@@ -1067,6 +1111,9 @@ public final class PhoneScreen extends PhoneScreenBase {
                 () -> navigateTo(Mode.APP_MANAGER),
                 () -> String.valueOf(PhoneScreenRegistry.getAppCount())));
         // 保险箱与我的签名密钥尚未开放，暂不注册设置入口；页面和已有数据继续保留。
+        settingItems.add(new SettingsList.Item(
+                Component.translatable("mcphone.changelog.title").getString(),
+                () -> navigateTo(Mode.CHANGELOG)));
         settingItems.add(new SettingsList.Item(
                 Component.translatable("mcphone.gui.about").getString(),
                 () -> navigateTo(Mode.ABOUT)));
@@ -1192,6 +1239,7 @@ public final class PhoneScreen extends PhoneScreenBase {
      * 分发。绑键这件事走那条路最靠得住——理由见那边的注释。
      */
     public boolean captureHotkeyMouse(int button) {
+        if (changelogPopup) return false;
         if (mode != Mode.APP_MANAGER_DETAIL || !appManagerDetail.isCapturingKey()) return false;
         appManagerDetail.captureMouse(button);
         return true;
@@ -1199,6 +1247,10 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     @Override
     public boolean mouseClicked(double rawX, double rawY, int button) {
+        if (changelogPopup) {
+            if (changelogDialog.mouseClicked(unscaledX(rawX), unscaledY(rawY), button)) changelogPopup = false;
+            return true;
+        }
         // 绑键界面等着的话这一下归它。正常情况下轮不到这里——AppHotkeyHandler 在
         // 更早的地方就收走并取消了事件；留着是兜底：万一哪个模组把那条事件截了，
         // 屏幕这条路还在。两条都试过之后仍然绑不上，那就说明这一下压根没进游戏
@@ -1270,6 +1322,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         return switch (mode) {
+            case CHANGELOG -> { changelogPage.mouseClicked(mx, my, button); yield true; }
             case MAIN -> {
                 if (homeGrid.mousePressed(mx, my)) yield true;
 
@@ -1442,16 +1495,22 @@ public final class PhoneScreen extends PhoneScreenBase {
                     navigateTo(chatReturnMode);
                     yield true;
                 }
-                if (chatConversation.consumeDetailsRequest()) { navigateTo(Mode.CHAT_GROUP_DETAILS); yield true; }
+                if (chatConversation.consumeDetailsRequest()) {
+                    if (chatConversation.isGroup()) navigateTo(Mode.CHAT_GROUP_DETAILS);
+                    else openPlayerProfile(chatConversation.peer(),chatConversation.title());
+                    yield true;
+                }
 
                 ChatAttachment attach = chatConversation.consumeAttachRequest();
                 if (attach != null) {
-                    // 先记下是谁：进挑东西那一页会 close 掉会话，对端就没了
-                    pendingConversationPeer = chatConversation.peer();
-                    navigateTo(switch (attach) {
-                        case IMAGE -> Mode.CHAT_PHOTO_PICKER;
-                        case STICKER -> Mode.CHAT_STICKER_PICKER;
-                    });
+                    switch (attach) {
+                        case LOCATION -> chatConversation.sendLocation();
+                        case IMAGE, STICKER -> {
+                            // 先记下是谁：进挑东西那一页会 close 掉会话，对端就没了
+                            pendingConversationPeer = chatConversation.peer();
+                            navigateTo(attach == ChatAttachment.IMAGE ? Mode.CHAT_PHOTO_PICKER : Mode.CHAT_STICKER_PICKER);
+                        }
+                    }
                 }
                 yield true;
             }
@@ -1497,6 +1556,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     }
 
     @Override public void mouseMoved(double rawX, double rawY) {
+        if (changelogPopup) return;
         if (mode == Mode.ADDON_PAGE && !hudDragging) {
             updateAddonContext();
             double mx = unscaledX(rawX), my = unscaledY(rawY);
@@ -1510,6 +1570,7 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     @Override
     public boolean mouseDragged(double rawX, double rawY, int button, double dx, double dy) {
+        if (changelogPopup) return true;
         if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
         // 系统的机身拖动优先于附属内容拖动。
         if (hudDragging) {
@@ -1549,6 +1610,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 松手才定性：主屏上这一下算"点开"还是"挪位置" */
     @Override
     public boolean mouseReleased(double rawX, double rawY, int button) {
+        if (changelogPopup) return true;
         if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
         if (hudDragging) {
             hudDragging = false;
@@ -1587,6 +1649,10 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     @Override
     protected boolean onScroll(double rawX, double rawY, double scrollX, double scrollY) {
+        if (changelogPopup) {
+            changelogDialog.scroll(unscaledX(rawX), unscaledY(rawY), scrollY);
+            return true;
+        }
         // 全屏读书：翻页，与坐标无关
         if (fullscreenReading() && txtReader.mouseScrolled(scrollY, font)) return true;
 
@@ -1619,6 +1685,10 @@ public final class PhoneScreen extends PhoneScreenBase {
             return true;
         }
 
+        if (mode == Mode.CHANGELOG) {
+            changelogPage.scroll(mx, my, scrollY);
+            return true;
+        }
         if (mode == Mode.MAIN && homeGrid.mouseScrolled(scrollY)) return true;
         if (mode == Mode.GALLERY && gallery.mouseScrolled(scrollY)) return true;
         if (mode == Mode.CHAT && chatList.mouseScrolled(scrollY)) return true;
@@ -1653,6 +1723,10 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (changelogPopup) {
+            if (keyCode == 256) changelogPopup = false;
+            return true;
+        }
         if (mode == Mode.ADDON_PAGE) updateAddonContext();
         // App 管理页正等着玩家按一个键当快捷键。这一下不是在操作手机，是在绑键，
         // 所以要抢在下面 ESC 关机之前——在那一页上 ESC 的意思是"清除这个绑定"
@@ -1730,6 +1804,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     }
 
     @Override public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (changelogPopup) return true;
         if (mode == Mode.ADDON_PAGE) {
             updateAddonContext();
             boolean consumed = addonHost.keyReleased(keyCode, scanCode, modifiers);
@@ -1741,6 +1816,7 @@ public final class PhoneScreen extends PhoneScreenBase {
 
     /** 26.1 的码点事件直接走此入口；老目标继续经 char 重载送入页面。 */
     public boolean charTyped(int codePoint, int modifiers) {
+        if (changelogPopup) return true;
         if (mode == Mode.ADDON_PAGE) {
             updateAddonContext();
             return addonInteractive() && callPage(p -> p.charTyped(codePoint, modifiers));
@@ -1751,6 +1827,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     /** 字符提交；粘贴快捷键由 keyPressed 和文本控件处理。 */
     @Override
     public boolean charTyped(char c, int modifiers) {
+        if (changelogPopup) return true;
         if (mode == Mode.CHAT && chatList.hasContextMenu()) return true;
         if (mode == Mode.ADDON_PAGE) {
             updateAddonContext();
@@ -1808,7 +1885,7 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.GALLERY) gallery.close();
         if (mode == Mode.CHAT_PHOTO_PICKER) chatPhotoPicker.close();
         if (mode == Mode.CHAT_STICKER_PICKER) chatStickerPicker.close();
-        if (inConversation()) chatConversation.close();
+        if (chatConversation.peer()!=null) chatConversation.close();
         if (mode == Mode.CHAT) chatList.close();
         if (mode == Mode.CHAT_CONTACTS) chatContacts.close();
         if (mode == Mode.CHAT_NEW_FRIENDS) chatNewFriends.close();

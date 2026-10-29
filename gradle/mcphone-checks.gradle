@@ -15,6 +15,7 @@
 // 下面用 repoRoot 显式算出来并校验，挪了位置会当场失败而不是静默扫空目录 ——
 // 扫空目录的闸永远是绿的。
 def repoRoot = file('../..')
+apply from: "${projectDir}/../../gradle/mcphone-changelog.gradle"
 if (!new File(repoRoot, 'gradle.properties').exists()) {
     throw new GradleException(
             "从 ${projectDir} 往上两级找不到仓库根（${repoRoot.canonicalPath} 里没有 " +

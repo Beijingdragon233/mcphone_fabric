@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * 独立设备中的耳机通道。不能复用原版 Channel：其他模组会给那个类的 play 全局注入
  * 世界声学处理，使用原版设备上的效果槽；我们的设备与那些句柄不属于同一个上下文。
- * 只保留本地播放器需要的流式播放能力，所有调用仍须位于 LocalPlayback.Scope 内。
+ * 只保留本地播放器需要的流式播放能力，所有调用须位于 LocalAudioDevice 的线程局部作用域内。
  */
 final class LocalStreamChannel implements AutoCloseable {
 
@@ -27,6 +27,7 @@ final class LocalStreamChannel implements AutoCloseable {
     private final int chunkBytes;
     private boolean exhausted;
     private boolean closed;
+    private boolean playbackRequested;
 
     /** 驱动边界只隔离原生操作，测试用它验证队列所有权与故障回收，不模拟播放器本身。 */
     interface Driver {
@@ -88,14 +89,21 @@ final class LocalStreamChannel implements AutoCloseable {
         this.chunkBytes = chunkBytes;
     }
 
-    void play() { if (!closed) driver.play(source); }
+    void play() { if (!closed) { driver.play(source); playbackRequested = true; } }
     void pause() {
-        if (!closed && driver.state(source) == AL10.AL_PLAYING) driver.pause(source);
+        if (closed) return;
+        playbackRequested = false;
+        if (driver.state(source) == AL10.AL_PLAYING) driver.pause(source);
     }
     void unpause() {
-        if (!closed && driver.state(source) == AL10.AL_PAUSED) driver.play(source);
+        if (closed) return;
+        int state = driver.state(source);
+        if (state == AL10.AL_PAUSED) play();
+        // 点击暂停时队列可能刚好播空，原生状态不会变为 PAUSED。
+        // 继续时先保留播放意图，由 updateStream 取回旧缓冲并补流，避免重放已消费的数据。
+        else if (state == AL10.AL_STOPPED) playbackRequested = true;
     }
-    void stop() { if (!closed) driver.stop(source); }
+    void stop() { if (!closed) { playbackRequested = false; driver.stop(source); } }
     boolean stopped() { return closed || driver.state(source) == AL10.AL_STOPPED; }
     void setVolume(float volume) { if (!closed) driver.volume(source, volume); }
 
@@ -115,6 +123,8 @@ final class LocalStreamChannel implements AutoCloseable {
             exhausted = true;
             LOGGER.warn("[MCphone] 本地音频流读取失败", failure);
         }
+        // 卡顿可能让旧队列播空。补入数据后恢复同一声源，不把一次断流当成永久停播。
+        if (playbackRequested && !buffers.isEmpty() && driver.state(source) == AL10.AL_STOPPED) driver.play(source);
     }
 
     private void fill(int count) throws IOException {
@@ -134,6 +144,7 @@ final class LocalStreamChannel implements AutoCloseable {
     public void close() {
         if (closed) return;
         closed = true;
+        playbackRequested = false;
         cleanup(() -> driver.stop(source));
         // 删除声源先解除所有缓冲绑定，包括暂停时尚未播放的那几块。
         cleanup(() -> driver.deleteSource(source));
