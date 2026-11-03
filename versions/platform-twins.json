@@ -7,7 +7,7 @@
   ],
   "pairs": {
     "com/november/mcphone/MCphone.java": 872,
-    "com/november/mcphone/MCphoneClient.java": 705,
+    "com/november/mcphone/MCphoneClient.java": 695,
     "com/november/mcphone/api/client/ui/PhoneMultiLineEditBox.java": 204,
     "com/november/mcphone/compat/CompatModule.java": 11,
     "com/november/mcphone/compat/CompatModules.java": 40,

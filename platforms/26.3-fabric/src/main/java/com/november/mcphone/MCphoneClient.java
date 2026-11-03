@@ -33,8 +33,6 @@ import com.november.mcphone.feature.terminal.client.TerminalSlotScreen;
 import com.november.mcphone.platform.client.ClientTicks;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
 import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
@@ -87,11 +85,8 @@ public class MCphoneClient implements ClientModInitializer {
         // 一首停下来时带停止原因通知控制器，见 LocalPlayback.Ending
         LocalPlayback.setEndListener(MusicController::onTrackEnded);
 
-        // 相机 App：取景画在 HUD 上；打开任意界面就退出相机模式，
-        // 否则玩家会卡在没有 HUD 的状态里
-        HudElementRegistry.attachElementAfter(VanillaHudElements.HOTBAR,
-                Identifier.fromNamespaceAndPath(MCphone.MODID, "camera_overlay"),
-                CameraHandler::onRenderGui);
+        // 相机 App：取景由 CameraHudMixin 在 Hud.extractRenderState 尾部绘制。
+        // 不能挂 HudElementRegistry：相机模式会隐藏 HUD，hotbar 后的元素也会被跳过。
         ScreenEvents.BEFORE_INIT.register((client, screen, w, h) -> CameraMode.exit());
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {

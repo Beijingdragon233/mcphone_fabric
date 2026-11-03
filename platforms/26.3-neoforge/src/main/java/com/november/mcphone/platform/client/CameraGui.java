@@ -20,16 +20,11 @@ import net.minecraft.client.Minecraft;
  *
  * <h2>取景时该藏（true）</h2>
  *
- * 决定这个值的还是那句老问法：我们那层画在 {@code RenderGuiEvent.Post} 上，它受不受
- * 这个状态影响。26.x 是<b>各层自己带关卡</b> —— {@code Hud} 注册层时逐个挂上
- * {@code hudVisible}（{@code Hud.java:243} 那句 {@code () -> !this.isHidden}，
- * 用在 {@code :258-269} 那串 {@code add} 上），而 NeoForge 的
- * {@code RenderGuiEvent.Pre} / {@code Post} 在层循环<b>外面</b>那两句
- * （{@code GuiLayerManager.java:63-71}）；{@code GameRenderer} 那边也是无条件调
- * {@code gui.extractRenderState}（{@code GameRenderer.java:460}，它只按
- * {@code shouldRenderLevel} 决定要不要 hud 那一段，{@code Gui.java:156}）。
- * 所以藏起来之后准星与物品栏跟着 vanilla 一起没，取景框照画 —— 等效玩家按 F1，
- * 与 1.21.1-neoforge 同一形状。
+ * 决定这个值的还是那句老问法：我们那层受不受这个状态影响。26.x 的原版 HUD
+ * 在 {@code isHidden} 时跳过准星、hotbar 等整段（{@code Hud.extractRenderState}）。
+ * NeoForge 的 {@code RenderGuiEvent.Post} 在层循环外面；Fabric 则由
+ * {@code CameraHudMixin} 注入 {@code extractRenderState} 的尾部。两条都绕开
+ * 隐藏关卡，所以原版 HUD 能藏掉，取景框仍照画。
  *
  * <p>Forge 1.20.1 那条「{@code hideGui} 一真，整个 {@code gui.render} 被跳过、事件根本
  * 不发」的坑在这支不存在，那一支被迫返回 false 的理由写在那一份里。

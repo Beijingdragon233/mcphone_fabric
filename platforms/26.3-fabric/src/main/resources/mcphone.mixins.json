@@ -4,6 +4,7 @@
   "package": "com.november.mcphone.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "client.CameraHudMixin",
     "client.KeyboardHandlerMixin",
     "client.MouseHandlerMixin",
     "client.KeyMappingAccessor",

@@ -61,8 +61,9 @@
 此表因而是完整的：自「一个轴都不钉」（`shared/`）至「钉死单个目标」
 （`platforms/<目标名>/`），中间三格即这三种层。
 
-交集层当前无占用者 —— 现有两个目标既不共用加载器，也不共用版本档。规则先行放开，
-目录待首个占用者出现时再建，不预置空目录。
+首个交集层是 `26.2-fabric`，供 26.2 与 26.3 的 Fabric 目标共用。它只装同时
+依赖 26.2+ 原版 API 与 Fabric 客户端接缝的代码，目前是相机 HUD 的
+`CameraHudMixin`。
 
 版本层的层名为「该套 API **自哪个 Minecraft 版本起**存在」，而非某一具体版本：
 1.21.1 与后续更高版本同挂 `1.20.5+`，因其内容相同。写成具体版本号，则每增一个
@@ -139,8 +140,8 @@ Minecraft 版本便多一层，而那些层的内容一致。
 没有可供逐文件比对的第二方，无从判断某段代码在 Fabric 的两个版本之间是否一致。
 待第一个 Fabric 目标并入后，按上述同一办法处理 —— 逐文件比对，**逐字相同者方可迁入**。
 
-`layers/both/` 下目前一个层也没有：现有两个目标既不共用加载器，也不共用版本档，
-交集层没有占用者。规则先行放开，目录待第一个占用者出现时再建。
+`layers/both/26.2-fabric/` 是第一个交集层：它同时钉住 Minecraft 26.2+ 与
+Fabric 加载器，因此两个轴都允许，但不会被 1.21.1 Fabric 或 26.x NeoForge 挂载。
 
 ### `populated`
 
@@ -781,7 +782,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.3-fabric -->
 
-#### 共用代码引用了的（48）
+#### 共用代码引用了的（49）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -802,6 +803,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.net.MCphoneNetwork`　—— 1.20.5+ 原版、加载器导入
 - `core.net.NetworkHandler`
 - `feature.camera.client.CameraFlash`
+- `feature.camera.client.CameraHandler`
 - `feature.chat.ChatImageStore`
 - `feature.music.DiscService`　—— 1.20.5+ 原版
 - `feature.music.net.MusicNetworking`
@@ -834,7 +836,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.VanillaAudio`
 - `platform.client.WorldTime`
 
-#### 平台内部的（44）
+#### 平台内部的（43）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -850,7 +852,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.net.SyncPhoneTerminalPacket`　—— 1.20.5+ 原版
 - `core.net.SyncServerConfigPacket`　—— 1.20.5+ 原版
 - `core.script.net.ScriptNetworking`
-- `feature.camera.client.CameraHandler`
 - `feature.chat.ChatImageUploads`
 - `feature.chat.group.net.GroupNetworking`
 - `feature.chat.net.ChatNetworking`
@@ -982,7 +983,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：26.2-fabric -->
 
-#### 共用代码引用了的（48）
+#### 共用代码引用了的（49）
 
 **新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
 
@@ -1003,6 +1004,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.net.MCphoneNetwork`　—— 1.20.5+ 原版、加载器导入
 - `core.net.NetworkHandler`
 - `feature.camera.client.CameraFlash`
+- `feature.camera.client.CameraHandler`
 - `feature.chat.ChatImageStore`
 - `feature.music.DiscService`　—— 1.20.5+ 原版
 - `feature.music.net.MusicNetworking`
@@ -1035,7 +1037,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.client.VanillaAudio`
 - `platform.client.WorldTime`
 
-#### 平台内部的（44）
+#### 平台内部的（43）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -1051,7 +1053,6 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `core.net.SyncPhoneTerminalPacket`　—— 1.20.5+ 原版
 - `core.net.SyncServerConfigPacket`　—— 1.20.5+ 原版
 - `core.script.net.ScriptNetworking`
-- `feature.camera.client.CameraHandler`
 - `feature.chat.ChatImageUploads`
 - `feature.chat.group.net.GroupNetworking`
 - `feature.chat.net.ChatNetworking`

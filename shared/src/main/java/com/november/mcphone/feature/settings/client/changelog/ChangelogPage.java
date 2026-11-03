@@ -121,7 +121,7 @@ public final class ChangelogPage {
         if (button != 0) return false;
         if (modal && mx >= left + 3 && mx < left + width - 3 && my >= textBottom + 3 && my < bottom - 3) return true;
         for (var link : links) if (link.contains(mx, my)) {
-            net.minecraft.Util.getPlatform().openUri(link.url());
+            com.november.mcphone.platform.client.SystemFiles.openUri(link.url());
             break;
         }
         return false;

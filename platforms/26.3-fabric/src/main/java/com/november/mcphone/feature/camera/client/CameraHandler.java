@@ -10,7 +10,7 @@ import com.november.mcphone.platform.client.port.PhoneGraphics;
 
 /**
  * 相机模式的事件监听。Fabric 侧由 MCphoneClient 挂到各个客户端事件上：
- * tick（{@code ClientTickEvents}）、HUD 渲染（{@code HudRenderCallback}）、
+ * tick（{@code ClientTickEvents}）、HUD 渲染（{@code CameraHudMixin}）、
  * 屏幕打开（{@code ScreenEvents.BEFORE_INIT}）。
  */
 public final class CameraHandler {

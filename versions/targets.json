@@ -199,7 +199,7 @@
     "gradle": "9.2.1",
     "project": "platforms/26.2-neoforge",
     "buildable": true,
-    "note": "2026-10-29 将上游 v1.12.0（upstream/main 897bd9a4）合入 26.2 双端，保留 26.2 版本层与 NeoForge 加载器接缝。使用 NeoForge 26.2.0.93、ModDevGradle 2.0.147、Gradle 9.2.1、Java 25 完成完整 build：181 个任务、139 份断言测试全部通过，SPI、dist 隔离、共享层、接缝文档、双胞胎 160 对、数据包目录名与 recipe_unlocked 条件字段校验通过；产物 mcphone-1.12.0.jar 为 3,936,607 字节，SHA-256 631E0EFF674472A6F1247571DFE5C5C1F9202CEC2675523EC3A4EC9C6E7AD349。真实专用服务器启动到 Done (0.608s)，MCphone 初始化完成并经 RCON 正常关服；真实客户端启动到主菜单，OpenGL、资源包、音效与 MCphone 客户端注册正常。真实 26.2 联动包括 Waystones 26.2.0.12、Balm 26.2.0.9、Shogi 26.2.0.8、Curios 16.0.0、AE2 26.2.1-alpha、GuideME 26.2.2-alpha、AE2WTLib 26.2.0-beta、Tom's Simple Storage 26.2-2.11.3。尚未在真实客户端进世界逐项点验手机 UI。",
+    "note": "2026-10-29 将上游 v1.12.0（upstream/main 897bd9a4）合入 26.2 双端，保留 26.2 版本层与 NeoForge 加载器接缝。使用 NeoForge 26.2.0.93、ModDevGradle 2.0.147、Gradle 9.2.1、Java 25 完成完整 build：181 个任务、139 份断言测试全部通过，SPI、dist 隔离、共享层、接缝文档、双胞胎 160 对、数据包目录名与 recipe_unlocked 条件字段校验通过；相机取景框继续由 RenderGuiEvent.Post 绘制，该事件位于原版 HUD 隐藏判断之外。最终产物 mcphone-1.12.0.jar 为 3,936,573 字节，SHA-256 8B916D2D3D4F835A375C3D5414AF4D193864E961DA914FA57570A5CBF093DA4F。真实专用服务器启动到 Done (0.608s)，MCphone 初始化完成并经 RCON 正常关服；真实客户端启动到主菜单，OpenGL、资源包、音效与 MCphone 客户端注册正常。真实 26.2 联动包括 Waystones 26.2.0.12、Balm 26.2.0.9、Shogi 26.2.0.8、Curios 16.0.0、AE2 26.2.1-alpha、GuideME 26.2.2-alpha、AE2WTLib 26.2.0-beta、Tom's Simple Storage 26.2-2.11.3。尚未在真实客户端进世界逐项点验手机 UI。",
     "layers": [
       "1.20.3+",
       "1.20.5+",
@@ -220,7 +220,7 @@
     "gradle": "9.8.2",
     "project": "platforms/26.2-fabric",
     "buildable": true,
-    "note": "2026-10-29 将上游 v1.12.0（upstream/main 897bd9a4）合入 26.2 双端，保留 Fabric 加载器层与 26.2 原生输入接缝。使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.161.0+26.2、Java 25 完成完整 build：181 个任务、140 份断言测试全部通过，SPI、dist 隔离、双胞胎 160 对、接缝文档、数据包目录名与 recipe_unlocked 条件字段校验通过；产物 mcphone-1.12.0.jar 为 4,924,075 字节，SHA-256 67A1A4FC4586DEB34EFA14182522E1A363045C2052AE7D2683339AB660C6AFD0。真实专用服务器启动到 Done (0.502s)，MCphone 初始化完成并经 RCON 正常关服；真实客户端启动到主菜单，OpenGL、资源包、音效与 MCphone 客户端注册正常。尚未在真实客户端进世界逐项点验手机 UI。",
+    "note": "2026-10-29 将上游 v1.12.0（upstream/main 897bd9a4）合入 26.2 双端，保留 Fabric 加载器层与 26.2 原生输入接缝。使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.161.0+26.2、Java 25 完成完整 build：183 个任务、140 份断言测试全部通过，SPI、dist 隔离、双胞胎 160 对、接缝文档、数据包目录名与 recipe_unlocked 条件字段校验通过。相机取景框由 26.2-fabric 交集层的 CameraHudMixin 在 Hud.extractRenderState 尾部绘制，最终 jar 已确认包含该类且 mixin 配置已登记。产物 mcphone-1.12.0.jar 为 4,924,541 字节，SHA-256 0B53EABFC16EB14F3240C0D5C25A4A2129D5E4E76D952865AFD6C9BB558C3968。真实专用服务器启动到 Done (0.502s)，MCphone 初始化完成并经 RCON 正常关服；真实客户端启动到主菜单，OpenGL、资源包、音效与 MCphone 客户端注册正常。用户已在真实存档中测试相机 UI，结果正常；完整 UI 矩阵尚未逐项点验。",
     "layers": [
       "1.20.3+",
       "1.20.5+",
@@ -228,7 +228,8 @@
       "fabric",
       "fabric-1.20.5+",
       "26.2-common+",
-      "26.2+"
+      "26.2+",
+      "26.2-fabric"
     ]
   },
   "26.3-forge": {
@@ -262,7 +263,7 @@
     "gradle": "9.2.1",
     "project": "platforms/26.3-neoforge",
     "buildable": true,
-    "note": "26.3 已完成从骨架到可发布目标的收口。2026-10-22 使用 NeoForge 26.3.0.95、Java 25、ModDevGradle 2.0.147 完成完整构建：73 个任务、42 份断言测试全部通过；真实服务器启动到 Done (2.185s)，真实客户端启动到主菜单资源加载完成，13 个 App 注册，AE2 与 Tom's Simple Storage 终端联动接通。真实 26.3 联动包括 Waystones 26.3.0.1+neoforge-26.3、Balm 26.3.0.3+neoforge-26.3、Shogi 26.3.0.3+neoforge-26.3、Curios 17.0.0-beta.3+26.3、AE2 26.3.1-alpha、GuideME 26.3.4-alpha、AE2WTLib API/运行时 26.3.1-beta、Tom's Simple Storage 26.3-2.12.3。MCEF、Refined Storage、Patchouli、NetMusic 仍没有 26.3 构件，原源码在挂载阶段排除，26.3+ 层门面明确报告不可用，没有静默 no-op。客户端冒烟还修正了 26.3 分类注册 API 与 range_dispatch 的 property 字符串格式。旧目标回归通过：1.20.1 Forge 41 份、1.21.1 Fabric 42 份、1.21.1 NeoForge 42 份断言测试；平台孪生 131 对、shared 中立 364 文件、SPI 18 个类及全部结构闸通过。详细逐轮记录见 docs/PORTING-26.3.md。",
+    "note": "26.3 已完成从骨架到可发布目标的收口。2026-10-29 使用 NeoForge 26.3.0.95、Java 25、ModDevGradle 2.0.147 完成完整构建：180 个任务、139 份断言测试全部通过；相机取景框由 RenderGuiEvent.Post 绘制，该事件位于原版 HUD 隐藏判断之外。最终产物 mcphone-1.12.0.jar 为 3,933,733 字节，SHA-256 538119EF3D17114CD29F63494A1D5703812E734A23BF8136E3AC03CE7BD74292。真实服务器启动到 Done (2.185s)，真实客户端启动到主菜单资源加载完成，13 个 App 注册，AE2 与 Tom's Simple Storage 终端联动接通。真实 26.3 联动包括 Waystones 26.3.0.1+neoforge-26.3、Balm 26.3.0.3+neoforge-26.3、Shogi 26.3.0.3+neoforge-26.3、Curios 17.0.0-beta.3+26.3、AE2 26.3.1-alpha、GuideME 26.3.4-alpha、AE2WTLib API/运行时 26.3.1-beta、Tom's Simple Storage 26.3-2.12.3。MCEF、Refined Storage、Patchouli、NetMusic 仍没有 26.3 构件，原源码在挂载阶段排除，26.3+ 层门面明确报告不可用，没有静默 no-op。客户端冒烟还修正了 26.3 分类注册 API 与 range_dispatch 的 property 字符串格式。旧目标回归通过：1.20.1 Forge 41 份、1.21.1 Fabric 42 份、1.21.1 NeoForge 42 份断言测试；平台孪生 131 对、shared 中立 364 文件、SPI 18 个类及全部结构闸通过。详细逐轮记录见 docs/PORTING-26.3.md。",
     "layers": [
       "1.20.3+",
       "1.20.5+",
@@ -283,7 +284,7 @@
     "gradle": "9.8.2",
     "project": "platforms/26.3-fabric",
     "buildable": true,
-    "note": "2026-10-23 使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.164.0+26.3、Java 25 完成编译与打包。26.3 原版不再混淆，因此不配置 mappings；物品亮屏模型使用原版 condition + has_component，不注册自定义 ItemProperties。compileJava、114 份断言测试、jar、内嵌引擎、服务文件、dist 隔离、共享层与接缝文档检查通过；客户端真实启动并进入单人世界，13 个 App 注册完成，专用服务器通过 EULA 检查前的模组初始化并记录“手机已就绪”。真实 Fabric 26.3 联动为 Waystones 26.3.0.1、Balm 26.3.0.3、Shogi 26.3.0.3、Tom's Simple Storage 26.3-2.12.2；Curios、AE2、Refined Storage、Patchouli、MCEF、NetMusic 没有 Fabric 26.3 构件，相应能力显式不可用或在挂载阶段排除。server_config_sync 仍沿用 Fabric 已知限制。",
+    "note": "2026-10-29 使用 Fabric Loom 1.19.3、Gradle 9.8.2、Fabric Loader 0.19.5、Fabric API 0.164.0+26.3、Java 25 完成完整 build：182 个任务、140 份断言测试全部通过。26.3 原版不再混淆，因此不配置 mappings；物品亮屏模型使用原版 condition + has_component，不注册自定义 ItemProperties。相机取景框由 26.2-fabric 交集层的 CameraHudMixin 在 Hud.extractRenderState 尾部绘制，最终 jar 已确认包含该类且 mixin 配置已登记；产物 mcphone-1.12.0.jar 为 4,924,083 字节，SHA-256 CF8689A6ADF3F8CCB7FFD277B2CBDB9EDFAB53F888DD8007FC10DF3E50202779。客户端真实启动并进入单人世界，13 个 App 注册完成，专用服务器通过 EULA 检查前的模组初始化并记录“手机已就绪”。真实 Fabric 26.3 联动为 Waystones 26.3.0.1、Balm 26.3.0.3、Shogi 26.3.0.3、Tom's Simple Storage 26.3-2.12.2；Curios、AE2、Refined Storage、Patchouli、MCEF、NetMusic 没有 Fabric 26.3 构件，相应能力显式不可用或在挂载阶段排除。server_config_sync 仍沿用 Fabric 已知限制。",
     "layers": [
       "1.20.3+",
       "1.20.5+",
@@ -291,7 +292,8 @@
       "fabric",
       "fabric-1.20.5+",
       "26.2-common+",
-      "26.3+"
+      "26.3+",
+      "26.2-fabric"
     ]
   },
   "26.1.2-forge": {
