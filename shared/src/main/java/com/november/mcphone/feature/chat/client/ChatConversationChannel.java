@@ -26,7 +26,11 @@ interface ChatConversationChannel {
     default String titleSuffix() { return ""; }
     default String consumeError() { return null; }
     String senderName(ChatMessage message);
-    void send(String text);
+    default void send(String text) { send(text,java.util.Optional.empty(),java.util.Optional.empty()); }
+    void send(String text, java.util.Optional<UUID> reply, java.util.Optional<UUID> ticket);
+    enum ReplyStatus { ACCEPTED, REJECTED }
+    default ReplyStatus replyStatus(UUID ticket) { return null; }
+    default void cancelReply(UUID ticket) {}
     void refresh();
     void read();
     void delete(UUID message, UUID request);
@@ -44,7 +48,9 @@ interface ChatConversationChannel {
         public String title() { return ChatClientCache.getConversations().stream().filter(c -> c.id().equals(target))
                 .map(ConversationSummary::name).findFirst().orElse(target.toString().substring(0, 8)); }
         public String senderName(ChatMessage message) { return ""; }
-        public void send(String text) { MCphoneNetwork.sendToServer(new SendChatMessagePacket(target, text)); }
+        public void send(String text, java.util.Optional<UUID> reply, java.util.Optional<UUID> ticket) {
+            MCphoneNetwork.sendToServer(new SendChatMessagePacket(target,text,reply,ticket));
+        }
         public void refresh() { MCphoneNetwork.sendToServer(new RequestConversationsPacket()); }
         public void read() { MCphoneNetwork.sendToServer(new MarkReadPacket(target)); }
         public void delete(UUID message, UUID request) {
@@ -72,7 +78,16 @@ interface ChatConversationChannel {
             return s != null ? " (" + s.memberCount() + ")" : info != null ? " (" + info.members().size() + ")" : "";
         }
         public String senderName(ChatMessage message) { return GroupClientCache.senderName(message); }
-        public void send(String text) { GroupTransport.send(new GroupCommand.SendText(UUID.randomUUID(), target, text)); }
+        public void send(String text, java.util.Optional<UUID> reply, java.util.Optional<UUID> ticket) {
+            ticket.ifPresent(GroupClientCache::track);
+            GroupTransport.send(new GroupCommand.SendText(ticket.orElseGet(UUID::randomUUID),target,text,reply));
+        }
+        public ReplyStatus replyStatus(UUID ticket) {
+            var result = GroupClientCache.consume(ticket);
+            if (result == null || !target.equals(result.group())) return null;
+            return result.status() == com.november.mcphone.feature.chat.group.GroupStatus.OK ? ReplyStatus.ACCEPTED : ReplyStatus.REJECTED;
+        }
+        public void cancelReply(UUID ticket) { GroupClientCache.cancel(ticket); }
         public void refresh() {
             GroupTransport.directory();
             // 快速退出再进入可能撞到历史限流，保留票据并周期性重试，不永久停在空列表。

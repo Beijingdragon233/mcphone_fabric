@@ -1,14 +1,10 @@
 package com.november.mcphone.feature.music.client.playback;
 
-import com.mojang.blaze3d.audio.Library;
 import com.november.mcphone.MCphone;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
-import org.lwjgl.openal.AL;
-import org.lwjgl.openal.ALC10;
-import org.lwjgl.openal.ALCapabilities;
 
 import javax.sound.sampled.AudioFormat;
 
@@ -18,8 +14,8 @@ import java.util.function.Consumer;
 
 /**
  * 本地播放 —— 「耳机」那一半：自己开一个 OpenAL 设备，换来原版 SoundEngine 给不了的单轨暂停/继续/进度。
- * OpenAL 的当前上下文是【进程级】的：碰 AL 之前必须用 {@link Scope} 换到我们的上下文、出作用域换回去，
- * 否则游戏的 SoundEngine 会打到我们的 source 上（两边编号都从 1 起）。
+ * 独立设备由 {@link LocalAudioDevice} 管理；所有操作使用线程局部上下文，
+ * 不改变原版声音后台线程使用的进程上下文。
  * 所有方法只能在客户端主线程调：上下文不是线程安全的，解码也在 tick 里做。
  * 「通道停了」有三种意思（放完 / 从没出过声 / 缓冲喂不上），由 {@link TrackedStream} 区分，见 {@link Ending}。
  */
@@ -40,15 +36,9 @@ public final class LocalPlayback {
         STARVED
     }
 
-    private static Library library;
+    private static LocalAudioDevice<?> device;
     private static LocalStreamChannel channel;
     private static TrackedStream stream;
-
-    /** 我们自己那个上下文的句柄。0 ＝ 还没开起来 */
-    private static long ourContext;
-
-    /** 与上面配套的 LWJGL 能力表。两者必须一起换，见 {@link Scope} */
-    private static ALCapabilities ourCaps;
 
     /** 设备开不起来就放弃，不每次播放都重试一遍刷日志 */
     private static boolean deviceFailed;
@@ -87,7 +77,7 @@ public final class LocalPlayback {
 
         // 预填就会读取音频，必须先包好；内部通道不经过其他模组注入的原版 Channel。
         TrackedStream tracked = new TrackedStream(stream);
-        try (Scope scope = new Scope()) {
+        try (var scope = device.enter()) {
             LocalStreamChannel ch = LocalStreamChannel.open(tracked);
             channel = ch;
             LocalPlayback.stream = tracked;
@@ -108,33 +98,33 @@ public final class LocalPlayback {
 
         state = State.PLAYING;
         elapsedMs = 0L;
-        lastResumeAt = System.currentTimeMillis();
+        lastResumeAt = nowMillis();
         return true;
     }
 
     public static void pause() {
         if (state != State.PLAYING || channel == null) return;
 
-        try (Scope scope = new Scope()) {
+        try (var scope = device.enter()) {
             channel.pause();
         } catch (RuntimeException failure) {
             playbackFailed(failure);
             return;
         }
-        elapsedMs += System.currentTimeMillis() - lastResumeAt;
+        elapsedMs += nowMillis() - lastResumeAt;
         state = State.PAUSED;
     }
 
     public static void resume() {
         if (state != State.PAUSED || channel == null) return;
 
-        try (Scope scope = new Scope()) {
+        try (var scope = device.enter()) {
             channel.unpause();
         } catch (RuntimeException failure) {
             playbackFailed(failure);
             return;
         }
-        lastResumeAt = System.currentTimeMillis();
+        lastResumeAt = nowMillis();
         state = State.PLAYING;
     }
 
@@ -143,19 +133,23 @@ public final class LocalPlayback {
      * 内部通道回收声源和全部缓冲，TrackedStream 的关闭幂等，失败兜底也不会重复关闭原始流。
      */
     public static void stop() {
-        if (channel != null) {
-            try (Scope scope = new Scope()) {
-                channel.close();
-            }
-            channel = null;
-        }
-        closeQuietly(stream);
+        var previousChannel = channel;
+        var previousStream = stream;
+        String previousId = currentId;
+        // 先摘掉运行状态，关闭/上下文恢复失败也不能保留假 PLAYING 状态。
+        channel = null;
         stream = null;
-
         state = State.IDLE;
         currentId = null;
         elapsedMs = 0L;
         durationMs = KnownDuration.UNKNOWN;
+        try {
+            if (previousChannel != null && device != null) {
+                try (var scope = device.enter()) { previousChannel.close(); }
+            }
+        } catch (RuntimeException failure) {
+            MCphone.LOGGER.warn("[MCphone] 回收本地音频通道失败: {}", previousId, failure);
+        } finally { closeQuietly(previousStream); }
     }
 
     /** App 里的音量，0..1，下一 tick 生效 */
@@ -182,7 +176,7 @@ public final class LocalPlayback {
     /** 已经放了多久。暂停期间不增长 */
     public static long elapsedMillis() {
         if (state == State.PLAYING) {
-            return elapsedMs + (System.currentTimeMillis() - lastResumeAt);
+            return elapsedMs + (nowMillis() - lastResumeAt);
         }
         return elapsedMs;
     }
@@ -207,7 +201,7 @@ public final class LocalPlayback {
         if (state != State.PLAYING || channel == null) return;
 
         Ending ending;
-        try (Scope scope = new Scope()) {
+        try (var scope = device.enter()) {
             channel.updateStream();
             applyVolume();
 
@@ -239,94 +233,33 @@ public final class LocalPlayback {
         stop();
     }
 
-    /** 退出世界或关游戏时释放设备：OpenAL 设备是操作系统资源，不放每次进出世界都漏一个 */
+    /** 退出世界或关游戏时释放自己的上下文和设备，不关闭或重置原版声音系统。 */
     public static void shutdown() {
-        stop();
-        if (library != null) {
-            // cleanup 要在我们的上下文当前时做，Scope 退出时把游戏那个换回来
-            try (Scope scope = new Scope()) {
-                library.cleanup();
-            }
-            library = null;
-            ourContext = 0L;
-            ourCaps = null;
+        try { stop(); }
+        finally {
+            var previous = device;
+            device = null;
+            try { if (previous != null) previous.close(); }
+            catch (RuntimeException failure) { MCphone.LOGGER.warn("[MCphone] 关闭本地音频设备失败",failure); }
+            finally { deviceFailed = false; }
         }
-        // 重置失败标记，重进世界再给设备一次机会
-        deviceFailed = false;
     }
 
-    /** 第一次播放时才开设备 */
+    /** 第一次播放时才开设备；初始化也必须避免全进程上下文切换。 */
     private static boolean ensureDevice() {
-        if (library != null) return true;
+        if (device != null) return true;
         if (deviceFailed) return false;
-
-        // init 会把当前上下文换成新开的这个，先记下进来时是哪个，无论成败都要放回去
-        long prev = ALC10.alcGetCurrentContext();
-        ALCapabilities prevCaps = capsOrNull();
-
         try {
-            Library lib = new Library();
-            // 设备名 null ＝ 跟随系统默认；不开 HRTF，「耳机」不做空间化
-            com.november.mcphone.platform.client.PhoneSoundDevice.initialize(lib);
-
-            ourContext = ALC10.alcGetCurrentContext();
-            ourCaps = AL.getCapabilities();
-
-            // 非当前的上下文照样出声这一条各家实现写得不一样明白，显式说一句保险
-            ALC10.alcProcessContext(ourContext);
-
-            library = lib;
+            device = LocalAudioDevice.open();
             return true;
-        } catch (Throwable t) {
-            // 兜 Throwable：OpenAL 初始化失败抛的是 UnsatisfiedLinkError 之类
+        } catch (IOException | RuntimeException | LinkageError failure) {
             deviceFailed = true;
-            ourContext = 0L;
-            ourCaps = null;
-            MCphone.LOGGER.error("[MCphone] 音频设备打不开，本地音乐将不可用", t);
+            MCphone.LOGGER.error("[MCphone] 独立音频设备打不开，本地音乐将不可用",failure);
             return false;
-        } finally {
-            ALC10.alcMakeContextCurrent(prev);
-            AL.setCurrentProcess(prevCaps);
         }
     }
 
-    /**
-     * 把当前 OpenAL 上下文临时换成我们自己的，出了作用域换回【进来时那一个】——
-     * 记死游戏那个会把已销毁的上下文塞回去。设备没开起来时是空操作。
-     */
-    private static final class Scope implements AutoCloseable {
-
-        private final long prev;
-        private final ALCapabilities prevCaps;
-        private final boolean switched;
-
-        Scope() {
-            prev = ALC10.alcGetCurrentContext();
-            prevCaps = capsOrNull();
-            switched = ourContext != 0L && prev != ourContext;
-            if (switched) {
-                ALC10.alcMakeContextCurrent(ourContext);
-                AL.setCurrentProcess(ourCaps);
-            }
-        }
-
-        @Override
-        public void close() {
-            if (switched) {
-                ALC10.alcMakeContextCurrent(prev);
-                AL.setCurrentProcess(prevCaps);
-            }
-        }
-    }
-
-    /** 没设过能力表时 getCapabilities 会抛，那时当作"没有" */
-    private static ALCapabilities capsOrNull() {
-        try {
-            return AL.getCapabilities();
-        } catch (IllegalStateException e) {
-            return null;
-        }
-    }
+    private static long nowMillis() { return System.nanoTime() / 1_000_000L; }
 
     /** 我们的设备不归 SoundEngine 管，得自己乘：App 里设的 × 主音量 × 唱片音量 */
     private static void applyVolume() {

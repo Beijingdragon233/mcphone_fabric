@@ -8,6 +8,8 @@
 
 2026-10-13 的累计开发工程审查见 [详细报告](CHAT-ENGINEERING-AUDIT-2026-10-13.md)：收紧新版入群历史边界与收藏文件校验，保护群图片完整写入，固定协议状态编号，统一断线入口及群请求策略，并移除消息绘制器的旧私聊缓存入口。下面的原始审查记录保留其当时范围，最新测试和剩余风险以新报告为准。
 
+2026-10-20 引用回复接入后的审查见 [工程报告](CHAT-ENGINEERING-AUDIT-2026-10-20.md) 与 [逐文件实施清单](CHAT-REPLY-IMPLEMENTATION-2026-10-19.md)：冻结旧消息迁移 ID、按提交票据去重与确认、保护改写草稿、补齐 Fabric 协议检查，并限制图片零像素元数据和过期解码回调。
+
 ## 2026-10-09 消息操作增量
 
 `codex/chat-message-actions` 增加独立 `client/messageaction/` 模块，仅实现文字复制和个人记录删除。菜单通过回调接入页面；服务端以稳定消息 ID 与本人可见性标记实现持久化删除，原共享消息和图片保留。客户端使用不可变目标和确认票据约束会话切换、迟到响应与超时。文件边界、协议变化及实测清单见 [CHAT-MESSAGE-ACTIONS.md](CHAT-MESSAGE-ACTIONS.md)。
@@ -43,6 +45,8 @@
 会话页内的关系是 `ChatConversation` → `ChatMessagePane` / `ChatComposer` / `ChatImageViewer`。三个组件由同一个页面实例拥有，开关或切换会话时统一重置；组件不反向引用协调者，也不直接导航到其他页面。`ChatComposer` 通过 `Consumer<String>` 交出发送内容，附件选择通过 `ChatAttachment` 由手机导航消费。这些客户端内部类型不是附属的稳定 API。
 
 `ChatMessageLayout` 只负责测量与构造不可变排版块，正文位置也随块缓存；`ChatMessagePane` 只在消息快照、可用宽度、字体实例、自身 UUID 或会话类型改变时重排。群聊有紧贴气泡的独立昵称布局，双方均显示昵称；私聊保持原有头像/气泡对齐。图片尺寸来自消息元数据，不会在像素到达后突然改变。`ChatScrollState` 保留原有贴底和翻历史规则，并可不启动游戏窗口独立验证。
+
+附件菜单的“位置”在点击时读取玩家当前方块坐标，由 `ChatConversation` 经原文字通道发送 `X: 123, Y: 64, Z: -456`。私聊与群聊共用此路径；图片开关和上传队列只禁用图片／表情，不关闭整个附件菜单。坐标是独立普通文字，不带引用，不提交或清理已有草稿、引用预览及待确认票据；显示、复制、收藏、限流和权限沿用文字消息，不增加正文类型、存储或协议。`ChatLocationTest` 验证发送和草稿隔离，实际鼠标点击与服务端往返仍需游戏验收。
 
 图片链路：`ChatMediaPicker` / 拖放选择文件 → `ChatImageSender` 后台压缩与排队 → 分片上传 → `ChatImageUploads` 拼接 → `ChatImageStore` 后台写文件 → `ChatService` 再校验并落消息 → 收件人按需取像素 → `ChatImageCache` 后台解码、主线程上传贴图。正文只存图片 ID 与尺寸/帧信息，像素放在世界的 `mcphone/chat-images/`，不会塞进 SavedData 常驻内存。
 

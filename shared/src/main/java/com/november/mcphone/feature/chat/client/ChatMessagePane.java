@@ -83,7 +83,7 @@ final class ChatMessagePane {
         if (my < messageTop || my >= messageBottom) return false;
         for (TextHit hit : textHits) {
             Block b = hit.block();
-            if (b.text().selectable() && GuiUtil.hit(mx, my, hit.x(), hit.y(), b.w(), b.h())) {
+            if (b.text().selectable() && GuiUtil.hit(mx, my, hit.x(), hit.y()+b.quoteHeight(), b.w(), b.h()-b.quoteHeight())) {
                 selection.begin(b.message().id(), b.text(), indexAt(hit, mx, my));
                 dragX = mx; dragY = my;
                 return true;
@@ -215,6 +215,8 @@ final class ChatMessagePane {
 
         ChatUi.bubble(g, b.self(), bx, contentY, b.w(), b.h());
 
+        if (b.message().body() instanceof com.november.mcphone.feature.chat.TextBody text && text.quote().isPresent())
+            ChatReplyView.draw(g,font,text.quote().get(),bx+3,contentY,b.w()-6);
         renderSelection(g, font, b, bx, contentY);
         var origin = b.textOrigin();
         float ty = contentY + origin.y();

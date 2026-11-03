@@ -3,6 +3,7 @@ package com.november.mcphone.feature.chat;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.UUID;
+import java.util.Optional;
 
 /**
  * 把一条已落库的消息推给在线的双方。
@@ -47,5 +48,23 @@ public final class ChatDelivery {
         if (receiver == null) return false;
         p.push(receiver, sender.getUUID(), message);
         return true;
+    }
+
+    /** 已存下的引用重试只补发给提交者，避免给对方重复通知。 */
+    public static void echo(ServerPlayer sender, UUID targetId, ChatMessage message) {
+        requireInstalled();
+        if (!sender.hasDisconnected()) push.push(sender,targetId,message);
+    }
+
+    /** 四个平台共用的文本提交入口；重试不落第二条记录，也不重复打扰收件人。 */
+    public static void sendText(ServerPlayer sender, UUID targetId, String text, Optional<UUID> reply, Optional<UUID> ticket) {
+        requireInstalled();
+        boolean retry = ticket.map(value -> ChatReplyIdentity.messageId(sender.getUUID(),targetId,false,value))
+                .map(id -> ChatData.get(sender.level().getServer()).getMessages(sender.getUUID(),targetId).stream()
+                        .anyMatch(m -> m.id().equals(id))).orElse(false);
+        ChatMessage message = ChatService.sendMessage(sender,targetId,text,reply,ticket);
+        if (message == null) return;
+        if (retry) echo(sender,targetId,message);
+        else deliver(sender,targetId,message);
     }
 }

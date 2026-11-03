@@ -2,7 +2,7 @@ package com.november.mcphone.feature.chat.client.favorite;
 import com.november.mcphone.feature.chat.TextBody;
 import java.util.Objects;
 import java.util.UUID;
-/** 收藏是完整正文的独立快照；私聊和群聊使用不同来源键，不依赖原消息缓存。 */
+/** 旧版文字 JSON 的迁移快照；新版持久化使用 FavoriteEntry 与独立正文文件。 */
 public record FavoriteText(UUID message, UUID target, boolean group, UUID sender,
                            String senderName, String sourceName, String text, long messageTime, long savedTime) {
     public FavoriteText {

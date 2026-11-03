@@ -50,7 +50,7 @@ public final class ScriptRpcHandler {
         PlayerSnapshot snapshot = new PlayerSnapshot(
                 player.getUUID(),
                 com.november.mcphone.platform.PlayerAccess.name(player),
-                player.level().dimension().location().toString(),
+                com.november.mcphone.platform.WorldIds.dimensionId(player.level().dimension()),
                 player.gameMode.getGameModeForPlayer().getName(),
                 0L);
         p.accept(rpc, snapshot, result -> send(player, result));

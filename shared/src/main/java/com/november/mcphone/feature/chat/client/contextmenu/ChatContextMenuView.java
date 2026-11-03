@@ -2,6 +2,7 @@ package com.november.mcphone.feature.chat.client.contextmenu;
 
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.GuiUtil;
+import com.november.mcphone.feature.chat.client.ChatUi;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
@@ -9,10 +10,13 @@ import java.util.List;
 
 /** 聊天首页、消息和输入框共用的菜单视图；只负责显示与命中，不持有业务数据或网络。 */
 public final class ChatContextMenuView {
-    public enum Icon { COPY, DELETE, PASTE, CREATE_GROUP, ADD_CONTACT, FAVORITE }
+    public enum Icon { COPY, DELETE, PASTE, CREATE_GROUP, ADD_CONTACT, FAVORITE, REPLY }
     public record Entry(String labelKey, Icon icon, boolean enabled) {}
     @FunctionalInterface public interface PanelPainter { void paint(GuiGraphics g, int x, int y, int width, int height); }
     private static final float SCALE = .75f;
+    // 深色菜单叠约 18% 灰白；浅色菜单轻微压暗，保留原面板的透明层次。
+    private static final int HOVER_FILL = 0x2EFFFFFF;
+    private static final int HOVER_FILL_ON_LIGHT = 0x18000000;
     private boolean open;
     private double anchorX, anchorY;
     private ChatContextMenuLayout.Layout layout;
@@ -40,14 +44,20 @@ public final class ChatContextMenuView {
         var bounds = layout.bounds();
         painter.paint(g, bounds.x(), bounds.y(), bounds.width(), bounds.height());
         float inkHeight = Math.max(1, font.lineHeight - 2) * SCALE;
+        int hoveredIndex = hitIndex(mx, my);
         for (int i = 0; i < entries.size(); i++) {
             var entry = entries.get(i);
             int rowY = bounds.y() + ChatContextMenuLayout.PAD + i * layout.rowHeight();
-            if (hitIndex(mx,my) == i) g.fill(bounds.x()+2,rowY,bounds.x()+bounds.width()-2,rowY+layout.rowHeight(),0x337C3559);
+            boolean hovered = hoveredIndex == i;
+            if (hovered) {
+                int fill = FontPalette.current().darkText() ? HOVER_FILL_ON_LIGHT : HOVER_FILL;
+                ChatUi.roundedFill(g,bounds.x()+2,rowY,bounds.width()-4,layout.rowHeight(),fill);
+            }
             int color = !entry.enabled() ? FontPalette.subtle()
-                    : entry.icon() == Icon.DELETE ? FontPalette.danger() : FontPalette.body();
+                    : entry.icon() == Icon.DELETE ? FontPalette.danger()
+                    : hovered ? FontPalette.title() : FontPalette.body();
             float centerY = rowY + layout.rowHeight() / 2f;
-            ChatContextMenuIcon.draw(g,entry.icon(),layout.iconX(),centerY,color);
+            if (entry.icon() != null) ChatContextMenuIcon.draw(g,entry.icon(),layout.iconX(),centerY,color);
             int available = bounds.x()+bounds.width()-ChatContextMenuLayout.PAD-layout.textX();
             String label = GuiUtil.truncate(font,Component.translatable(entry.labelKey()).getString(),
                     Math.max(0,(int)(available/SCALE)));

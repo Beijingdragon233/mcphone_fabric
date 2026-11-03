@@ -3,6 +3,7 @@ package com.november.mcphone.core.script.client.render;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.GuiUtil;
+import com.november.mcphone.platform.client.Draw;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
 
@@ -35,13 +36,7 @@ public final class IconAtlas {
         }
         int index = NAMES.indexOf(name);
         if (index < 0) index = NAMES.indexOf("info");
-        RenderSystem.setShaderColor((argb >> 16 & 0xFF) / 255f, (argb >> 8 & 0xFF) / 255f,
-                (argb & 0xFF) / 255f, (argb >>> 24) / 255f);
-        // 着色器颜色是全局状态：不复位的话此后画的一切都被染成这个颜色，关掉这个 App 也还在。别拆掉 finally
-        try {
-            GuiUtil.drawTexture(g, texture, x, y, size, size, index * CELL, 0, CELL, CELL, CELL * NAMES.size(), CELL);
-        } finally {
-            RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        }
+        Draw.tinted(g, texture, x, y, size, size, index * CELL, 0, CELL, CELL,
+                CELL * NAMES.size(), CELL, argb);
     }
 }

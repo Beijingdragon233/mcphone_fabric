@@ -302,10 +302,8 @@ public class DeploymentAuthorityTest {
     static void commandParsesRealIds() {
         var dispatcher = new com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack>();
         ScriptAdminCommand.register(dispatcher);
-        net.minecraft.commands.CommandSourceStack src = new net.minecraft.commands.CommandSourceStack(
-                net.minecraft.commands.CommandSource.NULL, net.minecraft.world.phys.Vec3.ZERO,
-                net.minecraft.world.phys.Vec2.ZERO, null, com.november.mcphone.test.CommandPermissions.level(3), "t",
-                net.minecraft.network.chat.Component.literal("t"), null, null);
+        net.minecraft.commands.CommandSourceStack src =
+                com.november.mcphone.test.CommandPermissions.source(3);
         for (String cmd : new String[]{
                 "mcphone script identity",
                 "mcphone script remove example:shop",
@@ -381,7 +379,9 @@ public class DeploymentAuthorityTest {
         persistenceRoundTrip();
         scannerAndCommandHelpers();
         capabilityNamesAreValidated();
-        commandParsesRealIds();
+        if (com.november.mcphone.test.CommandPermissions.supportsDispatcherTests()) {
+            commandParsesRealIds();
+        }
         oversizedApprovalIsRejected();
 
         System.out.println("断言 " + checks + " 条");

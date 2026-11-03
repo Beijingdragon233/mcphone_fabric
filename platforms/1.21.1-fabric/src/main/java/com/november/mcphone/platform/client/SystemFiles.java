@@ -59,6 +59,10 @@ public final class SystemFiles {
         Util.getPlatform().openPath(absolute);
     }
 
+    public static void openUri(String uri) {
+        Util.getPlatform().openUri(uri);
+    }
+
     private static boolean openWithExplorer(Path absolute) {
         try {
             new ProcessBuilder("explorer.exe", absolute.toString()).start();

@@ -6,23 +6,25 @@ MCPhone 1.10.2 在 NeoForge 1.21.1 与 Sound Physics Remastered 1.21.1-1.5.1 一
 
 旧播放器在独立 OpenAL 设备中复用原版 Channel，没有设置位置；只补相对零坐标虽能避开这一处空指针，仍会进入使用原版设备效果槽的 SPR 处理路径。
 
-修复采用内部 `LocalStreamChannel`，直接管理本地耳机声源和流式缓冲，不调用原版 Channel，不依赖 SPR 的内部类或 Mixin 生成名称。原版世界音效、唱片和手机外放继续沿用原版音频系统。独立设备初始化仍复用 Library，修复不承诺隔离对 Library 的所有第三方修改。
+修复采用内部 `LocalStreamChannel`，直接管理本地耳机声源和流式缓冲，不调用原版 Channel，不依赖 SPR 的内部类或 Mixin 生成名称。原版世界音效、唱片和手机外放继续沿用原版音频系统。
+
+2026-10-22 进一步修复 Forge 自动停播：设备初始化和作用域改由 `LocalAudioDevice` 管理，使用线程局部上下文，不再复用会修改全进程上下文的 Library。原因、原生对照回归及剩余设计风险见 [音乐播放审查](MUSIC-PLAYBACK-AUDIT-2026-10-22.md)。
 
 上游已补位置为空时返回的检查，但这不等于官方同名 1.5.1 发布文件包含该检查。分析时已用 Modrinth 发布文件核对字节码。[SPR 上游修复](https://github.com/henkelmax/sound-physics-remastered/commit/cf26229447fca4438ac3deb342a3e0286d10fd55)。
 
 ## 资源与状态约定
 
-- LocalPlayback 持有独立设备、上下文、播放状态、进度和一条内部通道；操作通道时仍进入 Scope，结束后恢复进入前的上下文。
+- LocalPlayback 持有播放状态、单调时钟进度和内部通道；LocalAudioDevice 单独持有设备、上下文和能力表，只绑定调用线程，结束后恢复先前线程绑定。
 - LocalStreamChannel 持有自己分配的一个声源、所有未删除的缓冲及传入的音频流。预填最多四个一秒缓冲，随后只补已消费的数量；EOF 不排入队列。
 - 关闭时先停止并删除声源，解除缓冲绑定，再删除缓冲、关闭流。关闭幂等；预填或排队失败时也回收已分配资源。
 - 启动阶段的 IOException/RuntimeException 由播放器记录并返回失败；播放中通道异常释放资源并停止，避免传到客户端事件处理器。Error 不作为普通坏音频吞掉。
-- 缓冲喂不上时仍保留原有 STARVED 停法，不因本次兼容修复加入自动重播。
+- 游戏卡顿耗尽缓冲时，补入有效数据后恢复同一声源；不覆盖用户暂停或显式停止，不在真正 EOF 时重启。仍无法继续的故障保留停止语义。
 
 ## 自动验证
 
-`assertTestLocalStreamChannelTest` 在三个平台的正常检查任务中自动运行。测试覆盖四块预填与后续补充、EOF/短流、暂停与继续、重复关闭、分配/配置/预填/排队失败、中途读流及原生操作失败、失败后的再次播放。假驱动要求缓冲解绑后才能删除，并检查实际编译产物不引用原版 Channel 或 SPR。
+`assertTestLocalStreamChannelTest` 与 `assertTestLocalAudioDeviceTest` 在四个平台的正常检查任务中自动运行。测试覆盖四块预填与补流/断流恢复、EOF/短流、暂停/继续、上下文与能力表配对、线程归属、嵌套恢复、重复关闭及失败回收。假驱动要求缓冲解绑后才能删除；实际编译产物不能重新引入原版 Channel、Library 或全进程切换。
 
-真实 OpenAL 验收另行运行，不把依赖本机原生音频库的测试塞进普通 CI。此次使用 OpenAL Soft 的 null 输出驱动，检查真实声源配置、播放/暂停/继续、排队与补流，以及反复切歌后声源/缓冲不残留。这验证原生调用，不代表已经在完整游戏中加载了 SPR 的 Mixin。
+真实 OpenAL 验收另行运行，不把依赖本机原生音频库的测试塞进普通 CI。`tools/audio/validate.ps1` 在独立无声输出 JVM 中复现旧方式的 `0xa001`，再验证修复后后台音效与本地音乐两线程并发、设备初始化及关闭的隔离。它验证原生调用，不代表已经在完整游戏中加载了 SPR 的 Mixin。
 
 ## 游戏验收清单
 

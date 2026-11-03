@@ -28,6 +28,12 @@ public final class ChatClientCacheTest {
         check(messages.size() == ChatData.MAX_MESSAGES_PER_CONVERSATION, "持续推送也只保留最近 100 条");
         check(messages.get(0).time() == 151 && messages.get(messages.size() - 1).time() == 250, "保留最新历史且顺序不变");
         check(snapshot.size() == 1, "追加不修改旧快照");
+        var last=messages.get(messages.size()-1);int[] echoes={0};
+        ChatClientCache.setMessageListener((peer,message)->echoes[0]++);
+        ChatClientCache.onNewMessage(a,last);
+        check(ChatClientCache.getMessages()==messages,"补发回声不重复插入气泡，也不重建排版快照");
+        check(echoes[0]==1,"重复回声仍交给提交或上传确认");
+        ChatClientCache.setMessageListener((peer,message)->{});
         ChatClientCache.onNewMessage(b, ChatMessage.text(b, "其他会话", 251));
         check(ChatClientCache.getMessages() == messages, "其他会话推送不污染当前历史");
         ChatClientCache.openConversation(b);

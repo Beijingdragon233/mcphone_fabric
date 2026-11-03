@@ -9,16 +9,18 @@ public final class FavoriteStoreTest {
         Path dir=Files.createTempDirectory("mcphone-favorites-");UUID id=new UUID(0,1),target=new UUID(0,2);
         try {
             Path file=dir.resolve("favorites.json");var store=new FavoriteStore(file);var original=entry(id,target,false,"完整正文\n第二行😀");
-            check(store.add(original)==FavoriteStore.Result.OK,"收藏写入成功");check(Files.exists(file),"实际文件存在");
+            check(store.add(original)==FavoriteStore.Result.OK,"收藏写入成功");check(Files.exists(store.index()),"实际索引存在");
             check(store.add(entry(id,target,false,"改写"))==FavoriteStore.Result.EXISTS,"同来源重复收藏不覆盖原文");
-            check(store.snapshot().get(0).text().equals(original.text()),"保存整条正文与换行");
+            check(store.text(store.snapshot().get(0)).equals(original.text()),"独立文本保存整条正文与换行");
             check(store.add(entry(id,target,true,"群聊"))==FavoriteStore.Result.OK,"群与私聊相同 ID 互相独立");
             var reopened=new FavoriteStore(file);check(reopened.available()&&reopened.snapshot().size()==2,"重启加载");
             check(reopened.snapshot().get(0).group(),"最近收藏靠前");var frozen=reopened.snapshot();
             check(reopened.remove(original.key())==FavoriteStore.Result.OK,"移除并落盘");check(new FavoriteStore(file).snapshot().size()==1,"移除不在重启后恢复");check(frozen.size()==2,"已显示快照不会被后台修改");
-            String before=Files.readString(file);var failing=new FavoriteStore(file,(p,j)->{ throw new java.io.IOException("模拟磁盘失败"); });
+            String persisted=Files.readString(store.index());
+            String before="{\"format\":1,\"entries\":"+new com.google.gson.Gson().toJson(java.util.List.of(entry(id,target,true,"群聊")))+"}";
+            var failing=new FavoriteStore(file,(p,j)->{ throw new java.io.IOException("模拟磁盘失败"); });
             check(failing.add(original)==FavoriteStore.Result.STORAGE_ERROR,"写失败不伪装收藏成功");check(failing.snapshot().size()==1,"写失败内存不变");
-            check(failing.remove(failing.snapshot().get(0).key())==FavoriteStore.Result.STORAGE_ERROR,"删除失败有反馈");check(failing.snapshot().size()==1&&Files.readString(file).equals(before),"删除失败内存磁盘都保留");
+            check(failing.remove(failing.snapshot().get(0).key())==FavoriteStore.Result.STORAGE_ERROR,"删除失败有反馈");check(failing.snapshot().size()==1&&Files.readString(store.index()).equals(persisted),"删除失败内存磁盘都保留");
             for (String broken:new String[]{"{","{\"format\":2,\"entries\":[]}","{\"format\":1,\"entries\":[{}]}"}) {
                 Path bad=dir.resolve("bad.json");Files.writeString(bad,broken);var locked=new FavoriteStore(bad);
                 check(!locked.available(),"损坏或未来格式锁定");check(locked.add(original)==FavoriteStore.Result.STORAGE_ERROR&&Files.readString(bad).equals(broken),"不能以空收藏覆盖损坏文件");

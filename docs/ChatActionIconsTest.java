@@ -12,7 +12,7 @@ public final class ChatActionIconsTest {
         Path root=Path.of("").toAbsolutePath();
         while(root!=null&&!Files.isDirectory(root.resolve("shared/src/main/resources")))root=root.getParent();
         check(root!=null,"找到素材根目录");
-        for(String name:new String[]{"copy","delete","paste","create_group","add_contact"}) {
+        for(String name:new String[]{"copy","delete","paste","create_group","add_contact","reply"}) {
             var image=ImageIO.read(root.resolve("shared/src/main/resources/assets/mcphone/textures/chat/ui/"+name+".png").toFile());
             check(image.getWidth()==96&&image.getHeight()==96,"菜单图标统一为 96×96");
             boolean ink=false,partial=false,white=true,margin=true;
@@ -25,7 +25,7 @@ public final class ChatActionIconsTest {
             check(margin,"图标四边透明，不带白底或黑底");
             check(ink&&white,"可见像素为白色，菜单能够统一着色");
             check(partial,"细轮廓保留抗锯齿覆盖");
-            String folder = name.equals("create_group") || name.equals("add_contact") ? "home-menu" : "clipboard-actions-96px";
+            String folder = name.equals("reply") ? "reply" : name.equals("create_group") || name.equals("add_contact") ? "home-menu" : "clipboard-actions-96px";
             check(Files.isRegularFile(root.resolve("docs/assets/chat-ui/"+folder+"/"+name+".svg")),"保留图标矢量原稿");
         }
         check(Files.size(root.resolve("shared/src/main/resources/licenses/lucide-ISC.txt"))>100,"Lucide 许可随包保存");

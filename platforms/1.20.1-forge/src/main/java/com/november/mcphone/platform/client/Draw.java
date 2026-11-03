@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.gui.GuiGraphics;
 import org.lwjgl.opengl.GL11;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.resources.ResourceLocation;
 import org.joml.Matrix4f;
 
 /**
@@ -104,6 +105,32 @@ public final class Draw {
         try { texturedQuad(g.pose().last().pose(),x,y,w,h); }
         finally { com.mojang.blaze3d.systems.RenderSystem.setShaderTexture(0,0); com.mojang.blaze3d.systems.RenderSystem.enableDepthTest(); }
     }
+
+    public static void tinted(GuiGraphics g, ResourceLocation tex,
+                              int x, int y, int w, int h, float u, float v,
+                              int srcW, int srcH, int texW, int texH, int argb) {
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(
+                ((argb >> 16) & 0xFF) / 255F, ((argb >> 8) & 0xFF) / 255F,
+                (argb & 0xFF) / 255F, ((argb >>> 24) & 0xFF) / 255F);
+        try {
+            g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
+        } finally {
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
+        }
+    }
+
+    public static void highlighted(GuiGraphics g, ResourceLocation tex,
+                                   int x, int y, int w, int h, float u, float v,
+                                   int srcW, int srcH, int texW, int texH, float brightness) {
+        float alpha = Math.max(0F, Math.min(1F, brightness - 1F));
+        com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1F, 1F, 1F, alpha);
+        try {
+            g.blit(tex, x, y, w, h, u, v, srcW, srcH, texW, texH);
+        } finally {
+            com.mojang.blaze3d.systems.RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
+        }
+    }
+
     /** 拒绝旧版专用渲染器，避免第三方物品把整页 GUI 渲染打断。 */
     public static boolean canDrawItemIcon(net.minecraft.world.item.ItemStack stack) {
         var mc=net.minecraft.client.Minecraft.getInstance();

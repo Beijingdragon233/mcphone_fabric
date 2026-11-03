@@ -4,6 +4,7 @@ import com.november.mcphone.api.client.app.RequiredMod;
 import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.feature.browser.client.BrowserBackends;
 import com.november.mcphone.feature.browser.client.BrowserScreen;
+import com.november.mcphone.platform.client.Screens;
 import net.minecraft.client.Minecraft;
 
 import java.util.List;
@@ -45,7 +46,7 @@ public final class BrowserApp extends PhoneApp {
         Minecraft mc = Minecraft.getInstance();
         // 从手机里点开时当前界面就是手机，记成 parent，浏览器关掉后能回去；
         // 走快捷键那条路时它是 null（没开机），于是关掉浏览器直接回到游戏
-        mc.setScreen(new BrowserScreen(mc.screen));
+        mc.setScreen(new BrowserScreen(Screens.current(mc)));
     }
 
     /**

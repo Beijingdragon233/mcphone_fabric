@@ -95,7 +95,7 @@ platforms/26.1.2-neoforge/
     client/PhoneContainerScreenBase       容器绘制入口
     client/PhoneToastBase                 通知生命周期
     client/PhoneKeyInput                  原版按键签名
-    client/PhoneSoundDevice               音频设备初始化
+    音频设备初始化已统一到 shared 的 LocalAudioDevice（2026-10-22），无需平台接缝
     client/PhoneWeather / PhoneBookIcons  版本相关查询和第三方绘制
     client/mixin/CameraBlurMixin          专用注入包，不混放普通适配类
     client/port/                         新原版的渲染、编辑、头像和后处理适配

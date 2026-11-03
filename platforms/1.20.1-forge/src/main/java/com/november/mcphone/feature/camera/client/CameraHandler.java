@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.camera.client;
 
 import com.november.mcphone.core.client.PhoneKeys;
+import com.november.mcphone.platform.client.ClientMessages;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraftforge.client.event.RenderGuiEvent;
@@ -52,7 +53,7 @@ public final class CameraHandler {
                     CameraStamp.fileName(mc.gameDirectory, mc.player),
                     mc.getMainRenderTarget(),
                     msg -> {
-                        if (mc.player != null) mc.player.displayClientMessage(msg, true);
+                        if (mc.player != null) ClientMessages.show(mc.player, msg, true);
                     });
         }
 

@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.chat.net;
 
 import com.november.mcphone.core.net.MCphoneNetwork;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.feature.chat.ChatImage;
 import com.november.mcphone.feature.chat.ChatImageStore;
 import com.november.mcphone.feature.chat.ConversationKey;
@@ -30,10 +31,12 @@ public final class ChatNetworking {
 
     /** 由 NetworkHandler.register 调用 */
     public static void register() {
-        // 原有摘要通道用于识别安装了旧 MCphone 的客户端，新历史通道明确要求稳定 ID 协议。
+        // 用未改线格式的在线玩家通道识别 MCphone，不能拿刚改名的摘要通道当旧端标记。
         net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            if (net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(handler.player, SyncConversationsPacket.TYPE)
-                    && !net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(handler.player, SyncMessagesPacket.TYPE)) {
+            if (net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(handler.player, SyncOnlinePlayersPacket.TYPE)
+                    && (!net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(handler.player, SyncMessagesPacket.TYPE)
+                    || !net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(handler.player, NewMessagePacket.TYPE)
+                    || !net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(handler.player, SyncConversationsPacket.TYPE))) {
                 handler.disconnect(Component.translatable("mcphone.chat.protocol_mismatch"));
             }
         });
@@ -185,10 +188,7 @@ public final class ChatNetworking {
      * 发件人也要收到回声才显示自己那条——客户端不做乐观插入，免得被丢弃的消息留在界面上。
      */
     private static void handleSendMessage(SendChatMessagePacket packet, ServerPlayer sender) {
-        ChatMessage message = ChatService.sendMessage(sender, packet.target(), packet.text());
-        if (message == null) return;
-
-        ChatDelivery.deliver(sender, packet.target(), message);
+        ChatDelivery.sendText(sender,packet.target(),packet.text(),packet.reply(),packet.ticket());
     }
 
     /**
@@ -325,7 +325,7 @@ public final class ChatNetworking {
         Component message = outcome.message();
         if (message == null) return;
 
-        player.displayClientMessage(message, true);
+        ClientMessages.show(player, message, true);
     }
 
     private static void handleRemoveFriend(RemoveFriendPacket packet, ServerPlayer player) {

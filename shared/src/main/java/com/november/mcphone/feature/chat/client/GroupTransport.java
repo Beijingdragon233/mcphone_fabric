@@ -18,7 +18,8 @@ final class GroupTransport {
         bind(current);
         if (command instanceof GroupCommand.SendText) {
             textRequests.entrySet().removeIf(e -> System.currentTimeMillis() - e.getValue() > GroupClientPolicy.OPERATION_TIMEOUT_MS);
-            if (textRequests.size() >= GroupClientPolicy.MAX_PENDING_OPERATIONS) textRequests.remove(textRequests.keySet().iterator().next());
+            if (!textRequests.containsKey(command.request()) && textRequests.size() >= GroupClientPolicy.MAX_PENDING_OPERATIONS)
+                textRequests.remove(textRequests.keySet().iterator().next());
             textRequests.put(command.request(), System.currentTimeMillis());
         }
         MCphoneNetwork.sendToServer(new GroupRequestPacket(command));

@@ -113,6 +113,8 @@ public final class ChatClientCache {
     /** 只有正在看这个会话时才追加；未读数由服务端算，客户端不自行维护 */
     private static void appendMessage(UUID peer, ChatMessage message) {
         if (!java.util.Objects.equals(openPeer, peer)) return;
+        // 同一提交的补发回声仍通知监听器，但不能在历史里再插入一个气泡。
+        if (messages.stream().anyMatch(m -> m.id().equals(message.id()))) return;
 
         List<ChatMessage> next = new ArrayList<>(messages);
         next.add(message);

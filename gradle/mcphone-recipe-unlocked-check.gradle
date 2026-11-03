@@ -1,0 +1,47 @@
+import groovy.json.JsonSlurper
+
+// Minecraft 26.2 uses RecipeUnlockedTrigger.TriggerInstance.recipe, while
+// 26.3 uses recipes. Validate the effective resource set after processResources
+// so a copied 26.3 advancement cannot silently fail at world load.
+def resourcesRoot = layout.buildDirectory.dir('resources/main')
+def advancementFiles = fileTree(resourcesRoot) {
+    include 'data/**/advancement/**/*.json'
+}
+
+tasks.register('verifyRecipeUnlockedAdvancementSchema') {
+    description = '校验 26.2 的 recipe_unlocked 条件使用单数 recipe 字段'
+    group = 'verification'
+
+    dependsOn tasks.named('processResources')
+    inputs.files(advancementFiles)
+
+    doLast {
+        def root = resourcesRoot.get().asFile
+        def wrong = []
+        advancementFiles.files.each { file ->
+            def json = new JsonSlurper().parse(file)
+            def criteria = json instanceof Map ? json.criteria : null
+            if (!(criteria instanceof Map)) return
+            criteria.each { name, criterion ->
+                if (!(criterion instanceof Map) ||
+                        criterion.trigger != 'minecraft:recipe_unlocked') return
+                def conditions = criterion.conditions
+                if (!(conditions instanceof Map) ||
+                        !conditions.containsKey('recipe') ||
+                        conditions.containsKey('recipes')) {
+                    wrong << "${root.toPath().relativize(file.toPath())} -> ${name}"
+                }
+            }
+        }
+        if (wrong) {
+            throw new GradleException(
+                    "26.2 的 recipe_unlocked 条件必须使用 recipe 字段，共 ${wrong.size()} 处：\n  " +
+                            wrong.join('\n  '))
+        }
+        logger.lifecycle('26.2 recipe_unlocked 条件字段校验通过')
+    }
+}
+
+tasks.named('check').configure {
+    dependsOn tasks.named('verifyRecipeUnlockedAdvancementSchema')
+}

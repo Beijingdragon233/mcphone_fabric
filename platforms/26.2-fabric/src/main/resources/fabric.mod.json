@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "把一部能用的智能手机塞进 Minecraft。A working smartphone in Minecraft.",
+  "authors": [
+    "${mod_authors}"
+  ],
+  "contact": {
+    "homepage": "${mod_repo_url}",
+    "issues": "${mod_repo_url}/issues",
+    "sources": "${mod_repo_url}"
+  },
+  "license": "${mod_license}",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.november.mcphone.MCphone"
+    ],
+    "client": [
+      "com.november.mcphone.MCphoneClient"
+    ]
+  },
+  "mixins": [
+    "mcphone.mixins.json"
+  ],
+  "accessWidener": "mcphone.accesswidener",
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": ">=${fabric_version}"
+  },
+  "suggests": {
+    "waystones": "*",
+    "balm": "*",
+    "shogi": "*",
+    "toms_storage": "*"
+  }
+}

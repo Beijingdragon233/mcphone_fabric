@@ -806,7 +806,7 @@ public class EconomyDataTest {
         long g1 = com.november.mcphone.core.PhoneNbt.getLong(handedToMc, "generation");
         eq(com.november.mcphone.core.PhoneNbt.getLong(d.toTag(), "generation"), g1 + 1, "再保存一次代数加一");
         eq(com.november.mcphone.core.PhoneNbt.getLong(EconomyData.load(handedToMc, t::get).toTag(), "generation"), g1 + 1,
-                "代数跨重启接着涨：从 0 重来的话，快照写失败时旧快照的代数反而更大"); 
+                "代数跨重启接着涨：从 0 重来的话，快照写失败时旧快照的代数反而更大");
 
         // 清单 #4 的离线版：保存 A → 改动 → 保存 B 写到一半被杀（快照只留半截临时文件、SavedData 被截断）→ 重启读到 A
         UUID p = UUID.randomUUID();
@@ -933,6 +933,11 @@ public class EconomyDataTest {
         Path snap = eco.resolve("economy.dat");
         EconomySnapshot.write(snap, goodTag(UUID.randomUUID()));
         Path mcFile = dir.resolve("mcphone_economy.dat");                 // SavedData 不在
+        if (!Files.getFileStore(eco).supportsFileAttributeView(
+                java.nio.file.attribute.PosixFileAttributeView.class)) {
+            System.out.println("（跳过 unreadableIsNotAbsent：这个文件系统没有 POSIX 权限位）");
+            return;
+        }
         Files.setPosixFilePermissions(eco, java.util.EnumSet.noneOf(java.nio.file.attribute.PosixFilePermission.class));
         try {
             if (Files.exists(snap) || Files.notExists(snap)) {
@@ -2135,9 +2140,7 @@ public class EconomyDataTest {
     }
 
     static net.minecraft.commands.CommandSourceStack source(int level) {
-        return new net.minecraft.commands.CommandSourceStack(net.minecraft.commands.CommandSource.NULL,
-                net.minecraft.world.phys.Vec3.ZERO, net.minecraft.world.phys.Vec2.ZERO, null, com.november.mcphone.test.CommandPermissions.level(level), "t",
-                Component.literal("t"), null, null);
+        return com.november.mcphone.test.CommandPermissions.source(level);
     }
 
     /** 1000 次合法调用经网关、两条 worker 并发：总额不变，对账平（builtin 档；计分板档要真服，在 S15g）。 */
@@ -2353,7 +2356,9 @@ public class EconomyDataTest {
         gatewayCarriesCallingApp();
         gatedCoversInterface();
         registryHandsOutGated();
-        commandPermissionNode();
+        if (com.november.mcphone.test.CommandPermissions.supportsDispatcherTests()) {
+            commandPermissionNode();
+        }
         conservationThroughGateway();
         registryLifecycle();
         installRefundsExpiredEscrow();

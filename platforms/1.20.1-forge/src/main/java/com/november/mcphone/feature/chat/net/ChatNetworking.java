@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.chat.net;
 
 import com.november.mcphone.feature.chat.ChatImage;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.feature.chat.ChatImageStore;
 import com.november.mcphone.feature.chat.ConversationKey;
 import com.november.mcphone.feature.chat.ChatImageUploads;
@@ -196,10 +197,7 @@ public final class ChatNetworking {
      * 发件人也要收到回声才显示自己那条——客户端不做乐观插入，免得被丢弃的消息留在界面上。
      */
     private static void handleSendMessage(SendChatMessagePacket packet, ServerPlayer sender) {
-        ChatMessage message = ChatService.sendMessage(sender, packet.target(), packet.text());
-        if (message == null) return;
-
-        ChatDelivery.deliver(sender, packet.target(), message);
+        ChatDelivery.sendText(sender,packet.target(),packet.text(),packet.reply(),packet.ticket());
     }
 
     /**
@@ -336,7 +334,7 @@ public final class ChatNetworking {
         Component message = outcome.message();
         if (message == null) return;
 
-        player.displayClientMessage(message, true);
+        ClientMessages.show(player, message, true);
     }
 
     private static void handleRemoveFriend(RemoveFriendPacket packet, ServerPlayer player) {

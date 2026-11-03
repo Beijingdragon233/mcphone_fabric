@@ -18,7 +18,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.function.Supplier;
@@ -390,7 +389,7 @@ public final class AppManagerDetail {
             return;
         }
 
-        if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+        if (keyCode == InputConstants.KEY_ESCAPE) {
             AppHotkeys.clear(app.getId());
             capturingKey = false;
             pendingForce = null;
@@ -421,7 +420,7 @@ public final class AppManagerDetail {
             return;
         }
 
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+        if (button == InputConstants.MOUSE_BUTTON_LEFT) {
             MCphone.LOGGER.info("[MCphone] 绑键：收到鼠标左键，当作取消");
             capturingKey = false;
             pendingForce = null;

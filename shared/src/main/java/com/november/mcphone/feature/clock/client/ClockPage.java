@@ -1,6 +1,8 @@
 package com.november.mcphone.feature.clock.client;
 
 import com.november.mcphone.core.client.FontPalette;
+import com.november.mcphone.platform.client.Transforms;
+import com.november.mcphone.platform.client.WorldTime;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.feature.clock.WorldClock;
@@ -93,7 +95,7 @@ public final class ClockPage {
             return;
         }
 
-        final long dayTime = level.getDayTime();
+        final long dayTime = WorldTime.dayTime(level);
         final boolean frozen = updateFrozen(dayTime);
 
         // ---- 标题 ----
@@ -260,11 +262,11 @@ public final class ClockPage {
                                         int phoneLeft, int screenW, int y) {
         float bigW = font.width(text) * BIG_SCALE;
 
-        g.pose().pushPose();
-        g.pose().translate(phoneLeft + (screenW - bigW) / 2f, y, 0);
-        g.pose().scale(BIG_SCALE, BIG_SCALE, 1f);
+        Transforms.push(g);
+        Transforms.translate(g, phoneLeft + (screenW - bigW) / 2f, y);
+        Transforms.scale(g, BIG_SCALE, BIG_SCALE);
         g.drawString(font, text, 0, 0, FontPalette.title(), false);
-        g.pose().popPose();
+        Transforms.pop(g);
     }
 
     /** 看游戏时间动没动。连续 {@link #STILL_THRESHOLD} 帧不变就算停了 */

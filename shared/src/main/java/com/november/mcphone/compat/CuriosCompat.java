@@ -22,6 +22,11 @@ import java.util.function.Predicate;
  * 方法】里：写在同一个方法里的话，那句 if 还没来得及执行，方法本身
  * 就可能因为解析不了 CuriosApi 而炸掉。
  *
+ * 这里只做前半件。后半件在 platform/CuriosInventories —— 四个操作整个搬了过去，
+ * 那边返回的只有原版类型，Curios 的 handler 不出那个文件。于是这一份在
+ * 【没有 Curios 构件的目标】上也编得过（26.3 就是），四个公开方法各自
+ * 只剩"判在不在场 + 委托"。
+ *
  * 关在一处的好处是这条规矩只需在这里守住，外面的代码照常写。
  */
 public final class CuriosCompat {
@@ -45,19 +50,7 @@ public final class CuriosCompat {
      */
     public static boolean isEquipped(LivingEntity entity, Predicate<ItemStack> filter) {
         if (!isLoaded()) return false;
-        return isEquippedInternal(entity, filter);
-    }
-
-    /**
-     * 真正碰 Curios 的地方。
-     *
-     * 单独一个方法，只在上面确认装了之后才会被调到——理由见类注释，
-     * 别把它并回去。
-     */
-    private static boolean isEquippedInternal(LivingEntity entity, Predicate<ItemStack> filter) {
-        return CuriosInventories.of(entity)
-                .map(inventory -> inventory.isEquipped(filter))
-                .orElse(false);
+        return CuriosInventories.isEquipped(entity, filter);
     }
 
     /**
@@ -72,28 +65,14 @@ public final class CuriosCompat {
     public static Optional<CurioSlotRef> findEquipped(LivingEntity entity,
                                                       Predicate<ItemStack> filter) {
         if (!isLoaded()) return Optional.empty();
-        return findEquippedInternal(entity, filter);
-    }
-
-    private static Optional<CurioSlotRef> findEquippedInternal(LivingEntity entity,
-                                                               Predicate<ItemStack> filter) {
-        return CuriosInventories.of(entity)
-                .flatMap(inventory -> inventory.findFirstCurio(filter))
-                .map(result -> new CurioSlotRef(
-                        result.slotContext().identifier(), result.slotContext().index()));
+        return CuriosInventories.findFirst(entity, filter)
+                .map(slot -> new CurioSlotRef(slot.slotId(), slot.index()));
     }
 
     /** 取饰品栏某个位置上的物品。没装 Curios、位置不存在时都返回空堆 */
     public static ItemStack getEquipped(LivingEntity entity, String slotId, int index) {
         if (!isLoaded()) return ItemStack.EMPTY;
-        return getEquippedInternal(entity, slotId, index);
-    }
-
-    private static ItemStack getEquippedInternal(LivingEntity entity, String slotId, int index) {
-        return CuriosInventories.of(entity)
-                .flatMap(inventory -> inventory.findCurio(slotId, index))
-                .map(result -> result.stack())
-                .orElse(ItemStack.EMPTY);
+        return CuriosInventories.stackAt(entity, slotId, index);
     }
 
     /**
@@ -105,12 +84,6 @@ public final class CuriosCompat {
      */
     public static void setEquipped(LivingEntity entity, String slotId, int index, ItemStack stack) {
         if (!isLoaded()) return;
-        setEquippedInternal(entity, slotId, index, stack);
-    }
-
-    private static void setEquippedInternal(LivingEntity entity, String slotId, int index,
-                                            ItemStack stack) {
-        CuriosInventories.of(entity)
-                .ifPresent(inventory -> inventory.setEquippedCurio(slotId, index, stack));
+        CuriosInventories.setEquipped(entity, slotId, index, stack);
     }
 }

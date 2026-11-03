@@ -19,7 +19,11 @@ public final class PrivateRhinoIdentityTest {
         String actual = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(origin)));
         if (!expected.equals(actual)) throw new AssertionError("实际引擎来源/摘要不同：" + origin);
         if (expectedVersion == null || !expectedVersion.equals(Context.class.getPackage().getImplementationVersion())) throw new AssertionError("引擎版本错误");
-        if (!ContextFactory.class.getProtectionDomain().getCodeSource().getLocation().equals(origin.toUri().toURL())) throw new AssertionError("引擎核心类型来自不同构件");
+        var contextOrigin = Context.class.getProtectionDomain().getCodeSource().getLocation();
+        var factoryOrigin = ContextFactory.class.getProtectionDomain().getCodeSource().getLocation();
+        if (!factoryOrigin.equals(contextOrigin)) {
+            throw new AssertionError("引擎核心类型来自不同构件：Context=" + contextOrigin + "，ContextFactory=" + factoryOrigin);
+        }
         try {
             Class<?> external = Class.forName("org.mozilla.javascript.Context", false, Context.class.getClassLoader());
             if (external.getProtectionDomain().getCodeSource().getLocation().equals(origin.toUri().toURL()))

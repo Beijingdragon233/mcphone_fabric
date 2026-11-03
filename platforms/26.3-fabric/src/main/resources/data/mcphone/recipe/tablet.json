@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "equipment",
+  "key": {
+    "I": "minecraft:iron_ingot",
+    "P": "mcphone:phone"
+  },
+  "pattern": [
+    "III",
+    "IPI",
+    "III"
+  ],
+  "result": {
+    "count": 1,
+    "id": "mcphone:tablet"
+  }
+}

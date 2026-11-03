@@ -1,6 +1,7 @@
 package com.november.mcphone.core.script;
 
 import net.minecraft.core.registries.BuiltInRegistries;
+import com.november.mcphone.platform.RegistryItems;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -16,7 +17,7 @@ public final class ItemRefs {
     public static ItemStack resolve(String id, int count) {
         ResourceLocation location = id == null ? null : ResourceLocation.tryParse(id);
         if (location == null) return ItemStack.EMPTY;
-        Item item = BuiltInRegistries.ITEM.get(location);
+        Item item = RegistryItems.get(location);
         if (item == Items.AIR) return ItemStack.EMPTY;
         return new ItemStack(item, Math.max(1, Math.min(99, count)));
     }

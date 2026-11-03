@@ -8,6 +8,7 @@ final class ChatContextMenuIcon {
     private ChatContextMenuIcon() {}
     static void draw(GuiGraphics g,ChatContextMenuView.Icon icon,float x,float centerY,int color) {
         PhoneSkin.Element element = switch(icon) {
+            case REPLY -> PhoneSkin.Element.CHAT_REPLY;
             case COPY -> PhoneSkin.Element.CHAT_COPY;
             case DELETE -> PhoneSkin.Element.CHAT_DELETE;
             case PASTE -> PhoneSkin.Element.CHAT_PASTE;
@@ -27,6 +28,7 @@ final class ChatContextMenuIcon {
             if (drawn) return;
             g.pose().scale(ChatContextMenuLayout.ICON_SIZE/24f,ChatContextMenuLayout.ICON_SIZE/24f,1);
             switch(icon) {
+                case REPLY -> { /* 引用只使用已记录的矢量素材，不手画缺图替代。 */ }
                 case FAVORITE -> { outline(g,6,3,18,21,color); g.fill(9,15,15,17,color); }
                 case COPY -> { outline(g,7,2,20,18,color); g.fill(3,6,5,22,color); g.fill(3,20,16,22,color); }
                 case DELETE -> { outline(g,6,7,18,21,color); g.fill(4,4,20,6,color); g.fill(9,2,15,4,color); }

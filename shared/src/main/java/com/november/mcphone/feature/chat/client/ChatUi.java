@@ -9,7 +9,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.FormattedCharSequence;
 
 /** 聊天界面共用的字号与像素图标，沿用手机的字体配色和资源包气泡。 */
-final class ChatUi {
+public final class ChatUi {
     private ChatUi() {}
 
     enum Icon { BACK, MORE, VOICE, SMILE, PLUS, ADD, CHECK, CHAT, CONTACTS, DISCOVER, PROFILE, SEARCH, ADD_CONTACT }
@@ -121,8 +121,8 @@ final class ChatUi {
                 ChatLayout.META_SCALE, color);
     }
 
-    /** 按钮与透明面板使用同一套细分圆角，字号和命中区保持逻辑像素。 */
-    static void roundedButton(GuiGraphics g, int x, int y, int w, int h, int color) {
+    /** 按钮及子包的菜单高亮共用细分圆角，尺寸和命中区保持逻辑像素。 */
+    public static void roundedFill(GuiGraphics g, int x, int y, int w, int h, int color) {
         g.pose().pushPose();
         try {
             g.pose().scale(1f / ChatGlass.PRECISION, 1f / ChatGlass.PRECISION, 1f);

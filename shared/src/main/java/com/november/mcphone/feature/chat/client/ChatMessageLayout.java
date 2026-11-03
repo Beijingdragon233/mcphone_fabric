@@ -54,6 +54,7 @@ final class ChatMessageLayout {
     record Block(BlockType type, boolean self, List<FormattedCharSequence> lines,
                          UUID image, int w, int h, int frames, int frameMs, ChatLayout.MessageRow placement,
                          ChatLayout.TextOrigin textOrigin, ChatMessage message, ChatTextLayout text) {
+        int quoteHeight() { return message != null && message.body() instanceof TextBody t && t.quote().isPresent() ? ChatReplyView.HEIGHT : 0; }
         int rowHeight() { return placement.height(); }
     }
 
@@ -98,9 +99,13 @@ final class ChatMessageLayout {
 
             int bubbleH = lines.size() * ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE) + BUBBLE_PAD_Y * 2;
             int bubbleW = ChatLayout.scaledWidth(textW, ChatLayout.TEXT_SCALE) + BUBBLE_PAD_X * 2;
+            int quoteH = m.body() instanceof TextBody t && t.quote().isPresent() ? ChatReplyView.HEIGHT : 0;
+            if (quoteH > 0) bubbleW = bubbleMaxW;
+            var origin = ChatLayout.bubbleText(bubbleW,bubbleH,textW,font.lineHeight,lines.size());
+            bubbleH += quoteH;
             out.add(new Block(BlockType.TEXT, self, lines, null,
                     bubbleW, bubbleH, 1, 0, placement(bubbleH, nameLineHeight, senderLineHeight, group),
-                    ChatLayout.bubbleText(bubbleW, bubbleH, textW, font.lineHeight, lines.size()), m, selectable));
+                    new ChatLayout.TextOrigin(quoteH > 0 ? BUBBLE_PAD_X : origin.x(),origin.y()+quoteH), m, selectable));
         }
 
         return List.copyOf(out);

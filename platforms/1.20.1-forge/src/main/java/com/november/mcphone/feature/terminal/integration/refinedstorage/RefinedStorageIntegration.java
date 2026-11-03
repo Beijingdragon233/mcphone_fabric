@@ -1,6 +1,7 @@
 package com.november.mcphone.feature.terminal.integration.refinedstorage;
 
 import com.november.mcphone.feature.terminal.integration.TerminalIntegration;
+import com.november.mcphone.platform.client.ClientMessages;
 import com.november.mcphone.feature.terminal.integration.TerminalSource;
 import com.november.mcphone.feature.terminal.TerminalSlot;
 import com.refinedmods.refinedstorage.api.network.grid.IGridManager;
@@ -70,8 +71,7 @@ public final class RefinedStorageIntegration implements TerminalIntegration {
         Inventory inventory = player.getInventory();
         int slot = firstEmptySlot(inventory);
         if (slot < 0) {
-            player.displayClientMessage(
-                    Component.translatable("mcphone.terminal.inventory_space_required"), false);
+            ClientMessages.show(player, Component.translatable("mcphone.terminal.inventory_space_required"), false);
             return true;
         }
 

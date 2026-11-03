@@ -36,7 +36,11 @@ public final class GroupServer {
                 throttle(player, GroupThrottle.Kind.HISTORY); var room = GroupService.read(player, v.group());
                 reply.accept(player, new GroupReply.History(v.request(), room.id(), room.revision(), room.sequence(), GroupInfo.of(room), room.visible(player.getUUID())));
             } else if (command instanceof GroupCommand.SendText v) {
-                throttle(player, GroupThrottle.Kind.TEXT); GroupService.sendText(player, v.group(), v.text()); deliver(player, v.group(), v.request());
+                throttle(player, GroupThrottle.Kind.TEXT);
+                long before = GroupService.read(player,v.group()).sequence();
+                var sent = GroupService.sendText(player,v.group(),v.text(),v.reply(),v.request());
+                if (sent.sequence() <= before) result(player,v,GroupStatus.OK,v.group());
+                else deliver(player,v.group(),v.request());
             } else if (command instanceof GroupCommand.MarkRead v) {
                 throttle(player, GroupThrottle.Kind.READ); GroupService.markRead(player, v.group(), v.sequence()); directory(player);
             } else if (command instanceof GroupCommand.Details v) {

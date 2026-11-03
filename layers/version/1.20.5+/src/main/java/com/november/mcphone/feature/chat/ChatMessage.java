@@ -46,7 +46,7 @@ public record ChatMessage(UUID id, UUID sender, long time, MessageBody body) {
     );
 
     /**
-     * 两种格式都读得懂；写的时候，【文本消息仍按老格式写】。
+     * 两种格式都读得懂；写的时候，【不含引用的文本消息仍按老格式写】。
      *
      * 读：先试新格式（认 body 字段），不成再试老格式（认 text 字段），两者字段不重叠，
      * 不会互相误判。
@@ -59,7 +59,7 @@ public record ChatMessage(UUID id, UUID sender, long time, MessageBody body) {
     public static final Codec<ChatMessage> CODEC =
             Codec.either(MODERN_CODEC, LEGACY_CODEC).xmap(
                     either -> either.map(Function.identity(), Function.identity()),
-                    message -> message.body() instanceof TextBody
+                    message -> message.body() instanceof TextBody t && t.quote().isEmpty()
                             ? Either.right(message)
                             : Either.left(message)
             );

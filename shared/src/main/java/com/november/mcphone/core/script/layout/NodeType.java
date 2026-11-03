@@ -5,7 +5,7 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * 18 个节点类型与它们的能力（施工方案 §4.7，能力表见 §5.4）。
+ * 节点类型与它们的能力（基础组件见施工方案 §4.7，单行输入见作者指南）。
  *
  * <p>{@code BUTTON} 既是容器又可交互：不让它有 children，「图标 + 文字」的按钮就得套一层 stack。
  */
@@ -28,7 +28,9 @@ public enum NodeType {
     PROGRESS("progress", false, false, false, "value", "height"),
     BUTTON  ("button",   true,  true,  true,  "text", "i18n", "args", "enabled", "enabledIf", "onClick"),
     TOGGLE  ("toggle",   false, true,  false, "bind", "label", "i18n", "enabled"),
-    TAB_BAR ("tab-bar",  false, true,  false, "bind", "tabs");
+    TAB_BAR ("tab-bar",  false, true,  false, "bind", "tabs"),
+    TEXT_INPUT("text-input", false, true, false, "bind", "placeholder", "max-length", "enabled"),
+    TEXTAREA("textarea", false, true, false, "bind", "placeholder", "max-length", "enabled");
 
     public final String json;
     public final boolean container;
@@ -65,7 +67,7 @@ public enum NodeType {
         out.add("class");
         out.add("showIf");
         out.add("children");
-        if (interactive) out.add("onClick");
+        if (interactive && !textEditor()) out.add("onClick");
         out.addAll(props);
         return out;
     }
@@ -77,6 +79,8 @@ public enum NodeType {
         }
         return null;
     }
+
+    public boolean textEditor() { return this == TEXT_INPUT || this == TEXTAREA; }
 
     /** 全部 json 名，按枚举顺序，用于报错时列出允许的取值。 */
     public static String allNames() {
