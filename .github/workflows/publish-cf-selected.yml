@@ -1,0 +1,106 @@
+name: Publish selected CurseForge files
+
+on:
+  push:
+    branches:
+      - codex/cf-publish-44555343983
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Check CurseForge token
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$CURSEFORGE_TOKEN"
+
+      - name: Download verified JARs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download 44555343983 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name 'mcphone-26.2-fabric-未验证' \
+            --dir dist/26.2-fabric
+          gh run download 44555343983 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name 'mcphone-26.2-neoforge-未验证' \
+            --dir dist/26.2-neoforge
+          gh run download 44555343983 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name 'mcphone-26.3-fabric-未验证' \
+            --dir dist/26.3-fabric
+          gh run download 44555343983 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name 'mcphone-26.3-neoforge-未验证' \
+            --dir dist/26.3-neoforge
+
+      - name: Upload to CurseForge
+        env:
+          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+        run: |
+          set -euo pipefail
+          upload() {
+            target="$1"
+            jar="$2"
+            game="$3"
+            loader="$4"
+            metadata="$RUNNER_TEMP/${target}-metadata.json"
+            response="$RUNNER_TEMP/${target}-response.json"
+
+            jq -n \
+              --arg changelog "$(cat docs/release-notes/v1.12.1.md)" \
+              --arg name "MCphone v1.12.1 (${target})" \
+              --argjson gameVersions "[${game},${loader},9638,9639,14454]" \
+              '{
+                changelog: $changelog,
+                changelogType: "markdown",
+                displayName: $name,
+                gameVersions: $gameVersions,
+                releaseType: "release"
+              }' > "$metadata"
+
+            curl --fail-with-body --silent --show-error \
+              --connect-timeout 30 --max-time 180 \
+              -H "X-Api-Token: ${CURSEFORGE_TOKEN}" \
+              -F "metadata=<${metadata}" \
+              -F "file=@${jar};type=application/java-archive" \
+              "https://minecraft.curseforge.com/api/projects/1759390/upload-file" \
+              | tee "$response"
+
+            jq -e '.id | type == "number"' "$response" > /dev/null
+            echo "### ${target}: file ID $(jq -r '.id' "$response")" >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          upload \
+            26.2-fabric \
+            "dist/26.2-fabric/mcphone-1.12.1-26.2-fabric.jar" \
+            16498 \
+            7499
+          upload \
+            26.2-neoforge \
+            "dist/26.2-neoforge/mcphone-1.12.1-26.2-neoforge.jar" \
+            16498 \
+            10150
+          upload \
+            26.3-fabric \
+            "dist/26.3-fabric/mcphone-1.12.1-26.3-fabric.jar" \
+            17045 \
+            7499
+          upload \
+            26.3-neoforge \
+            "dist/26.3-neoforge/mcphone-1.12.1-26.3-neoforge.jar" \
+            17045 \
+            10150
