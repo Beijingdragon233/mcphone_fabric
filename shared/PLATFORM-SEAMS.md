@@ -321,7 +321,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.music.net.MusicNetworking`
 - `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
 - `feature.terminal.integration.refinedstorage.RefinedStorageIntegration`　—— 加载器导入
-- `platform.CuriosInventories`
+- `platform.CuriosInventories`　—— 加载器导入
 - `platform.ModPresence`　—— 加载器导入
 - `platform.PlayerAbilities`　—— 加载器导入
 - `platform.PlayerEffects`　—— 加载器导入

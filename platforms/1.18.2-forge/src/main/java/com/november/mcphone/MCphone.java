@@ -180,6 +180,9 @@ public final class MCphone {
 
         // 放在自家注册之后：兼容模块可能要看我们已经注册了什么
         com.november.mcphone.compat.CompatModules.init(modBus);
+        if (net.minecraftforge.fml.ModList.get().isLoaded("curios")) {
+            modBus.addListener(com.november.mcphone.platform.CuriosInventories::registerPhoneSlot);
+        }
 
         // 1.21.1 那边由构造函数注入的 ModContainer 直接给出；1.20.1 上
         // FMLJavaModLoadingContext 没有 getModInfo，得回头去 ModList 里查自己

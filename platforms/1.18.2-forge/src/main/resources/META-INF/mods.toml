@@ -13,7 +13,7 @@ description='''
 把一部能用的智能手机塞进 Minecraft —— 拍照、翻相册、换壁纸、听歌、装 App，
 还能给自己那一部手机起个名。
 
-【这一支是从 Minecraft 1.21.1 + NeoForge 移植过来的，功能已全部就位。】
+【Minecraft 1.18.2 Forge 适配测试版】
 '''
 
 # 版本范围从 gradle.properties 来，不写死在这儿：两处各写一份必然会漂，
@@ -39,7 +39,7 @@ description='''
 [[dependencies.${mod_id}]]
     modId="curios"
     mandatory=false
-    versionRange="[5.0.9.2,)"
+    versionRange="[1.18.2-5.0.9.2,)"
     ordering="AFTER"
     side="BOTH"
 

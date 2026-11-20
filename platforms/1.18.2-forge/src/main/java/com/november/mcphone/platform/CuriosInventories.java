@@ -1,9 +1,13 @@
 package com.november.mcphone.platform;
 
 import com.november.mcphone.compat.CuriosCompat;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.fml.InterModComms;
+import net.minecraftforge.fml.event.lifecycle.InterModEnqueueEvent;
 import top.theillusivec4.curios.api.CuriosApi;
+import top.theillusivec4.curios.api.SlotTypeMessage;
 import top.theillusivec4.curios.api.type.capability.ICuriosItemHandler;
 
 import java.util.Optional;
@@ -19,6 +23,12 @@ import java.util.function.Predicate;
 public final class CuriosInventories {
 
     private CuriosInventories() {
+    }
+
+    public static void registerPhoneSlot(InterModEnqueueEvent event) {
+        InterModComms.sendTo("curios", SlotTypeMessage.REGISTER_TYPE, () ->
+                new SlotTypeMessage.Builder("phone").priority(220).size(1)
+                        .icon(new ResourceLocation("mcphone", "slot/empty_phone_slot")).build());
     }
 
     public static Optional<ICuriosItemHandler> of(LivingEntity entity) {
