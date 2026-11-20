@@ -84,7 +84,7 @@ description='''
 # 写 BOTH 的话，服主装了这个模组却没装 MCEF 也不会有事（mandatory=false），
 # 但那句声明本身就是错的 —— 服务端那一侧我们一个字节都不碰它。
 [[dependencies.${mod_id}]]
-    modId="mcef"
+    modId="forgecef"
     mandatory=false
     versionRange="*"
     ordering="AFTER"

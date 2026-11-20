@@ -10,7 +10,7 @@ public final class BrowserBackends {
     private BrowserBackends() {}
 
     /** MCEF 的 modid，浏览器 App 声明前置时也用它，只此一处 */
-    public static final String MCEF_MODID = "mcef";
+    public static final String MCEF_MODID = McefBackend.MOD_ID;
 
     /** 永远不可用的默认后端，兜"装了 MCEF 但初始化失败"的情况，调用方不必判 null */
     public static final IBrowserBackend NONE = new IBrowserBackend() {

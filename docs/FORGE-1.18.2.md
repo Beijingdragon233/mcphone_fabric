@@ -8,6 +8,7 @@
 | 无可选模组的专用服务端 | 测试包成功创建世界和启动脚本引擎 |
 | 无可选模组的客户端 | 独立 Forge 40 客户端从 mods 目录加载打包 JAR，成功进服并收到 MCphone 的应用状态和价格表 |
 | 游戏内操作 | 手机、平板、快捷键、相机与相册、聊天与图片、音乐、笔记、末影箱、脚本及重启后持久化仍需逐项验收 |
-| 可选模组 | 专用服务端已与 Curios 5.0.9.2、Net Music、Waystones/Balm、Patchouli、AE2/AE2WTLib、Refined Storage、Tom's Simple Storage 和 Integrated Dynamics 一起启动。联动功能仍需逐项操作验收 |
+| 可选模组 | 与 Curios 5.0.9.2、Net Music、Waystones/Balm、Patchouli、FTB Quests、AE2/AE2WTLib、Refined Storage、Tom's Simple Storage 和 Integrated Dynamics 一起启动并进服。服务端验证了手机和平板发放、手机副手装备和 Curios 手机槽。客户端登记了传送石、任务、终端 App，并识别到三个存储后端。各 App 的游戏内操作仍需验收 |
+| MCEF 浏览器 | Forge 版 MCEF 通过 forgecef ID 被识别，浏览器 App 已登记。MCEF 的原生库配置下载返回 HTTP 404，初始化进入虚拟模式，网页渲染与输入未验收 |
 
 在游戏内操作和联动验收完成前，目标使用 `buildable: false`，CI 仍会上传测试包。

@@ -10,6 +10,8 @@ import net.minecraft.network.chat.Component;
  * 别处直接 new McefBackend() 会让没装 MCEF 的玩家崩。MCEF 是 LGPL，只能照它的公开 API 写，不能抄它的代码进来。
  */
 public final class McefBackend implements IBrowserBackend {
+    public static final String MOD_ID = "mcef";
+
 
     @Override
     public boolean isAvailable() {

@@ -8,6 +8,8 @@ import org.lwjgl.glfw.GLFW;
 
 /** Adapter for the off-screen browser exposed by MCEF on Forge 40. */
 public final class McefBackend implements IBrowserBackend {
+    public static final String MOD_ID = "forgecef";
+
     @Override public boolean isAvailable() {
         var api = MCEFApi.getAPI();
         return api instanceof net.montoyo.mcef.client.ClientProxy proxy
