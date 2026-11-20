@@ -1,19 +1,25 @@
 modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
+issueTrackerURL="${mod_repo_url}/issues"
 
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
+displayURL="${mod_repo_url}"
 authors="${mod_authors}"
 # 描述写在这儿而不是 gradle.properties —— 那个文件按规范是 ISO-8859-1 解码的，
 # 中文放进去取出来就是乱码。理由写在 gradle.properties 里那段注释
 description='''
 把一部能用的智能手机塞进 Minecraft —— 拍照、翻相册、换壁纸、听歌、装 App，
-还能给自己那一部手机起个名。
+还能给自己那一部手机起个名。App 系统通过 SPI 开放，附属模组无需被本模组
+感知即可注册自己的 App。
 
-【Minecraft 1.18.2 Forge 适配测试版】
+A working smartphone in Minecraft: camera, gallery, custom wallpapers, a music
+player, and an open SPI-based app system that add-on mods can plug into.
+
+Minecraft 1.18.2 Forge 适配测试版 / Test build for Minecraft 1.18.2 Forge.
 '''
 
 # 版本范围从 gradle.properties 来，不写死在这儿：两处各写一份必然会漂，
