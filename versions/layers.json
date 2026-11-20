@@ -95,6 +95,22 @@
     "populated": true,
     "note": "NeoForge 客户端数据包分发入口。"
   },
+  "forge-1.18.2-waystones": {
+    "since": "1.18.2",
+    "loader": "Forge",
+    "populated": true,
+    "note": "Waystones warp item hook for Forge 1.18.2 and 1.20.1."
+  },
+  "1.18.2-terminal": {
+    "since": "1.18.2",
+    "populated": true,
+    "note": "Terminal slot synchronization for versions using FriendlyByteBuf item serialization."
+  },
+  "1.18.2": {
+    "since": "1.18.2",
+    "populated": true,
+    "note": "Minecraft 1.18.2 API and codecs."
+  },
   "1.20.1": {
     "since": "1.20.1",
     "populated": true,

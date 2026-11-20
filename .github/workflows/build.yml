@@ -16,7 +16,7 @@ name: Build & Upload
 # 串行还有个实际问题：每个目标都要解一遍 Minecraft，串着跑既慢又吃内存。
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, "26.x-"]
   pull_request:
     branches: [master, main]
 

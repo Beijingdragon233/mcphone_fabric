@@ -56,6 +56,26 @@
     "buildable: true 另外表示「产物进 Release」。所以一个刚并进来、还没编通的目标是",
     "buildable: false + 工程目录存在：CI 会编它、会红，但不会把半成品发出去。"
   ],
+  "1.18.2-forge": {
+    "minecraft": "1.18.2", "loader": "Forge", "loader_version": "40.3.12",
+    "server_config_sync": true, "mappings": "official", "java": 17, "gradle": "8.8",
+    "project": "platforms/1.18.2-forge", "buildable": false, "layers": ["1.18.2", "1.18.2-terminal", "forge", "forge-1.18.2-waystones"],
+    "note": "Forge 移植，等待游戏和第三方联动验收。"
+  },
+  "1.18.2-fabric": {
+    "minecraft": "1.18.2", "loader": "Fabric", "loader_version": null,
+    "server_config_sync": true, "mappings": "official", "java": 17, "gradle": "9.7.1",
+    "gradle_java": 21, "unverified": ["loader_version", "gradle"],
+    "project": "platforms/1.18.2-fabric", "buildable": false, "layers": [],
+    "note": "本轮仅适配 Forge。"
+  },
+  "1.18.2-neoforge": {
+    "minecraft": "1.18.2", "loader": "NeoForge", "loader_version": null,
+    "server_config_sync": true, "mappings": "official", "java": 17, "gradle": "9.2.1",
+    "unverified": ["loader_version", "gradle"],
+    "project": "platforms/1.18.2-neoforge", "buildable": false, "layers": [],
+    "note": "NeoForge 没有 Minecraft 1.18.2 发行版。"
+  },
   "1.20.1-forge": {
     "minecraft": "1.20.1",
     "loader": "Forge",
@@ -69,7 +89,9 @@
     "note": "本仓第二个建得起来的目标，产物进 Release。这些值由构建本身验着：gradle.properties 里 forge_version=47.4.23 / forge_version_range=[47.4.0,)，wrapper 是 gradle-8.8-bin.zip，build.gradle 里 toolchain 是 17，构建插件是 ForgeGradle 6（[6.0.54,6.2)）。",
     "layers": [
       "1.20.1",
-      "forge"
+      "1.18.2-terminal",
+      "forge",
+      "forge-1.18.2-waystones"
     ]
   },
   "1.20.1-neoforge": {
@@ -104,6 +126,7 @@
     "note": "Minecraft 1.20.1 Fabric，运行和编译使用 Java 17，Gradle 的 Loom 进程使用 Java 21。Fabric Loader 0.16.14 与 Fabric API 0.92.2+1.20.1 已完成专用服初始化验证。",
     "layers": [
       "1.20.1",
+      "1.18.2-terminal",
       "fabric"
     ],
     "gradle_java": 21

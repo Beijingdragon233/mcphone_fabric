@@ -26,7 +26,23 @@ public final class HomeArrangement {
     }
 
     /** A null members list represents an app. An empty list represents an empty folder. */
+    @com.google.gson.annotations.JsonAdapter(StoredEntryJson.class)
     public record StoredEntry(String id, String name, List<String> members) {}
+
+    private static final class StoredEntryJson implements com.google.gson.JsonDeserializer<StoredEntry> {
+        private static final class Data {
+            String id;
+            String name;
+            List<String> members;
+        }
+
+        @Override
+        public StoredEntry deserialize(com.google.gson.JsonElement json, java.lang.reflect.Type type,
+                                       com.google.gson.JsonDeserializationContext context) {
+            Data data = context.deserialize(json, Data.class);
+            return new StoredEntry(data.id, data.name, data.members);
+        }
+    }
 
     private final List<Entry> entries = new ArrayList<>();
     private final List<Entry> view = Collections.unmodifiableList(entries);

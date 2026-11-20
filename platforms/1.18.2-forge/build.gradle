@@ -1,0 +1,177 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0.54,6.2)'
+}
+
+// ============================================================
+//  仓库级身份与共用代码
+// ============================================================
+//
+// 这个目标是仓库里的一个平台工程，不是独立仓库。身份信息与共用源码都在上面两级。
+def repoRoot = file('../..')
+def repoPropsFile = new File(repoRoot, 'gradle.properties')
+if (!repoPropsFile.exists()) {
+    throw new GradleException(
+            "找不到 ${repoPropsFile.canonicalPath}。仓库级身份（mod_version 等）在那儿，" +
+            "各平台不许自己定义 —— 所有目标必须是同一个版本号。")
+}
+def repoProps = new Properties()
+repoPropsFile.withInputStream { repoProps.load(it) }
+['mod_id','mod_name','mod_license','mod_group_id','mod_version'].each { k ->
+    if (!repoProps.containsKey(k)) { throw new GradleException("仓库根的 gradle.properties 缺 ${k}") }
+    ext[k] = repoProps.getProperty(k)
+}
+
+// 共享层由配置文件说了算，解析在 gradle/mcphone-layers.gradle 里（只有那一份）
+apply from: "${projectDir}/../../gradle/mcphone-layers.gradle"
+
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+// 17，不是 21。Minecraft 1.18.2 跑在 Java 17 上，用 21 编出来的 class 文件
+// 版本低版本客户端加载不了——而且报的错不会提到 Java 版本。
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+    maven {
+        name = 'CurseMaven'
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
+    }
+}
+
+sourceSets.main.java.srcDir '../../shared/src/main/java'
+mcphoneLayers.each { layer ->
+    if (layer.javaDir.isDirectory()) sourceSets.main.java.srcDir layer.javaDir
+}
+sourceSets.main.resources {
+    srcDir '../../shared/src/main/resources'
+    mcphoneLayers.each { layer -> srcDir layer.resourcesDir }
+}
+
+minecraft {
+    // 官方混淆表。NeoForge 那一支用的是 Parchment（带参数名，读反编译代码舒服得多），
+    // 这里先不上：Parchment 在 ForgeGradle 上要额外挂 librarian 插件，
+    // 而这个工程眼下最需要的是"能稳定编过"。要加见 docs/PORTING.md。
+    mappings channel: 'official', version: minecraft_version
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', ''
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', ''
+            property 'forge.logging.console.level', 'debug'
+            args '--nogui'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+    }
+}
+
+sourceSets.main.resources {
+    srcDir 'src/generated/resources'
+    exclude 'src/generated/**/.cache'
+}
+
+// CI collects the reobfuscated jar with its nested runtime libraries.
+tasks.named('jar') { archiveClassifier = 'slim' }
+tasks.named('jarJar') { archiveClassifier = '' }
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    compileOnly fg.deobf("maven.modrinth:curios:${curios_version}")
+    compileOnly fg.deobf("maven.modrinth:net-music:${netmusic_version}")
+    compileOnly fg.deobf("maven.modrinth:patchouli:${patchouli_version}")
+    compileOnly fg.deobf("maven.modrinth:waystones:${waystones_version}")
+    compileOnly fg.deobf("maven.modrinth:balm:${balm_version}")
+    compileOnly fg.deobf("curse.maven:mcef-636236:${mcef_file}")
+    compileOnly fg.deobf("maven.modrinth:ae2:${ae2_version}")
+    compileOnly fg.deobf("maven.modrinth:applied-energistics-2-wireless-terminals:${ae2wtlib_version}")
+    compileOnly fg.deobf("maven.modrinth:refined-storage:${refinedstorage_version}")
+    compileOnly fg.deobf("maven.modrinth:toms-storage:${toms_version}")
+    jarJar(implementation("fr.delthas:javamp3:[${javamp3_version},2.0)")) {
+        jarJar.ranged(it, "[${javamp3_version},2.0)")
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// mods.toml 里的版本号从 gradle.properties 来，两处各写一份必然会漂
+tasks.named('processResources', ProcessResources).configure {
+    // 这一行就是治乱码的那一行。expand 会把文件读进来再写出去，
+    // 不指定字符集它用平台默认，中文必然翻车
+    filteringCharset = 'UTF-8'
+
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            forge_version_range    : forge_version_range,
+            loader_version_range   : loader_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml']) {
+        expand replaceProperties
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+        ])
+    }
+    finalizedBy 'reobfJar'
+}
+
+// 仓库级断言、签名与私有 Rhino 校验。
+apply from: "${projectDir}/../../gradle/mcphone-checks.gradle"
+
+// 「打包并签名」（§12.6）。仓库级约定，三个目标共用一份；不挂 check/build —— 签名要私钥
+apply from: "${projectDir}/../../gradle/mcphone-sign.gradle"
+
+// 开发、测试与发行共用已验收的私有 Rhino 依赖。
+apply from: '../../gradle/mcphone-engine-dependency.gradle'
+
+ext.mcphoneApiBindings = '1.18.2-api-names.json'
+ext.mcphoneVersionSources = '../../layers/version/1.18.2/src/main/java'
+apply from: '../../gradle/mcphone-port-bindings.gradle'

@@ -46,6 +46,8 @@ wiki 是文档的唯一真源，仓库里不再另存一份。
 | `1.20.1-forge` | 1.20.1 | Forge | 产物进 Release |
 | `1.20.1-fabric` | 1.20.1 | Fabric | 产物进 Release |
 
+Minecraft 1.18.2 Forge 在旧版本分支提供测试包。客户端和服务端均需 Java 17 与 Forge 40.3.12。详情见 [1.18.2 Forge 验证记录](docs/FORGE-1.18.2.md)。
+
 Minecraft 1.20.1 Fabric 需要 Java 17、Fabric Loader 0.16.14+ 和 Fabric API 0.92.2+1.20.1 或更新的 1.20.1 版本。该目标由 Java 21 启动 Gradle，并使用 Java 17 工具链编译。
 
 Minecraft 1.21.11 Fabric 需要 Java 21、Fabric Loader 0.19.5+ 和适用于 1.21.11 的 Fabric API。
