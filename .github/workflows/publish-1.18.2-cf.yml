@@ -1,13 +1,9 @@
 name: Publish 1.18.2 Forge to CurseForge
 
 on:
-  workflow_dispatch:
-    inputs:
-      artifact_run_id:
-        description: Successful Build & Upload run containing the 1.18.2 Forge artifact
-        required: true
-        default: "44800507292"
-        type: string
+  push:
+    branches:
+      - codex/publish-1.18.2-cf
 
 permissions:
   actions: read
@@ -20,7 +16,7 @@ jobs:
       - name: Download the verified CI artifact
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ inputs.artifact_run_id }}
+          RUN_ID: "44800507292"
         run: |
           set -euo pipefail
           mkdir -p dist
