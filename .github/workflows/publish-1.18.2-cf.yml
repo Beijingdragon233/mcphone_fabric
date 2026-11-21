@@ -1,0 +1,53 @@
+name: Publish 1.18.2 Forge to CurseForge
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_run_id:
+        description: Successful Build & Upload run containing the 1.18.2 Forge artifact
+        required: true
+        default: "44800507292"
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the verified CI artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.artifact_run_id }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh run download "$RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "mcphone-1.18.2-forge-未验证" \
+            --dir dist
+          test -f dist/mcphone-1.12.1-1.18.2-forge.jar
+          echo "D14E70CEAA14B3481BAC8B4073EBB4377287E8C3254E250C9D605BFAF6CB6728  dist/mcphone-1.12.1-1.18.2-forge.jar" \
+            | sha256sum --check -
+
+      - name: Publish beta to CurseForge
+        uses: Kira-NT/mc-publish@v3.3.1
+        with:
+          curseforge-id: ${{ vars.CURSEFORGE_ID }}
+          curseforge-token: ${{ secrets.CURSEFORGE_TOKEN }}
+          files: dist/mcphone-1.12.1-1.18.2-forge.jar
+          name: MCphone v1.12.1 - Minecraft 1.18.2 Forge 测试版
+          version: 1.12.1+1.18.2-forge
+          version-type: beta
+          changelog: |
+            Minecraft 1.18.2 Forge 适配测试版。
+
+            使用要求：Minecraft 1.18.2、Forge 40.3.12、Java 17。客户端与专用服务端都需安装。
+
+            完整构建、客户端与服务端启动、基础第三方联动识别已通过。游戏内完整操作矩阵和 MCEF 网页渲染仍待验收。
+          loaders: forge
+          game-versions: 1.18.2
+          java: 17
+          dependencies: ""
