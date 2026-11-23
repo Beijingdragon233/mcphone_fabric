@@ -46,7 +46,7 @@ Linux CI 使用相同的工具链和 `./gradlew build`。PR 矩阵构建所有�
 | Patchouli | 1.16.4-53.3 | 专服共同启动 | App 打开书籍与翻页 |
 | FTB Quests | 1605.3.7-build.165 | 专服共同启动；反射入口与该版 API 对齐 | 打开任务、提交与奖励 |
 | AE2 | 8.4.7 | 专服加载；手机终端 host / 容器存活 Mixin | 真实网络绑定、存取、电量与重连 |
-| AE2 无线合成扩展 | 待确定 | 尚未找到并验证所需 Forge 版本 | 继续核查，不能据 Fabric 包就断言 Forge 版不存在 |
+| AE2 无线终端（AE2WTLib REDUX） | 4.0.2（CurseForge 1686686 / file 9357345） | 手机槽 host 身份 + 五个终端容器 stillValid Mixin；离线编译通过 | 真实网络绑定、电量、合成格 UI 与重连 |
 | Refined Storage | 1.9.18 | 手机能力槽 PlayerSlot 桥接 | 真实网络打开、存取、电量与重连 |
 | Tom’s Simple Storage | 1.2.24 | 专服共同启动 | 绑定、范围限制和存取 |
 | Integrated Dynamics | 1.10.15 | 专服共同启动、兼容模块加载 | 手册 / App 操作 |
@@ -83,6 +83,7 @@ AE2 / RS 通过保留的整型槽位标记解析玩家手机能力中的同一�
 - `1165-final-build8.log`：包含 AE2 修复的最终完整构建通过，199 个任务，耗时 7 分 2 秒。
 - `1182-final-shared-compile.log`、`1201-forge-java8-shared-regress.log`：共享代码在 1.18.2 Forge / 1.20.1 Forge 编译通过。其他现代目标单独记录，不修改 1.21.11。
 - `1165-evidence/addons-before-rs-*.log`：带上表服务端联动的启动、AE2 Mixin 应用和正常存档退出；对应较早 JAR。
+- `addons1165/ae2wtlib-4.0.2-1.16.5.jar`：AE2WTLib REDUX 4.0.2（CurseForge 1686686 / file 9357345，release 2026-10-28），367,681 字节，SHA1 `7D097F8A3FE71082DEE9B2C765145F8AF243E715`；源自 `github.com/BlobAWV/AE2WirelessTerminalLibrary-Redux` 的 1.16.5 分支，编译目标 AE2 8.4.7 / Forge 36.2.42，mods.toml 依赖 `appliedenergistics2 [8.4.0,)`。已镜像到 `1165-maven/curse/maven/ae2-wireless-terminals-redux-1686686/9357345/`，`compileJava --offline` 通过。
 
 现代目标编译回归全部通过：1.20.1 Fabric（`1.20.1-fabric-java8-shared-regress2.log`）、1.21.1 Fabric（`1.21.1-fabric-java8-shared-regress.log`）、1.21.1 NeoForge 和 26.1.2 NeoForge（各自 `*-java8-shared-regress2.log`）。发现并修复本轮引入的一处 NeoForge import 拼写问题后重跑通过。未处理 1.21.11。
 
@@ -101,5 +102,21 @@ AE2 / RS 通过保留的整型槽位标记解析玩家手机能力中的同一�
 PR：[#4](https://github.com/Beijingdragon233/mcphone_fabric/pull/4)，保持草稿。首轮 [CI #74](https://github.com/Beijingdragon233/mcphone_fabric/actions/runs/45182169593) 的 1.16.5 Forge 完整构建通过并上传未验证试玩包；现代目标回归发现共享解析入口影响新 Rhino，现已将 String / Reader 入口分别置于共享层与 Java 8 覆盖层。
 
 本地 `1165-parser-regress.log` 的 Java 8 脚本与四组客户端回归、重混淆和成品检查通过；`121-modern-parser-http-regress2.log` 的现代引擎四组回归通过。HTTP 传输拆分引入的响应体超时分类也已修复：总期限到期返回 `TIMEOUT` 并取消底层请求。Rhino `.2` 补齐上游 `NOTICE-tools.txt`，旧构件 `.1` 保持原摘要；完整重建及新 CI 记录随后更新。
+
+[CI #76](https://github.com/Beijingdragon233/mcphone_fabric/actions/runs/45189406904)（`13c21038`）的全部目标已通过；1.21.1 NeoForge 首次仅布局测试的 50ms 性能断言失败，单独重跑通过。Java 8 仅在 1.16.5 任务安装，消除了其下载摘要校验故障对现代目标的影响。1.21.11 只随既有矩阵运行，没有另做其移植工作。本地 `1182-full-shared-regress3.log` 完整构建通过，190 个任务。
+
+`1165-final-build9.log` 的完整重建未通过：Java 8 HTTP 测试在 Windows 原生套接字调用中崩溃，`EXCEPTION_INVALID_HANDLE`；崩溃报告保存在 `1165-evidence/hs_err_pid53268.log`。该轮其它断言和合包检查通过，但不能称为完整成功。后续加入 REDUX 时的一次重试受新增依赖尚未进入本地镜像影响，未实际执行 HTTP 测试；正在完成依赖解析后复验。
+
+第 11 轮（含 REDUX 桥接与空菜单返回修复）完整构建通过：`1165-final-build11.log`，201 个任务，6 分 34 秒。第 10 轮所有运行断言与 Java 8 HTTP 测试通过，仅版本差异基线过期；更新已审查的版本差异基线后，第 11 轮整体通过。
+
+最新本地 JAR：`platforms/1.16.5-forge/build/libs/mcphone-1.12.1.jar`，SHA-256：
+
+```text
+be6f8caddbe6e4d5bd05b88e43a6714a8e321d8c7510bfd850ee9c359f730d84
+```
+
+此摘要的同一 JAR 再次在纯净专服与包含 REDUX 4.0.2 的固定联动专服启动成功，随后正常执行 stop 存档退出。日志为 `1165-evidence/redux-final-clean-latest.log`、`redux-final-addons-latest.log` 和 `redux-final-addons-debug.log`。最新夹具 **63 passed / 0 failed / 0 skipped**，原始报告覆盖到 `docs/validation/1.16.5-forge/bridge-fixture.txt`。REDUX 的真实 WCT 容器、活对象身份、取走手机、替换终端及普通背包槽对照通过；第一次因夹具反射漏写 int 参数而失败的记录保留于 `1165-evidence/redux-first-fixture-fail.txt`。
+
+WCT 的空存储 facade 只为抵达容器与存活检查，未验证真实网络、能量、范围、合成、NetworkHooks 打开或客户端界面。空 WUT 的用例也使用未绑定终端，不能代替有效网络下的菜单分发验证。CI artifact 随包附 `SHA256SUMS.txt`，其中摘要属于该次 CI JAR，不能假定与本地 JAR 相同。
 
 保持 `buildable: false`，不因构建或测试夹具通过而提前宣布完整验收。

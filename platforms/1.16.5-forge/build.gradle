@@ -59,6 +59,8 @@ dependencies {
     compileOnly fg.deobf('maven.modrinth:toms-storage:vA1AvvN1')
     compileOnly fg.deobf('curse.maven:mcef-577541:5830325')
     compileOnly fg.deobf('curse.maven:applied-energistics-2-223794:3608871')
+    // AE2WTLib REDUX 4.0.2 (Forge 1.16.5). Optional at runtime; only the tfar.ae2wt bridge compiles against it.
+    compileOnly fg.deobf('curse.maven:ae2-wireless-terminals-redux-1686686:9357345')
 }
 
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }

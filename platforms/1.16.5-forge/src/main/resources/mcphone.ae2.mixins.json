@@ -3,6 +3,6 @@
   "minVersion": "0.8",
   "package": "com.november.mcphone.mixin.ae2",
   "compatibilityLevel": "JAVA_8",
-  "mixins": ["ContainerHostMixin", "ContainerSlotMixin"],
+  "mixins": ["ContainerHostMixin", "ContainerSlotMixin", "Ae2wtlibStillValidMixin"],
   "injectors": { "defaultRequire": 1 }
 }

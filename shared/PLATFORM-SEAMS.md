@@ -328,7 +328,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `platform.PlayerEffects`　—— 加载器导入
 - `platform.client.KeyModifiers`　—— 加载器导入
 
-#### 平台内部的（16）
+#### 平台内部的（17）
 
 只在这个平台自己的代码里用到。新平台不必提供同名类型。
 
@@ -343,6 +343,7 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 - `feature.camera.client.CameraHandler`　—— 加载器导入
 - `feature.store.net.StoreNetworking`
 - `feature.terminal.TerminalSlotSync`　—— 加载器导入
+- `mixin.ae2.Ae2wtlibStillValidMixin`
 - `mixin.ae2.ContainerHostMixin`
 - `mixin.ae2.ContainerSlotMixin`
 - `mixin.refinedstorage.PlayerSlotMixin`

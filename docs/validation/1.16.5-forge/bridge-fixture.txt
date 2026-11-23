@@ -1,5 +1,5 @@
 # MCphone 1.16.5 / Forge 36 phone-slot fixture, TEST ONLY
-# 2026-11-23 21:12:54
+# 2026-11-23 22:35:07
 
 ==== MCphone 1.16.5 / Forge 36 phone-slot bridge fixture, TEST ONLY ====
 INFO  env.java | 1.8.0_514
@@ -67,5 +67,30 @@ INFO  ae2.container.valid | isValidContainer=false
 PASS  ae2.host.detached | stillInstalled()=false once the phone leaves the inventory
 PASS  ae2.container.detached | container rejects the terminal once the phone is gone
 
-FIXTURE_SUMMARY pass=47 fail=0 skip=0
+-- AE2WTLib REDUX 4.0.2 wireless crafting terminal (optional)
+PASS  wtlib.item | ae2wtlib:wireless_crafting_terminal
+PASS  wtlib.claims | ae2wtlib:wireless_crafting_terminal is claimed by Ae2Integration
+PASS  wtlib.host.construct | WCTGuiObject(handler, stack, player, -1)
+PASS  wtlib.host.live | WCTGuiObject.getItemStack() is the live phone terminal
+INFO  wtlib.host.slot | getInventorySlot=-1
+PASS  wtlib.facade | empty IStorageGrid installed on the unlinked WCTGuiObject
+PASS  wtlib.container.construct | WirelessCraftingTerminalContainer built for slot -1 without throwing
+PASS  wtlib.container.identity | container.getTerminalStack() is the live phone terminal
+PASS  wtlib.stillValid.withPhone | stillValid=true with the phone and terminal installed
+PASS  wtlib.stillValid.withoutPhone | stillValid=false once the phone leaves the inventory
+PASS  wtlib.stillValid.replacement | stillValid=false when the phone slot holds a different stack
+PASS  wtlib.stillValid.restored | stillValid=true again once the original terminal is back
+
+-- AE2WTLib ordinary inventory slot control
+PASS  wtlib.facade | empty IStorageGrid installed on the unlinked WCTGuiObject
+PASS  wtlib.ordinary.present | ordinary inventory slot 9 keeps stillValid=true
+PASS  wtlib.ordinary.removed | ordinary inventory slot 9 returns false once the stack is gone
+INFO  wtlib.openFromStack | not driven through NetworkHooks: a FakePlayer has no real connection; direct container identity and stillValid cover the bridge
+
+-- AE2WTLib WUT without a stored terminal
+INFO  wtlib.wut.current | getCurrentTerminal="noTerminal"
+PASS  wtlib.wut.empty.open | Ae2Integration.open returns false for a WUT with no stored terminal
+PASS  wtlib.wut.empty.noChange | the fake player's menu is unchanged when an empty WUT opens nothing
+
+FIXTURE_SUMMARY pass=63 fail=0 skip=0
 FIXTURE_RESULT PASS

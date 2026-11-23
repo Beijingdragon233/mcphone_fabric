@@ -139,6 +139,7 @@ jobs:
             exit 1
           fi
           cp "$JAR" "dist/mcphone-${{ steps.b.outputs.version }}-${{ matrix.target }}.jar"
+          ( cd dist && sha256sum *.jar > SHA256SUMS.txt )
           ls -lh dist/
 
       # 名字上带出 buildable —— 一个还没翻 buildable 的目标出的 jar 是拿来试跑的，
@@ -147,7 +148,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mcphone-${{ matrix.target }}${{ steps.b.outputs.buildable == 'true' && '' || '-未验证' }}
-          path: dist/*.jar
+          path: dist/*
           retention-days: 30
 
   # ============================================================

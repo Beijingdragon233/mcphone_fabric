@@ -51,6 +51,20 @@ final class FixtureRunner {
             "com.november.mcphone.feature.terminal.integration.ae2.Ae2Integration";
     private static final String AE2_HOST =
             "com.november.mcphone.feature.terminal.integration.ae2.PhoneWirelessHost";
+    private static final String AE2_HANDLER = "appeng.api.features.IWirelessTermHandler";
+
+    // AE2WTLib REDUX 4.0.2 (optional addon). The phone slot opens through TerminalOpener.openFromStack
+    // with a curio locator (index -1), which is why the five terminals skip the inventory lock.
+    private static final String WT_WCT_ITEM = "tfar.ae2wt.wirelesscraftingterminal.WCTItem";
+    private static final String WT_TERMINAL_ITEM = "tfar.ae2wt.terminal.AbstractWirelessTerminalItem";
+    private static final String WT_WUT_ITEM = "tfar.ae2wt.wut.WUTItem";
+    private static final String WT_WUT_HANDLER = "tfar.ae2wt.wut.WUTHandler";
+    private static final String WT_HOST = "tfar.ae2wt.wirelesscraftingterminal.WCTGuiObject";
+    private static final String WT_CONTAINER =
+            "tfar.ae2wt.wirelesscraftingterminal.WirelessCraftingTerminalContainer";
+    private static final String WT_OPENER = "tfar.ae2wt.util.TerminalOpener";
+    private static final String TERMINAL_SOURCE =
+            "com.november.mcphone.feature.terminal.integration.TerminalSource";
 
     private final MinecraftServer server;
     private final Report report;
@@ -127,6 +141,7 @@ final class FixtureRunner {
             runRefinedStorage(rsSlotCls, rsIntegrationCls, terminalSlotCls, fake);
             runWaystones(wsManagerCls, wsItemsCls, wsSelectionCls, phoneSelectionCls, fake);
             runAe2(ae2IntegrationCls, fake);
+            runAe2Wtlib(ae2IntegrationCls, fake);
         } catch (Throwable t) {
             report.threw("fixture", t);
         } finally {
@@ -610,6 +625,300 @@ final class FixtureRunner {
             }
         } catch (Throwable t) {
             report.threw("ae2.host.detached", t);
+        }
+    }
+
+    /**
+     * AE2WTLib REDUX 4.0.2: build a real WirelessCraftingTerminalContainer around a WCTGuiObject
+     * created from the phone's live terminal stack, then exercise the stillValid gate and the
+     * TerminalOpener.openFromStack entry the bridge actually uses.
+     *
+     * The host stays unlinked (no wireless access point), so the storage grid is null; the WCT
+     * constructor only forwards it as an IStorageMonitorable, which is the empty-facade case.
+     */
+    private void runAe2Wtlib(Class<?> ae2IntegrationCls, FakePlayer fake) {
+        report.section("AE2WTLib REDUX 4.0.2 wireless crafting terminal (optional)");
+
+        Class<?> terminalItemCls = Reflect.load(WT_TERMINAL_ITEM);
+        Class<?> hostCls = Reflect.load(WT_HOST);
+        Class<?> containerCls = Reflect.load(WT_CONTAINER);
+        Class<?> handlerCls = Reflect.load(AE2_HANDLER);
+        Class<?> openerCls = Reflect.load(WT_OPENER);
+
+        if (terminalItemCls == null || hostCls == null || containerCls == null
+                || handlerCls == null || openerCls == null) {
+            report.skip("wtlib", "AE2WTLib is not installed on this server");
+            return;
+        }
+
+        Item wct = findItemByType(WT_WCT_ITEM);
+        if (wct == null) wct = findItemByType(WT_TERMINAL_ITEM);
+        if (wct == null) {
+            report.skip("wtlib.item", "no AE2WTLib terminal item registered");
+            return;
+        }
+        report.pass("wtlib.item", String.valueOf(wct.getRegistryName()));
+
+        Item phone = phoneItem();
+        ItemStack phoneStack = phone == null ? ItemStack.field_190927_a : new ItemStack(phone, 1);
+        ItemStack terminal = new ItemStack(wct, 1);
+
+        if (ae2IntegrationCls != null) {
+            try {
+                Object integration = ae2IntegrationCls.getConstructor().newInstance();
+                Object value = ae2IntegrationCls.getMethod("claims", ItemStack.class)
+                        .invoke(integration, terminal);
+                expect("wtlib.claims", Boolean.TRUE.equals(value),
+                        wct.getRegistryName() + " is claimed by Ae2Integration",
+                        wct.getRegistryName() + " is not claimed by Ae2Integration");
+            } catch (Throwable t) {
+                report.threw("wtlib.claims", t);
+            }
+        }
+
+        try {
+            clearInventory(fake);
+            fake.field_71071_by.func_70299_a(0, phoneStack);
+            Reflect.method(Reflect.load(TERMINAL_SLOT), "set", PlayerEntity.class, ItemStack.class)
+                    .invoke(null, fake, terminal);
+        } catch (Throwable t) {
+            report.threw("wtlib.install", t);
+            return;
+        }
+
+        Object host = null;
+        try {
+            host = hostCls.getConstructor(handlerCls, ItemStack.class, PlayerEntity.class, int.class)
+                    .newInstance(terminal.func_77973_b(), terminal, fake, Integer.valueOf(-1));
+            report.pass("wtlib.host.construct", "WCTGuiObject(handler, stack, player, -1)");
+        } catch (Throwable t) {
+            report.threw("wtlib.host.construct", t);
+        }
+
+        if (host != null) {
+            try {
+                ItemStack hosted = (ItemStack) hostCls.getMethod("getItemStack").invoke(host);
+                expect("wtlib.host.live", hosted == terminal,
+                        "WCTGuiObject.getItemStack() is the live phone terminal",
+                        "WCTGuiObject.getItemStack() returned a different instance");
+                report.info("wtlib.host.slot",
+                        "getInventorySlot=" + hostCls.getMethod("getInventorySlot").invoke(host));
+            } catch (Throwable t) {
+                report.threw("wtlib.host.live", t);
+            }
+        }
+
+        if (host != null) {
+            attachEmptyStorageGrid(host);
+        }
+
+        Object container = null;
+        if (host != null) {
+            try {
+                container = containerCls.getConstructor(int.class, PlayerInventory.class, hostCls)
+                        .newInstance(Integer.valueOf(4), fake.field_71071_by, host);
+                report.pass("wtlib.container.construct",
+                        "WirelessCraftingTerminalContainer built for slot -1 without throwing");
+            } catch (Throwable t) {
+                report.threw("wtlib.container.construct", t);
+            }
+        }
+
+        if (container != null) {
+            try {
+                ItemStack hosted = (ItemStack) containerCls.getMethod("getTerminalStack").invoke(container);
+                expect("wtlib.container.identity", hosted == terminal,
+                        "container.getTerminalStack() is the live phone terminal",
+                        "container.getTerminalStack() returned a different instance");
+            } catch (Throwable t) {
+                report.threw("wtlib.container.identity", t);
+            }
+
+            try {
+                Method stillValid = Reflect.methodInHierarchy(containerCls, "func_75145_c", PlayerEntity.class);
+
+                Object withPhone = stillValid.invoke(container, fake);
+                expect("wtlib.stillValid.withPhone", Boolean.TRUE.equals(withPhone),
+                        "stillValid=true with the phone and terminal installed",
+                        "stillValid=" + withPhone + " with the phone and terminal installed");
+
+                clearInventory(fake);
+                Object withoutPhone = stillValid.invoke(container, fake);
+                expect("wtlib.stillValid.withoutPhone", Boolean.FALSE.equals(withoutPhone),
+                        "stillValid=false once the phone leaves the inventory",
+                        "stillValid=" + withoutPhone + " after the phone left the inventory");
+
+                fake.field_71071_by.func_70299_a(0, phoneStack);
+                ItemStack replacement = new ItemStack(
+                        ForgeRegistries.ITEMS.getValue(new ResourceLocation("minecraft", "stick")), 1);
+                Reflect.method(Reflect.load(TERMINAL_SLOT), "set", PlayerEntity.class, ItemStack.class)
+                        .invoke(null, fake, replacement);
+                Object replaced = stillValid.invoke(container, fake);
+                expect("wtlib.stillValid.replacement", Boolean.FALSE.equals(replaced),
+                        "stillValid=false when the phone slot holds a different stack",
+                        "stillValid=" + replaced + " after the phone slot was replaced");
+
+                Reflect.method(Reflect.load(TERMINAL_SLOT), "set", PlayerEntity.class, ItemStack.class)
+                        .invoke(null, fake, terminal);
+                Object restored = stillValid.invoke(container, fake);
+                expect("wtlib.stillValid.restored", Boolean.TRUE.equals(restored),
+                        "stillValid=true again once the original terminal is back",
+                        "stillValid=" + restored + " after the original terminal returned");
+            } catch (Throwable t) {
+                report.threw("wtlib.stillValid", t);
+            }
+        }
+
+        runAe2WtlibOrdinaryControl(hostCls, containerCls, handlerCls, wct, fake);
+        report.info("wtlib.openFromStack", "not driven through NetworkHooks: a FakePlayer has no real connection;"
+                + " direct container identity and stillValid cover the bridge");
+        runAe2WtlibEmptyWut(ae2IntegrationCls, fake);
+    }
+
+    /**
+     * Installs an empty IStorageGrid on an unlinked AE2WTLib host.
+     *
+     * WTGuiObject leaves sg null until a wireless access point is in range. The WCT container only
+     * forwards it as an IStorageMonitorable, so an empty facade keeps construction off the network
+     * while still giving the grid-shaped object the addon expects.
+     */
+    private void attachEmptyStorageGrid(Object host) {
+        Class<?> gridCls = Reflect.load("appeng.api.networking.storage.IStorageGrid");
+        Class<?> monitorCls = Reflect.load("appeng.api.storage.IMEMonitor");
+        if (gridCls == null || monitorCls == null) {
+            report.info("wtlib.facade", "IStorageGrid/IMEMonitor missing, leaving sg null");
+            return;
+        }
+
+        try {
+            Object monitor = java.lang.reflect.Proxy.newProxyInstance(
+                    Reflect.loader(), new Class<?>[]{monitorCls},
+                    (proxy, method, args) -> defaultValue(method.getReturnType()));
+            Object grid = java.lang.reflect.Proxy.newProxyInstance(
+                    Reflect.loader(), new Class<?>[]{gridCls},
+                    (proxy, method, args) -> "getInventory".equals(method.getName())
+                            ? monitor
+                            : defaultValue(method.getReturnType()));
+
+            Field sg = Reflect.field(host.getClass(), "sg");
+            sg.set(host, grid);
+            report.pass("wtlib.facade", "empty IStorageGrid installed on the unlinked WCTGuiObject");
+        } catch (Throwable t) {
+            report.info("wtlib.facade", "could not install empty grid: " + Report.describe(t));
+        }
+    }
+
+    private static Object defaultValue(Class<?> type) {
+        if (!type.isPrimitive()) return null;
+        if (type == boolean.class) return Boolean.FALSE;
+        if (type == char.class) return Character.valueOf('\0');
+        if (type == byte.class) return Byte.valueOf((byte) 0);
+        if (type == short.class) return Short.valueOf((short) 0);
+        if (type == int.class) return Integer.valueOf(0);
+        if (type == long.class) return Long.valueOf(0L);
+        if (type == float.class) return Float.valueOf(0F);
+        if (type == double.class) return Double.valueOf(0D);
+        return null;
+    }
+
+    /** Control: a terminal that really sits in an inventory slot keeps the vanilla stillValid path. */
+    private void runAe2WtlibOrdinaryControl(Class<?> hostCls, Class<?> containerCls, Class<?> handlerCls,
+                                            Item handlerItem, FakePlayer fake) {
+        report.section("AE2WTLib ordinary inventory slot control");
+        Item stick = ForgeRegistries.ITEMS.getValue(new ResourceLocation("minecraft", "stick"));
+        if (stick == null) {
+            report.skip("wtlib.ordinary", "minecraft:stick not registered");
+            return;
+        }
+
+        ItemStack terminal = new ItemStack(stick, 1);
+        try {
+            clearInventory(fake);
+            fake.field_71071_by.func_70299_a(9, terminal);
+            Object host = hostCls.getConstructor(handlerCls, ItemStack.class, PlayerEntity.class, int.class)
+                    .newInstance(handlerItem, terminal, fake, Integer.valueOf(9));
+            attachEmptyStorageGrid(host);
+            Object container = containerCls.getConstructor(int.class, PlayerInventory.class, hostCls)
+                    .newInstance(Integer.valueOf(5), fake.field_71071_by, host);
+            Method stillValid = Reflect.methodInHierarchy(containerCls, "func_75145_c", PlayerEntity.class);
+
+            Object found = stillValid.invoke(container, fake);
+            expect("wtlib.ordinary.present", Boolean.TRUE.equals(found),
+                    "ordinary inventory slot 9 keeps stillValid=true",
+                    "ordinary inventory slot 9 returned stillValid=" + found);
+
+            clearInventory(fake);
+            Object missing = stillValid.invoke(container, fake);
+            expect("wtlib.ordinary.removed", Boolean.FALSE.equals(missing),
+                    "ordinary inventory slot 9 returns false once the stack is gone",
+                    "ordinary inventory slot 9 returned " + missing + " after removal");
+        } catch (Throwable t) {
+            report.threw("wtlib.ordinary", t);
+        }
+    }
+
+    /**
+     * WUT with no stored terminal: open must fail and leave the player's menu untouched.
+     *
+     * This is the regression guard for the review finding that an unconditional stillValid=true on
+     * WUT suppresses the fallback and reports a terminal that is not there.
+     */
+    private void runAe2WtlibEmptyWut(Class<?> ae2IntegrationCls, FakePlayer fake) {
+        report.section("AE2WTLib WUT without a stored terminal");
+        Class<?> wutCls = Reflect.load(WT_WUT_ITEM);
+        Class<?> sourceCls = Reflect.load(TERMINAL_SOURCE);
+        Class<?> phoneSlotCls = Reflect.load(TERMINAL_SOURCE + "$PhoneSlot");
+        Class<?> playerCls = Reflect.load("net.minecraft.entity.player.ServerPlayerEntity");
+
+        if (wutCls == null || sourceCls == null || phoneSlotCls == null || playerCls == null
+                || ae2IntegrationCls == null) {
+            report.skip("wtlib.wut", "WUTItem, TerminalSource or Ae2Integration missing");
+            return;
+        }
+
+        Item wut = findItemByType(WT_WUT_ITEM);
+        if (wut == null) {
+            report.skip("wtlib.wut", "no WUT item registered");
+            return;
+        }
+
+        Item phone = phoneItem();
+        ItemStack phoneStack = phone == null ? ItemStack.field_190927_a : new ItemStack(phone, 1);
+        ItemStack wutStack = new ItemStack(wut, 1);
+
+        try {
+            Class<?> wutHandler = Reflect.load(WT_WUT_HANDLER);
+            if (wutHandler != null) {
+                Object current = wutHandler.getMethod("getCurrentTerminal", ItemStack.class)
+                        .invoke(null, wutStack);
+                report.info("wtlib.wut.current", "getCurrentTerminal=\"" + current + "\"");
+            }
+        } catch (Throwable t) {
+            report.info("wtlib.wut.current", "not probed: " + Report.describe(t));
+        }
+
+        try {
+            clearInventory(fake);
+            fake.field_71071_by.func_70299_a(0, phoneStack);
+            Reflect.method(Reflect.load(TERMINAL_SLOT), "set", PlayerEntity.class, ItemStack.class)
+                    .invoke(null, fake, wutStack);
+
+            Object source = phoneSlotCls.getDeclaredConstructor().newInstance();
+            Method open = ae2IntegrationCls.getMethod("open", playerCls, ItemStack.class, sourceCls);
+
+            Object before = fake.field_71070_bA;
+            Object opened = open.invoke(ae2IntegrationCls.getConstructor().newInstance(), fake, wutStack, source);
+            boolean changed = fake.field_71070_bA != before;
+
+            expect("wtlib.wut.empty.open", Boolean.FALSE.equals(opened),
+                    "Ae2Integration.open returns false for a WUT with no stored terminal",
+                    "Ae2Integration.open returned " + opened + " for a WUT with no stored terminal");
+            expect("wtlib.wut.empty.noChange", !changed,
+                    "the fake player's menu is unchanged when an empty WUT opens nothing",
+                    "the menu changed to "
+                            + (fake.field_71070_bA == null ? "null" : fake.field_71070_bA.getClass().getName()));
+        } catch (Throwable t) {
+            report.threw("wtlib.wut.empty", t);
         }
     }
 

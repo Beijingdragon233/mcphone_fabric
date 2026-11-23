@@ -2,8 +2,6 @@ package com.november.mcphone.feature.terminal.integration.ae2;
 
 import appeng.api.features.IWirelessTermHandler;
 import appeng.helpers.WirelessTerminalGuiObject;
-import com.november.mcphone.core.PhoneItem;
-import com.november.mcphone.feature.terminal.TerminalSlot;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
@@ -18,7 +16,6 @@ public final class PhoneWirelessHost extends WirelessTerminalGuiObject {
     }
 
     public boolean stillInstalled() {
-        return !getItemStack().isEmpty() && TerminalSlot.get(owner) == getItemStack()
-                && PhoneItem.isCarriedBy(owner);
+        return PhoneSlotStacks.isPhoneHosted(owner, getItemStack());
     }
 }
