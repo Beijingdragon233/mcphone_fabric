@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.reader.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.ClientPaths;
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.MCphone;
@@ -10,7 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
@@ -63,7 +66,42 @@ public final class TxtLibrary {
      * @param title    去掉后缀的名字，就是书名——玩家给文件起的名字就是他认得的书名
      * @param bytes    文件多大，列表上显示"多少 KB"用
      */
-    public record Entry(String fileName, String title, long bytes) {
+    public static final class Entry {
+        private final String fileName;
+        private final String title;
+        private final long bytes;
+
+        public Entry(String fileName, String title, long bytes) {
+            this.fileName = fileName;
+            this.title = title;
+            this.bytes = bytes;
+        }
+
+        public String fileName() { return fileName; }
+
+        public String title() { return title; }
+
+        public long bytes() { return bytes; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Entry)) return false;
+            Entry that = (Entry) other;
+            return java.util.Objects.equals(this.fileName, that.fileName)
+                    && java.util.Objects.equals(this.title, that.title)
+                    && this.bytes == that.bytes;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(fileName);
+            hash = 31 * hash + java.util.Objects.hashCode(title);
+            hash = 31 * hash + java.util.Objects.hashCode(bytes);
+            return hash;
+        }
+
+        @Override public String toString() { return "Entry[fileName=" + fileName + ", title=" + title + ", bytes=" + bytes + "]"; }
+
 
         public Path path() {
             return directoryPath().resolve(fileName);
@@ -112,7 +150,7 @@ public final class TxtLibrary {
         // 按书名排，而不是按文件系统给的顺序——那个顺序在不同平台上不一样，
         // 玩家会觉得"每次进来书的位置都在变"。书架页可以自己拖着排，那是另一回事
         out.sort(Comparator.comparing(entry -> entry.title().toLowerCase(Locale.ROOT)));
-        cached = List.copyOf(out);
+        cached = ImmutableList.copyOf(out);
     }
 
     /** 按 BookRef 里的 id 找回是哪一本，找不到返回 null（文件被删了、改名了） */
@@ -212,7 +250,7 @@ public final class TxtLibrary {
         try {
             byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
                     .digest(fileName.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(digest, 0, 8);
+            return Java8.formatHex(digest, 0, 8);
         } catch (Exception e) {
             // SHA-256 是 JDK 必备的，走不到这儿；真走到了就退回一个还算稳定的数
             return Integer.toHexString(fileName.hashCode());
@@ -257,7 +295,7 @@ public final class TxtLibrary {
         } catch (IOException ignored) {
             // 大小只用来显示，取不到就写 0，不值得为它放弃这本书
         }
-        return new Entry(fileName, title.isBlank() ? fileName : title, size);
+        return new Entry(fileName, Java8.isBlank(title) ? fileName : title, size);
     }
 
     /** 猜出来的编码，给界面显示用（乱码时玩家至少知道我们按什么解的） */

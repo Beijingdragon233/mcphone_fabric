@@ -11,7 +11,36 @@ public final class UnreadBadge {
     public static final int HEIGHT = 7;
     public static final float TEXT_SCALE = .6f;
 
-    public record Ink(float width, float height) {}
+    public static final class Ink {
+        private final float width;
+        private final float height;
+
+        public Ink(float width, float height) {
+            this.width = width;
+            this.height = height;
+        }
+
+        public float width() { return width; }
+
+        public float height() { return height; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Ink)) return false;
+            Ink that = (Ink) other;
+            return Float.compare(this.width, that.width) == 0
+                    && Float.compare(this.height, that.height) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            return hash;
+        }
+
+        @Override public String toString() { return "Ink[width=" + width + ", height=" + height + "]"; }
+}
 
     /** 原版数字最后一列是字间距，九像素行框中的数字笔画高七像素。 */
     public static Ink numericInk(int advance, int lineHeight, float scale) {

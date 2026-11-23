@@ -1,5 +1,10 @@
 package com.november.mcphone.core.client.home;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.core.client.DeviceMetrics;
@@ -41,7 +46,60 @@ public final class HomeFolderView {
     private static final int RENAME_HEIGHT = 14;
     private static final int RENAME_GAP = 2;
 
-    private record RenameBar(int left, int top, int width, int textLeft, int textTop, int textWidth) {
+    private static final class RenameBar {
+        private final int left;
+        private final int top;
+        private final int width;
+        private final int textLeft;
+        private final int textTop;
+        private final int textWidth;
+
+        private RenameBar(int left, int top, int width, int textLeft, int textTop, int textWidth) {
+            this.left = left;
+            this.top = top;
+            this.width = width;
+            this.textLeft = textLeft;
+            this.textTop = textTop;
+            this.textWidth = textWidth;
+        }
+
+        public int left() { return left; }
+
+        public int top() { return top; }
+
+        public int width() { return width; }
+
+        public int textLeft() { return textLeft; }
+
+        public int textTop() { return textTop; }
+
+        public int textWidth() { return textWidth; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof RenameBar)) return false;
+            RenameBar that = (RenameBar) other;
+            return this.left == that.left
+                    && this.top == that.top
+                    && this.width == that.width
+                    && this.textLeft == that.textLeft
+                    && this.textTop == that.textTop
+                    && this.textWidth == that.textWidth;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(left);
+            hash = 31 * hash + java.util.Objects.hashCode(top);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(textLeft);
+            hash = 31 * hash + java.util.Objects.hashCode(textTop);
+            hash = 31 * hash + java.util.Objects.hashCode(textWidth);
+            return hash;
+        }
+
+        @Override public String toString() { return "RenameBar[left=" + left + ", top=" + top + ", width=" + width + ", textLeft=" + textLeft + ", textTop=" + textTop + ", textWidth=" + textWidth + "]"; }
+
         boolean contains(double x, double y) {
             return HomeFolderView.contains(x, y, left, top, width, RENAME_HEIGHT);
         }
@@ -349,7 +407,7 @@ public final class HomeFolderView {
     }
 
     private void saveRename() {
-        String name = rename.getValue().strip();
+        String name = Java8.strip(rename.getValue());
         if (name.isEmpty()) return;
         PhoneScreenRegistry.renameFolder(folderId, name);
         rename = null;
@@ -357,7 +415,7 @@ public final class HomeFolderView {
 
     private void savePicker() {
         if (selection.isEmpty()) return;
-        PhoneScreenRegistry.addFolderApps(folderId, List.copyOf(selection));
+        PhoneScreenRegistry.addFolderApps(folderId, ImmutableList.copyOf(selection));
         closePicker();
     }
 
@@ -371,7 +429,7 @@ public final class HomeFolderView {
         List<HomeArrangement.Entry> entries = PhoneScreenRegistry.homeEntries();
         if (picker) {
             return entries.stream().filter(HomeArrangement.App.class::isInstance)
-                    .map(HomeArrangement.Entry::id).toList();
+                    .map(HomeArrangement.Entry::id).collect(Java8Collections.toList());
         }
         if (entries.stream().noneMatch(HomeArrangement.App.class::isInstance)) return folder.members();
         List<String> tiles = new ArrayList<>(folder.members());

@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.core.PhonePaths;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtIo;
@@ -94,7 +96,7 @@ final class EconomySnapshot {
             try (InputStream raw = Files.newInputStream(file);
                  GZIPInputStream gz = new GZIPInputStream(new BufferedInputStream(raw))) {
                 // 先整份读完：读到流尾 gzip 才核 CRC —— 先核再解析，坏数据进不了解析器
-                data = gz.readNBytes(maxBytes + 1);
+                data = Java8.readNBytes(gz, maxBytes + 1);
                 if (data.length > maxBytes) throw new IOException("快照解压后超过 " + maxBytes + " 字节");
             }
             return NbtIo.read(new DataInputStream(new java.io.ByteArrayInputStream(data)));

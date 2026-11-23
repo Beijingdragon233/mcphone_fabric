@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.group;
 
+import com.november.mcphone.util.Java8;
+
 import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -19,8 +21,8 @@ final class GroupImageFileIO {
         Files.createDirectories(file.getParent());
         // 正常重复上传只读一次；已有残缺文件必须修复，不能仅凭文件存在就跳过。
         if (Files.isRegularFile(file) && Files.size(file) == bytes.length) {
-            try (var input = Files.newInputStream(file)) {
-                if (java.util.Arrays.equals(input.readNBytes(bytes.length + 1), bytes)) return;
+            try (java.io.InputStream input = Files.newInputStream(file)) {
+                if (java.util.Arrays.equals(Java8.readNBytes(input, bytes.length + 1), bytes)) return;
             }
         }
         Path temp = Files.createTempFile(file.getParent(), file.getFileName() + ".", ".tmp");

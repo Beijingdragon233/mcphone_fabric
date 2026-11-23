@@ -33,8 +33,9 @@ public final class ChatNotifier {
     }
 
     private static boolean isViewing(UUID peer) {
-        return Minecraft.getInstance().screen instanceof PhoneScreen phone
-                && phone.isViewingConversation(peer);
+        Object phoneMatch;
+        return (phoneMatch = Minecraft.getInstance().screen) instanceof PhoneScreen
+                && ((PhoneScreen) phoneMatch).isViewingConversation(peer);
     }
 
     /** 同一个人已有一条就合并进去，否则连发几条会占满原版通知区的 5 个槽位 */

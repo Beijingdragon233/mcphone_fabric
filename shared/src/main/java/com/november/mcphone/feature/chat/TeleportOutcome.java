@@ -18,10 +18,15 @@ public enum TeleportOutcome implements ChatOutcome {
 
     @Override
     public Component message() {
-        return switch (this) {
-            case PEER_OFFLINE -> Component.translatable("mcphone.chat.teleport_offline");
-            case DISABLED -> Component.translatable("mcphone.chat.teleport_disabled");
-            case OK, NOTHING -> null;
-        };
+        switch (this) {
+            case PEER_OFFLINE:
+                return Component.translatable("mcphone.chat.teleport_offline");
+            case DISABLED:
+                return Component.translatable("mcphone.chat.teleport_disabled");
+            case OK:
+            case NOTHING:
+                return null;
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 }

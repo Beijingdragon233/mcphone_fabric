@@ -8,7 +8,36 @@ import java.util.List;
 
 /** 保存完整 GUI 矩阵栈；即使附属少 pop、多 pop 或异常退出，也恢复宿主的栈深和矩阵。 */
 public final class PhonePoseScope implements AutoCloseable {
-    private record Pose(Matrix4f matrix, Matrix3f normal) {}
+    private static final class Pose {
+        private final Matrix4f matrix;
+        private final Matrix3f normal;
+
+        private Pose(Matrix4f matrix, Matrix3f normal) {
+            this.matrix = matrix;
+            this.normal = normal;
+        }
+
+        public Matrix4f matrix() { return matrix; }
+
+        public Matrix3f normal() { return normal; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Pose)) return false;
+            Pose that = (Pose) other;
+            return java.util.Objects.equals(this.matrix, that.matrix)
+                    && java.util.Objects.equals(this.normal, that.normal);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(matrix);
+            hash = 31 * hash + java.util.Objects.hashCode(normal);
+            return hash;
+        }
+
+        @Override public String toString() { return "Pose[matrix=" + matrix + ", normal=" + normal + "]"; }
+}
     private final PoseStack stack;
     private final List<Pose> saved = new ArrayList<>();
 

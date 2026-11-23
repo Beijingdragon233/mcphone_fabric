@@ -72,21 +72,23 @@ final class OriginsOfDarkness implements ExternalBook {
     private Screen createManual(Inventory inventory, ItemStack book) throws ReflectiveOperationException {
         Class<?> locationType = Class.forName(CYCLOPS_INVENTORY + "IInventoryLocation");
         Object inventoryLocation = Proxy.newProxyInstance(locationType.getClassLoader(),
-                new Class<?>[] {locationType}, (proxy, method, args) -> switch (method.getName()) {
-                    case "getItemInSlot" -> Integer.valueOf(0).equals(args[1]) ? book : ItemStack.EMPTY;
-                    case "getInventory" -> null;
-                    case "getUniqueName" -> VIEW_LOCATION;
-                    case "setItemInSlot" -> throw new UnsupportedOperationException("Read-only guide");
-                    case "equals" -> proxy == args[0];
-                    case "hashCode" -> System.identityHashCode(proxy);
-                    case "toString" -> VIEW_LOCATION.toString();
-                    default -> throw new UnsupportedOperationException(method.getName());
+                new Class<?>[] {locationType}, (proxy, method, args) -> {
+                    switch (method.getName()) {
+                        case "getItemInSlot": return Integer.valueOf(0).equals(args[1]) ? book : ItemStack.EMPTY;
+                        case "getInventory": return null;
+                        case "getUniqueName": return VIEW_LOCATION;
+                        case "setItemInSlot": throw new UnsupportedOperationException("Read-only guide");
+                        case "equals": return proxy == args[0];
+                        case "hashCode": return System.identityHashCode(proxy);
+                        case "toString": return VIEW_LOCATION.toString();
+                        default: throw new UnsupportedOperationException(method.getName());
+                    }
                 });
 
         Class<?> itemLocation = Class.forName(CYCLOPS_INVENTORY + "ItemLocation");
         Object location = itemLocation.getConstructor(locationType, int.class).newInstance(inventoryLocation, 0);
         Class<?> menuType = Class.forName(EVILCRAFT + "inventory.container.ContainerOriginsOfDarkness");
-        var menu = (AbstractContainerMenu) menuType.getConstructor(int.class, Inventory.class, itemLocation)
+        net.minecraft.world.inventory.AbstractContainerMenu menu = (AbstractContainerMenu) menuType.getConstructor(int.class, Inventory.class, itemLocation)
                 .newInstance(0, inventory, location);
         if (!menu.slots.isEmpty()) throw new IllegalStateException("EvilCraft guide contains inventory slots");
 

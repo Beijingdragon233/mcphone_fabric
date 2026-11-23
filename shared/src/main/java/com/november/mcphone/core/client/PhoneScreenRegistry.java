@@ -1,5 +1,11 @@
 package com.november.mcphone.core.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.core.PhonePaths;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -209,7 +215,7 @@ public final class PhoneScreenRegistry {
     }
 
     private static List<String> installedIds() {
-        return INSTALLED.stream().map(ResourceLocation::toString).toList();
+        return INSTALLED.stream().map(ResourceLocation::toString).collect(Java8Collections.toList());
     }
 
     private static void syncInstalledOrder() {
@@ -225,7 +231,7 @@ public final class PhoneScreenRegistry {
         for (Map.Entry<ResourceLocation, IPhoneApp> e : CATALOG.entrySet()) {
             if (!INSTALLED.contains(e.getKey())) out.add(e.getValue());
         }
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /**
@@ -243,7 +249,7 @@ public final class PhoneScreenRegistry {
             if (!requiredModsOf(app).isEmpty() || !companionModsOf(app).isEmpty()) out.add(app);
         }
         out.addAll(UNAVAILABLE.values());   // 不可用的必定是靠谁撑着才不可用，不必再筛
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /**
@@ -265,14 +271,14 @@ public final class PhoneScreenRegistry {
 
     /** 读一个 App 声明的前置，读不出来就当没有。必须兜 Throwable：UNAVAILABLE 里的 App 会抛 NoClassDefFoundError */
     public static List<RequiredMod> requiredModsOf(IPhoneApp app) {
-        if (app == null) return List.of();
+        if (app == null) return ImmutableList.of();
         try {
             List<RequiredMod> mods = app.requiredMods();
-            return mods == null ? List.of() : mods;
+            return mods == null ? ImmutableList.of() : mods;
         } catch (Throwable t) {
             MCphone.LOGGER.warn("[MCphone] 读取 {} 的前置声明失败，当作没有声明",
                     app.getClass().getName(), t);
-            return List.of();
+            return ImmutableList.of();
         }
     }
 
@@ -283,14 +289,14 @@ public final class PhoneScreenRegistry {
      * 引用着没装的模组，读它任何一样东西都可能抛 NoClassDefFoundError。
      */
     public static List<RequiredMod> companionModsOf(IPhoneApp app) {
-        if (app == null) return List.of();
+        if (app == null) return ImmutableList.of();
         try {
             List<RequiredMod> mods = app.companionMods();
-            return mods == null ? List.of() : mods;
+            return mods == null ? ImmutableList.of() : mods;
         } catch (Throwable t) {
             MCphone.LOGGER.warn("[MCphone] 读取 {} 的联动声明失败，当作没有声明",
                     app.getClass().getName(), t);
-            return List.of();
+            return ImmutableList.of();
         }
     }
 
@@ -395,7 +401,7 @@ public final class PhoneScreenRegistry {
 
     /** 解析状态文件里的一条 id，解析不了返回 null。裸串（老文件）补成 mcphone: —— 不能用 ResourceLocation.parse，它补成 minecraft: 会作废老玩家的状态 */
     private static ResourceLocation parseStoredId(String raw) {
-        if (raw == null || raw.isBlank()) return null;
+        if (raw == null || Java8.isBlank(raw)) return null;
         String s = raw.trim();
         ResourceLocation id = ResourceLocation.tryParse(
                 s.indexOf(':') < 0 ? MCphone.MODID + ":" + s : s);
@@ -426,16 +432,16 @@ public final class PhoneScreenRegistry {
      */
     public static Set<ResourceLocation> savedInstalledIds() {
         Path file = stateDirectory().resolve(currentWorldKey() + ".json");
-        if (!Files.isRegularFile(file)) return Set.of();
+        if (!Files.isRegularFile(file)) return ImmutableSet.of();
         try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             State s = GSON.fromJson(r, State.class);
-            if (s == null) return Set.of();
+            if (s == null) return ImmutableSet.of();
             Set<ResourceLocation> out = new LinkedHashSet<>();
             parseStoredIds(s.installed, out);
             return out;
         } catch (Exception e) {
             MCphone.LOGGER.warn("[MCphone] 读 {} 失败，启动恢复按「没装过」处理: {}", file, e.toString());
-            return Set.of();
+            return ImmutableSet.of();
         }
     }
 
@@ -480,7 +486,7 @@ public final class PhoneScreenRegistry {
     /** 退出世界时调用，清空安装状态，否则下一个存档读进来之前会先显示上一个的主屏 */
     public static void unloadWorld() {
         INSTALLED.clear();
-        HOME.restore(List.of(), null);
+        HOME.restore(ImmutableList.of(), null);
         stateFile = null;
     }
 
@@ -489,7 +495,7 @@ public final class PhoneScreenRegistry {
         Minecraft mc = Minecraft.getInstance();
 
         ServerData server = mc.getCurrentServer();
-        if (server != null && server.ip != null && !server.ip.isBlank()) {
+        if (server != null && server.ip != null && !Java8.isBlank(server.ip)) {
             return "server_" + sanitize(server.ip);
         }
 
@@ -571,7 +577,7 @@ public final class PhoneScreenRegistry {
         State s = new State();
         s.installed = installedIds();
         s.home = GSON.toJsonTree(HOME.snapshot());
-        s.known = CATALOG.keySet().stream().map(ResourceLocation::toString).toList();
+        s.known = CATALOG.keySet().stream().map(ResourceLocation::toString).collect(Java8Collections.toList());
         try {
             // 【整份替换，不是直写】：直写写到一半崩掉，主屏装了哪些 App 全部回到默认，
             // 见 AtomicWrite

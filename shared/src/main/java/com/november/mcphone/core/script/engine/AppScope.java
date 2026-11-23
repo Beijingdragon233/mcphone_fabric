@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.internal.rhino.javascript.Context;
 import com.november.mcphone.internal.rhino.javascript.Scriptable;
 import com.november.mcphone.internal.rhino.javascript.ScriptableObject;
@@ -48,12 +50,41 @@ public final class AppScope {
     private volatile ScriptableObject scope;
 
     /** Parent and action table captured from the same initialized App scope. */
-    public record Invocation(Scriptable callScope, Scriptable actions) {
+    public static final class Invocation {
+        private final Scriptable callScope;
+        private final Scriptable actions;
+
+        public Invocation(Scriptable callScope, Scriptable actions) {
+            this.callScope = callScope;
+            this.actions = actions;
+        }
+
+        public Scriptable callScope() { return callScope; }
+
+        public Scriptable actions() { return actions; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Invocation)) return false;
+            Invocation that = (Invocation) other;
+            return java.util.Objects.equals(this.callScope, that.callScope)
+                    && java.util.Objects.equals(this.actions, that.actions);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(callScope);
+            hash = 31 * hash + java.util.Objects.hashCode(actions);
+            return hash;
+        }
+
+        @Override public String toString() { return "Invocation[callScope=" + callScope + ", actions=" + actions + "]"; }
+
     }
 
     /** 没有能力集的旧写法（断言用）。 */
     public AppScope(String appId, ScriptBudget budget, Map<String, String> jsSources) {
-        this(appId, budget, jsSources, java.util.Set.of());
+        this(appId, budget, jsSources, ImmutableSet.of());
     }
 
     public AppScope(String appId, ScriptBudget budget, Map<String, String> jsSources,
@@ -61,7 +92,7 @@ public final class AppScope {
         this.appId = appId;
         this.budget = budget;
         this.modules = new ScriptModules(jsSources);
-        this.capabilities = capabilities == null ? java.util.Set.of() : Set.copyOf(capabilities);
+        this.capabilities = capabilities == null ? ImmutableSet.of() : ImmutableSet.copyOf(capabilities);
     }
 
     public String appId() {
@@ -122,7 +153,7 @@ public final class AppScope {
         call.setPrototype(parent);
         call.setParentScope(null);
         Object value = ScriptableObject.getProperty(parent, "actions");
-        return new Invocation(call, value instanceof Scriptable actions ? actions : null);
+        return new Invocation(call, value instanceof Scriptable ? ((Scriptable) value) : null);
     }
 
     /**
@@ -142,7 +173,7 @@ public final class AppScope {
     /** {@code actions} 表。没有就返回 null。 */
     public synchronized Scriptable actions(Context cx) {
         Object a = ScriptableObject.getProperty(scope(cx), "actions");
-        return a instanceof Scriptable s ? s : null;
+        return a instanceof Scriptable ? ((Scriptable) a) : null;
     }
 
     /**
@@ -156,9 +187,9 @@ public final class AppScope {
         int seen = 0;
         for (Object id : scope.getIds()) {          // 只看脚本自己声明的（可枚举的那些）
             if (++seen > MAX_SCANNED) break;
-            if (!(id instanceof String name)) continue;
-            Object v = readTopLevel(scope, name);
-            if (v instanceof CharSequence cs) chars += cs.length();   // ConsString 上是 O(1)
+            if (!(id instanceof String)) continue;
+            Object v = readTopLevel(scope, ((String) id));
+            if (v instanceof CharSequence) chars += ((CharSequence) v).length();   // ConsString 上是 O(1)
         }
         if (chars <= MAX_RETAINED_CHARS) return false;
         scope = null;                                // 下次 scope(cx) 会重建

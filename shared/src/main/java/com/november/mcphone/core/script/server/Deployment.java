@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneNbt;
 import net.minecraft.nbt.CompoundTag;
@@ -31,19 +33,81 @@ import java.util.UUID;
  *
  * <p>{@code deploymentId} 只用于展示与日志（{@code appId@摘要前 12}）——<b>不是身份，任何判定都不许用它</b>。
  */
-public record Deployment(
-        String appId,
-        String deploymentId,
-        String revision,
-        long approvalRevision,
-        String packageDigest,
-        String frontendDigest,
-        List<String> declaredActions,
-        List<String> approvedActions,
-        List<String> declaredCapabilities,
-        List<String> approvedCapabilities,
-        UUID approver,
-        long approvedAt) {
+public final class Deployment {
+    private final String appId;
+    private final String deploymentId;
+    private final String revision;
+    private final long approvalRevision;
+    private final String packageDigest;
+    private final String frontendDigest;
+    private final List<String> declaredActions;
+    private final List<String> approvedActions;
+    private final List<String> declaredCapabilities;
+    private final List<String> approvedCapabilities;
+    private final UUID approver;
+    private final long approvedAt;
+
+    public String appId() { return appId; }
+
+    public String deploymentId() { return deploymentId; }
+
+    public String revision() { return revision; }
+
+    public long approvalRevision() { return approvalRevision; }
+
+    public String packageDigest() { return packageDigest; }
+
+    public String frontendDigest() { return frontendDigest; }
+
+    public List<String> declaredActions() { return declaredActions; }
+
+    public List<String> approvedActions() { return approvedActions; }
+
+    public List<String> declaredCapabilities() { return declaredCapabilities; }
+
+    public List<String> approvedCapabilities() { return approvedCapabilities; }
+
+    public UUID approver() { return approver; }
+
+    public long approvedAt() { return approvedAt; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof Deployment)) return false;
+        Deployment that = (Deployment) other;
+        return java.util.Objects.equals(this.appId, that.appId)
+                && java.util.Objects.equals(this.deploymentId, that.deploymentId)
+                && java.util.Objects.equals(this.revision, that.revision)
+                && this.approvalRevision == that.approvalRevision
+                && java.util.Objects.equals(this.packageDigest, that.packageDigest)
+                && java.util.Objects.equals(this.frontendDigest, that.frontendDigest)
+                && java.util.Objects.equals(this.declaredActions, that.declaredActions)
+                && java.util.Objects.equals(this.approvedActions, that.approvedActions)
+                && java.util.Objects.equals(this.declaredCapabilities, that.declaredCapabilities)
+                && java.util.Objects.equals(this.approvedCapabilities, that.approvedCapabilities)
+                && java.util.Objects.equals(this.approver, that.approver)
+                && this.approvedAt == that.approvedAt;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(appId);
+        hash = 31 * hash + java.util.Objects.hashCode(deploymentId);
+        hash = 31 * hash + java.util.Objects.hashCode(revision);
+        hash = 31 * hash + java.util.Objects.hashCode(approvalRevision);
+        hash = 31 * hash + java.util.Objects.hashCode(packageDigest);
+        hash = 31 * hash + java.util.Objects.hashCode(frontendDigest);
+        hash = 31 * hash + java.util.Objects.hashCode(declaredActions);
+        hash = 31 * hash + java.util.Objects.hashCode(approvedActions);
+        hash = 31 * hash + java.util.Objects.hashCode(declaredCapabilities);
+        hash = 31 * hash + java.util.Objects.hashCode(approvedCapabilities);
+        hash = 31 * hash + java.util.Objects.hashCode(approver);
+        hash = 31 * hash + java.util.Objects.hashCode(approvedAt);
+        return hash;
+    }
+
+    @Override public String toString() { return "Deployment[appId=" + appId + ", deploymentId=" + deploymentId + ", revision=" + revision + ", approvalRevision=" + approvalRevision + ", packageDigest=" + packageDigest + ", frontendDigest=" + frontendDigest + ", declaredActions=" + declaredActions + ", approvedActions=" + approvedActions + ", declaredCapabilities=" + declaredCapabilities + ", approvedCapabilities=" + approvedCapabilities + ", approver=" + approver + ", approvedAt=" + approvedAt + "]"; }
+
 
     /** 与线格式同一套上限：握手一条部署最多推这么多动作（{@code ScriptProtocol.MAX_ACTIONS_PER_DEPLOYMENT}）。 */
     public static final int MAX_ACTIONS = 32;
@@ -52,13 +116,25 @@ public record Deployment(
     /** 摘要一律是裸小写 SHA-256 hex，64 字符。 */
     public static final int DIGEST_LEN = 64;
 
-    public Deployment {
+    public Deployment(String appId, String deploymentId, String revision, long approvalRevision, String packageDigest, String frontendDigest, List<String> declaredActions, List<String> approvedActions, List<String> declaredCapabilities, List<String> approvedCapabilities, UUID approver, long approvedAt) {
         // M5/C13：revision 与 packageDigest 是同一个值，构造时就归一 —— 只有一个源，永远不会分叉
         if (packageDigest != null && !packageDigest.equals(revision)) revision = packageDigest;
-        declaredActions = List.copyOf(declaredActions);
-        approvedActions = List.copyOf(approvedActions);
-        declaredCapabilities = List.copyOf(declaredCapabilities);
-        approvedCapabilities = List.copyOf(approvedCapabilities);
+        declaredActions = ImmutableList.copyOf(declaredActions);
+        approvedActions = ImmutableList.copyOf(approvedActions);
+        declaredCapabilities = ImmutableList.copyOf(declaredCapabilities);
+        approvedCapabilities = ImmutableList.copyOf(approvedCapabilities);
+        this.appId = appId;
+        this.deploymentId = deploymentId;
+        this.revision = revision;
+        this.approvalRevision = approvalRevision;
+        this.packageDigest = packageDigest;
+        this.frontendDigest = frontendDigest;
+        this.declaredActions = declaredActions;
+        this.approvedActions = approvedActions;
+        this.declaredCapabilities = declaredCapabilities;
+        this.approvedCapabilities = approvedCapabilities;
+        this.approver = approver;
+        this.approvedAt = approvedAt;
     }
 
     /** OP 批没批这个动作。 */

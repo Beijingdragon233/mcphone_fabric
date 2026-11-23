@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.reader.txt;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -65,7 +69,42 @@ public final class TxtChapters {
      * @param title 章节名；{@code null} 表示这一段没有标题（认不出章节的书、或正文
      *              开头在第一个标题之前的那一段），由界面给它起个名字
      */
-    public record Chapter(String title, int start, int end) {
+    public static final class Chapter {
+        private final String title;
+        private final int start;
+        private final int end;
+
+        public Chapter(String title, int start, int end) {
+            this.title = title;
+            this.start = start;
+            this.end = end;
+        }
+
+        public String title() { return title; }
+
+        public int start() { return start; }
+
+        public int end() { return end; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Chapter)) return false;
+            Chapter that = (Chapter) other;
+            return java.util.Objects.equals(this.title, that.title)
+                    && this.start == that.start
+                    && this.end == that.end;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(title);
+            hash = 31 * hash + java.util.Objects.hashCode(start);
+            hash = 31 * hash + java.util.Objects.hashCode(end);
+            return hash;
+        }
+
+        @Override public String toString() { return "Chapter[title=" + title + ", start=" + start + ", end=" + end + "]"; }
+
 
         public int length() {
             return end - start;
@@ -120,7 +159,7 @@ public final class TxtChapters {
     public static boolean isTitle(String line) {
         if (line == null) return false;
 
-        String trimmed = line.strip();
+        String trimmed = Java8.strip(line);
         if (trimmed.isEmpty() || trimmed.length() > MAX_TITLE_LINE) return false;
 
         return TITLE.matcher(trimmed).matches();
@@ -133,16 +172,16 @@ public final class TxtChapters {
      * 漏一段就会出现"读到 101%"。空文本返回空表。
      */
     public static List<Chapter> split(String text) {
-        if (text == null || text.isEmpty()) return List.of();
+        if (text == null || text.isEmpty()) return ImmutableList.of();
 
         // 一个标题都没有时 byTitle 给的就是"整本一段"，与按字数切是同一条路——
         // 那一段接着会被 splitLong 按 CHUNK 切开
         List<Chapter> chapters = byTitle(text);
-        if (chapters.isEmpty()) chapters = List.of(new Chapter(null, 0, text.length()));
+        if (chapters.isEmpty()) chapters = ImmutableList.of(new Chapter(null, 0, text.length()));
 
         List<Chapter> out = new ArrayList<>(chapters.size());
         for (Chapter chapter : chapters) splitLong(text, chapter, out);
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /** 按标题行切。第一个标题之前的那一段（书名页、简介）单独成一章，标题为 null */
@@ -165,7 +204,7 @@ public final class TxtChapters {
                 if (lineStart > chapterStart || chapterTitle != null) {
                     out.add(new Chapter(chapterTitle, chapterStart, lineStart));
                 }
-                chapterTitle = line.strip();
+                chapterTitle = Java8.strip(line);
                 chapterStart = lineStart;
             }
 

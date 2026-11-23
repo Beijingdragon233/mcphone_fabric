@@ -24,14 +24,40 @@ import java.util.UUID;
  * @param uuid 唯一身份，不为 null
  * @param name 最后一次见到的显示名，只用于显示
  */
-public record PlayerRef(UUID uuid, String name) {
+public final class PlayerRef {
+    private final UUID uuid;
+    private final String name;
+
+    public UUID uuid() { return uuid; }
+
+    public String name() { return name; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof PlayerRef)) return false;
+        PlayerRef that = (PlayerRef) other;
+        return java.util.Objects.equals(this.uuid, that.uuid)
+                && java.util.Objects.equals(this.name, that.name);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(uuid);
+        hash = 31 * hash + java.util.Objects.hashCode(name);
+        return hash;
+    }
+
+    @Override public String toString() { return "PlayerRef[uuid=" + uuid + ", name=" + name + "]"; }
+
 
     /** 显示名的上限。原版名字 16 个字符，留一倍余量给别的来源。 */
     public static final int MAX_NAME = 32;
 
-    public PlayerRef {
+    public PlayerRef(UUID uuid, String name) {
         if (uuid == null) throw new IllegalArgumentException("PlayerRef.uuid 不能为 null");
         if (name == null) name = "";
         if (name.length() > MAX_NAME) name = name.substring(0, MAX_NAME);
+        this.uuid = uuid;
+        this.name = name;
     }
 }

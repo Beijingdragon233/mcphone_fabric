@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.reader.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.reader.txt.TextDecoder;
 import com.november.mcphone.feature.reader.txt.TxtChapters;
 import net.minecraft.client.gui.Font;
@@ -43,7 +47,7 @@ public final class TxtBook {
     /** 上一次排版的结果与它的凭据，见类注释 */
     private int laidOutChapter = -1;
     private int laidOutWidth = -1;
-    private List<FormattedCharSequence> laidOutLines = List.of();
+    private List<FormattedCharSequence> laidOutLines = ImmutableList.of();
 
     private TxtBook(TxtLibrary.Entry entry, String text, Charset charset,
                     List<TxtChapters.Chapter> chapters) {
@@ -108,12 +112,12 @@ public final class TxtBook {
      * 结果缓存着，界面每帧问都行——翻页只是换一个起始行，不必重排。
      */
     public List<FormattedCharSequence> lines(int chapterIndex, Font font, int width) {
-        if (width <= 0) return List.of();
+        if (width <= 0) return ImmutableList.of();
 
         if (chapterIndex == laidOutChapter && width == laidOutWidth) return laidOutLines;
 
         TxtChapters.Chapter chapter = chapterAt(chapterIndex);
-        if (chapter == null) return List.of();
+        if (chapter == null) return ImmutableList.of();
 
         laidOutChapter = chapterIndex;
         laidOutWidth = width;
@@ -142,7 +146,7 @@ public final class TxtBook {
         for (String paragraph : chapterText.split("\n", -1)) {
             String line = stripTrailing(paragraph);
 
-            if (line.isBlank()) {
+            if (Java8.isBlank(line)) {
                 // 连着的空行并成一行，理由见类注释。开头的空行直接丢掉
                 if (!lastBlank && !out.isEmpty()) out.add(FormattedCharSequence.EMPTY);
                 lastBlank = true;
@@ -152,7 +156,7 @@ public final class TxtBook {
             lastBlank = false;
             out.addAll(font.split(FormattedText.of(line), width));
         }
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /** 去掉行尾空白：源文件里常有一串全角空格，留着会让折行提前一行 */

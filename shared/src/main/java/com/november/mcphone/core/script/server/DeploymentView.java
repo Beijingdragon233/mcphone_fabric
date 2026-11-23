@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableSet;
+
 /**
  * 本服批准了哪些 App 的哪些动作（施工方案 §13.4 第 3 层）。真正的部署表是 S17 的交付物。
  *
@@ -23,6 +25,6 @@ public interface DeploymentView {
      * <b>默认空集</b>：老替身天然是"什么能力都没批"，方向安全。
      */
     default java.util.Set<String> approvedCapabilities(String appId) {
-        return java.util.Set.of();
+        return ImmutableSet.of();
     }
 }

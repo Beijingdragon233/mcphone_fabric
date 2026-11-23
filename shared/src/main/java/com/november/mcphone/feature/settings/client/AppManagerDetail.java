@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.settings.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import com.mojang.blaze3d.platform.InputConstants;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
@@ -74,7 +78,7 @@ public final class AppManagerDetail {
     private boolean keyRowHovered;
 
     /** 这个 App 自己的开关（相机的快门闪光就是一个）。鼠标停在第几行，-1 表示没有 */
-    private List<AppOptions.Toggle> options = List.of();
+    private List<AppOptions.Toggle> options = ImmutableList.of();
     private int optionsTop;
     private int hoveredOption = -1;
 
@@ -168,7 +172,7 @@ public final class AppManagerDetail {
 
         String author = safe(app::getAuthor, "");
         String version = safe(app::getVersion, "");
-        String meta = author.isBlank() ? "v" + version : author + " · v" + version;
+        String meta = Java8.isBlank(author) ? "v" + version : author + " · v" + version;
         g.drawString(font, GuiUtil.truncate(font, meta, textW),
                 textX, y + 2 + font.lineHeight + 2, FontPalette.subtle(), false);
 
@@ -191,8 +195,8 @@ public final class AppManagerDetail {
         GuiUtil.enableScissor(g, x, bodyTop, x + w, bodyBottom);
 
         String desc = safe(app::getDescription, "");
-        if (desc.isBlank()) desc = Component.translatable("mcphone.store.no_description").getString();
-        for (var line : font.split(Component.literal(desc), w)) {
+        if (Java8.isBlank(desc)) desc = Component.translatable("mcphone.store.no_description").getString();
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.literal(desc), w)) {
             g.drawString(font, line, x, y, FontPalette.body(), false);
             y += font.lineHeight + 1;
         }

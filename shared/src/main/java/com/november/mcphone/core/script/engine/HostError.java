@@ -81,6 +81,6 @@ public final class HostError extends WrappedException {
 
     /** Returns a code only for an instance minted by this host class. */
     public static String classify(Throwable failure) {
-        return failure instanceof HostError error && error.marker == TOKEN ? error.code : null;
+        return failure instanceof HostError && ((HostError) failure).marker == TOKEN ? ((HostError) failure).code : null;
     }
 }

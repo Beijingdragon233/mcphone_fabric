@@ -1,5 +1,10 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.november.mcphone.util.Java8;
+
+import com.november.mcphone.util.Java8Collections;
+
+import java.util.stream.Stream;
 import com.november.mcphone.api.economy.TxnReason;
 import com.november.mcphone.api.economy.TxnResult;
 
@@ -218,8 +223,8 @@ public final class TxnLog {
      */
     private List<Path> filesOldestFirst() throws IOException {
         List<Path> files = new ArrayList<>();
-        try (var s = Files.list(dir)) {
-            for (Path p : s.toList()) {
+        try (Stream<Path> s = Files.list(dir)) {
+            for (Path p : s.collect(Java8Collections.toList())) {
                 if (NAME.matcher(p.getFileName().toString()).matches()) files.add(p);
             }
         }
@@ -292,7 +297,7 @@ public final class TxnLog {
             }
             Path f = fileFor(at);
             if (Files.exists(f) && Files.size(f) >= MAX_FILE_BYTES) f = rotated(f);
-            Files.writeString(f, encodable(line) + "\n", StandardCharsets.UTF_8,
+            Java8.writeString(f, encodable(line) + "\n", StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             // 写不了流水是要命的（对账就断了），但不能因此把这笔交易也搞砸 —— 交易已经做完了
@@ -340,9 +345,9 @@ public final class TxnLog {
         if (!Files.isDirectory(dir)) return 0;
         long cutoff = now.minusSeconds(RETENTION_DAYS * 86400L).toEpochMilli();
         int n = 0;
-        try (var s = Files.list(dir)) {
+        try (Stream<Path> s = Files.list(dir)) {
             List<Path> old = new ArrayList<>();
-            for (Path p : s.toList()) {
+            for (Path p : s.collect(Java8Collections.toList())) {
                 if (Files.getLastModifiedTime(p).toMillis() < cutoff) old.add(p);
             }
             for (Path p : old) {

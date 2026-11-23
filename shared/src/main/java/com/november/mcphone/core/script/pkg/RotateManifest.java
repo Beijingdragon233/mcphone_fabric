@@ -21,8 +21,54 @@ import java.security.Signature;
  * <p>签的是 {@code "mcphone-rotate-v1\0" || oldFingerprint || newPubkey}，
  * 域分隔符与包签名、包摘要都不同 —— 三处的哈希互相不能当输入用。
  */
-public record RotateManifest(int format, String alg, String oldFingerprint,
-                             byte[] newPubkey, byte[] sig) {
+public final class RotateManifest {
+    private final int format;
+    private final String alg;
+    private final String oldFingerprint;
+    private final byte[] newPubkey;
+    private final byte[] sig;
+
+    public RotateManifest(int format, String alg, String oldFingerprint, byte[] newPubkey, byte[] sig) {
+        this.format = format;
+        this.alg = alg;
+        this.oldFingerprint = oldFingerprint;
+        this.newPubkey = newPubkey;
+        this.sig = sig;
+    }
+
+    public int format() { return format; }
+
+    public String alg() { return alg; }
+
+    public String oldFingerprint() { return oldFingerprint; }
+
+    public byte[] newPubkey() { return newPubkey; }
+
+    public byte[] sig() { return sig; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof RotateManifest)) return false;
+        RotateManifest that = (RotateManifest) other;
+        return this.format == that.format
+                && java.util.Objects.equals(this.alg, that.alg)
+                && java.util.Objects.equals(this.oldFingerprint, that.oldFingerprint)
+                && java.util.Objects.equals(this.newPubkey, that.newPubkey)
+                && java.util.Objects.equals(this.sig, that.sig);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(format);
+        hash = 31 * hash + java.util.Objects.hashCode(alg);
+        hash = 31 * hash + java.util.Objects.hashCode(oldFingerprint);
+        hash = 31 * hash + java.util.Objects.hashCode(newPubkey);
+        hash = 31 * hash + java.util.Objects.hashCode(sig);
+        return hash;
+    }
+
+    @Override public String toString() { return "RotateManifest[format=" + format + ", alg=" + alg + ", oldFingerprint=" + oldFingerprint + ", newPubkey=" + newPubkey + ", sig=" + sig + "]"; }
+
 
     public static final int FORMAT = 1;
 
@@ -63,7 +109,7 @@ public record RotateManifest(int format, String alg, String oldFingerprint,
         if (!oldFingerprint.equals(Signatures.fingerprint(oldPubkeyX509))) return false;
         try {
             PublicKey old = Signatures.publicKey(oldPubkeyX509);
-            Signature s = Signature.getInstance("Ed25519");
+            Signature s = Signatures.signature();
             s.initVerify(old);
             s.update(payload(oldFingerprint, newPubkey));
             return s.verify(sig);
@@ -75,7 +121,7 @@ public record RotateManifest(int format, String alg, String oldFingerprint,
     /** 签一份。作者换设备时用旧密钥跑一次。 */
     public static byte[] sign(java.security.PrivateKey oldPriv, String oldFingerprint, byte[] newPubkey) {
         try {
-            Signature s = Signature.getInstance("Ed25519");
+            Signature s = Signatures.signature();
             s.initSign(oldPriv);
             s.update(payload(oldFingerprint, newPubkey));
             return s.sign();

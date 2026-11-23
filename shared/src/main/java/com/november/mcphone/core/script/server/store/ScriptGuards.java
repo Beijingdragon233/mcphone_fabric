@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server.store;
 
+import com.google.common.collect.ImmutableMap;
+
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
@@ -18,9 +20,28 @@ import java.util.Map;
  * <p><b>1.20.1 的 {@code copyDeathPersistentFrom} 必须带上它</b>：不带的话死一次就能重领，
  * 而死亡在 Minecraft 里是随时可以自己安排的事。
  */
-public record ScriptGuards(Map<String, Long> counters) {
+public final class ScriptGuards {
+    private final Map<String, Long> counters;
 
-    public static final ScriptGuards DEFAULT = new ScriptGuards(Map.of());
+    public Map<String, Long> counters() { return counters; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ScriptGuards)) return false;
+        ScriptGuards that = (ScriptGuards) other;
+        return java.util.Objects.equals(this.counters, that.counters);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(counters);
+        return hash;
+    }
+
+    @Override public String toString() { return "ScriptGuards[counters=" + counters + "]"; }
+
+
+    public static final ScriptGuards DEFAULT = new ScriptGuards(ImmutableMap.of());
 
     public static final Codec<ScriptGuards> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
@@ -29,8 +50,9 @@ public record ScriptGuards(Map<String, Long> counters) {
             ).apply(instance, ScriptGuards::new)
     );
 
-    public ScriptGuards {
-        counters = Map.copyOf(counters);
+    public ScriptGuards(Map<String, Long> counters) {
+        counters = ImmutableMap.copyOf(counters);
+        this.counters = counters;
     }
 
     /** 守卫键：命名空间 + 守卫名 + 周期标签（§20.1 的 label 就是 {@code ctx.cycle.label} 给的那个）。 */

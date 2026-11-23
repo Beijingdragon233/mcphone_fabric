@@ -175,4 +175,5 @@ apply from: '../../gradle/mcphone-engine-dependency.gradle'
 
 ext.mcphoneApiBindings = '1.18.2-api-names.json'
 ext.mcphoneVersionSources = '../../layers/version/1.18.2/src/main/java'
+ext.mcphoneBindingOverrideLayers = ['forge-1.16.5-sounds']
 apply from: '../../gradle/mcphone-port-bindings.gradle'

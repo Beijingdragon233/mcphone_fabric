@@ -27,8 +27,66 @@ import java.util.Base64;
  * 那是两档不同的状态（§12.4）：「未签名」给二次确认的路，「签名无效」硬拒绝。
  * 把一个用不认识的算法签的包显示成「未签名」，等于把硬拒绝降级成二次确认。
  */
-public record SigManifest(int format, String alg, String digest, byte[] pubkey,
-                          byte[] sig, String author, long signedAt) {
+public final class SigManifest {
+    private final int format;
+    private final String alg;
+    private final String digest;
+    private final byte[] pubkey;
+    private final byte[] sig;
+    private final String author;
+    private final long signedAt;
+
+    public SigManifest(int format, String alg, String digest, byte[] pubkey, byte[] sig, String author, long signedAt) {
+        this.format = format;
+        this.alg = alg;
+        this.digest = digest;
+        this.pubkey = pubkey;
+        this.sig = sig;
+        this.author = author;
+        this.signedAt = signedAt;
+    }
+
+    public int format() { return format; }
+
+    public String alg() { return alg; }
+
+    public String digest() { return digest; }
+
+    public byte[] pubkey() { return pubkey; }
+
+    public byte[] sig() { return sig; }
+
+    public String author() { return author; }
+
+    public long signedAt() { return signedAt; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof SigManifest)) return false;
+        SigManifest that = (SigManifest) other;
+        return this.format == that.format
+                && java.util.Objects.equals(this.alg, that.alg)
+                && java.util.Objects.equals(this.digest, that.digest)
+                && java.util.Objects.equals(this.pubkey, that.pubkey)
+                && java.util.Objects.equals(this.sig, that.sig)
+                && java.util.Objects.equals(this.author, that.author)
+                && this.signedAt == that.signedAt;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(format);
+        hash = 31 * hash + java.util.Objects.hashCode(alg);
+        hash = 31 * hash + java.util.Objects.hashCode(digest);
+        hash = 31 * hash + java.util.Objects.hashCode(pubkey);
+        hash = 31 * hash + java.util.Objects.hashCode(sig);
+        hash = 31 * hash + java.util.Objects.hashCode(author);
+        hash = 31 * hash + java.util.Objects.hashCode(signedAt);
+        return hash;
+    }
+
+    @Override public String toString() { return "SigManifest[format=" + format + ", alg=" + alg + ", digest=" + digest + ", pubkey=" + pubkey + ", sig=" + sig + ", author=" + author + ", signedAt=" + signedAt + "]"; }
+
 
     public static final int FORMAT = 1;
 
@@ -84,7 +142,7 @@ public record SigManifest(int format, String alg, String digest, byte[] pubkey,
 
     static JsonObject object(byte[] json) {
         try {
-            var parsed = JsonParser.parseString(new String(json, StandardCharsets.UTF_8));
+            com.google.gson.JsonElement parsed = JsonParser.parseString(new String(json, StandardCharsets.UTF_8));
             if (!parsed.isJsonObject()) throw PackageError.of(PackageError.Code.E_SIG_BAD_JSON, "顶层不是对象");
             return parsed.getAsJsonObject();
         } catch (JsonParseException e) {

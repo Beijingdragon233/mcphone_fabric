@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.core.client.ClientPaths;
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.core.client.ImageCodec;
@@ -40,7 +42,7 @@ public final class StickerLibrary {
 
     /** ImageIO 自带解码器认得的那几种。gif 是动的：拆帧拼成雪碧图发出去，见 ChatImageSender */
     private static final Set<String> EXTENSIONS =
-            Set.of(".png", ".jpg", ".jpeg", ".gif", ".bmp");
+            ImmutableSet.of(".png", ".jpg", ".jpeg", ".gif", ".bmp");
 
     private static final ImageFolder FOLDER = new ImageFolder(
             () -> ClientPaths.resolve(PhonePaths.STICKERS), EXTENSIONS, THUMB_MAX_SIDE, MIN_CACHED, "sticker_thumb_");

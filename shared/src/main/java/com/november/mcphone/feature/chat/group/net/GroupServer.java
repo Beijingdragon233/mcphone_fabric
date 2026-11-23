@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.chat.group.net;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.feature.chat.*;
 import com.november.mcphone.feature.chat.group.*;
 import com.november.mcphone.feature.chat.net.ChatImageDataPacket;
@@ -23,56 +27,56 @@ public final class GroupServer {
     public static void handle(GroupCommand command, ServerPlayer player) {
         if (reply == null || pixels == null) throw new IllegalStateException("群网络推送未注册");
         try {
-            var data = GroupData.get(player.level().getServer());
+            com.november.mcphone.feature.chat.group.GroupData data = GroupData.get(player.level().getServer());
             if (!data.isAvailable()) throw new GroupFault(GroupStatus.UNAVAILABLE);
             GroupImageFiles.sweepOnce(player.level().getServer());
             if (command instanceof GroupCommand.ListRooms) { throttle(player, GroupThrottle.Kind.DIRECTORY); directory(player); }
             else if (command instanceof GroupCommand.Notices) { throttle(player, GroupThrottle.Kind.NOTICES); notices(player); }
-            else if (command instanceof GroupCommand.Create v) {
-                throttle(player, GroupThrottle.Kind.CREATE); var room = GroupService.create(player, v.name(), v.members());
+            else if (command instanceof GroupCommand.Create) {
+                throttle(player, GroupThrottle.Kind.CREATE); com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.create(player, ((GroupCommand.Create) command).name(), ((GroupCommand.Create) command).members());
                 refreshMembers(player, room); refreshInvitationRecipients(player, data.book().pendingRecipients(room.id()));
-                result(player, v, GroupStatus.OK, room.id());
-            } else if (command instanceof GroupCommand.History v) {
-                throttle(player, GroupThrottle.Kind.HISTORY); var room = GroupService.read(player, v.group());
-                reply.accept(player, new GroupReply.History(v.request(), room.id(), room.revision(), room.sequence(), GroupInfo.of(room), room.visible(player.getUUID())));
-            } else if (command instanceof GroupCommand.SendText v) {
+                result(player, ((GroupCommand.Create) command), GroupStatus.OK, room.id());
+            } else if (command instanceof GroupCommand.History) {
+                throttle(player, GroupThrottle.Kind.HISTORY); com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.read(player, ((GroupCommand.History) command).group());
+                reply.accept(player, new GroupReply.History(((GroupCommand.History) command).request(), room.id(), room.revision(), room.sequence(), GroupInfo.of(room), room.visible(player.getUUID())));
+            } else if (command instanceof GroupCommand.SendText) {
                 throttle(player, GroupThrottle.Kind.TEXT);
-                long before = GroupService.read(player,v.group()).sequence();
-                var sent = GroupService.sendText(player,v.group(),v.text(),v.reply(),v.request());
-                if (sent.sequence() <= before) result(player,v,GroupStatus.OK,v.group());
-                else deliver(player,v.group(),v.request());
-            } else if (command instanceof GroupCommand.MarkRead v) {
-                throttle(player, GroupThrottle.Kind.READ); GroupService.markRead(player, v.group(), v.sequence()); directory(player);
-            } else if (command instanceof GroupCommand.Details v) {
-                throttle(player, GroupThrottle.Kind.DETAILS); var room = GroupService.read(player, v.group());
-                reply.accept(player, new GroupReply.Details(v.request(), room.revision(), GroupInfo.of(room)));
-            } else if (command instanceof GroupCommand.Delete v) delete(v, player);
-            else if (command instanceof GroupCommand.Leave v) {
-                throttle(player, GroupThrottle.Kind.MANAGE); var recipients = data.book().pendingRecipients(v.group());
-                var room = GroupService.leave(player, v.group()); refreshInvitationRecipients(player, recipients);
-                refreshMembers(player, room); result(player, v, GroupStatus.OK, v.group());
-            } else if (command instanceof GroupCommand.Dissolve v) {
-                throttle(player, GroupThrottle.Kind.MANAGE); var recipients = data.book().pendingRecipients(v.group());
-                var room = GroupService.dissolve(player, v.group()); refreshInvitationRecipients(player, recipients);
-                refreshMembers(player, room); result(player, v, GroupStatus.OK, v.group());
-            } else if (command instanceof GroupCommand.Rename v) {
-                throttle(player, GroupThrottle.Kind.MANAGE); var room = GroupService.rename(player, v.group(), v.name());
-                refreshMembers(player, room); refreshInvitationRecipients(player, data.book().pendingRecipients(v.group()));
-                result(player, v, GroupStatus.OK, v.group());
-            } else if (command instanceof GroupCommand.Invite v) {
-                throttle(player, GroupThrottle.Kind.MANAGE); var room = GroupService.invite(player, v.group(), v.members());
-                refreshInvitationRecipients(player, data.book().pendingRecipients(room.id())); result(player, v, GroupStatus.OK, v.group());
-            } else if (command instanceof GroupCommand.RespondInvitation v) {
-                throttle(player, GroupThrottle.Kind.MANAGE); var room = GroupService.respondInvitation(player, v.group(), v.invitation(), v.accept());
-                if (v.accept()) refreshMembers(player, room);
-                notices(player); result(player, v, GroupStatus.OK, v.group());
-            } else if (command instanceof GroupCommand.Images v) images(v, player);
-            else if (command instanceof GroupCommand.Upload v) upload(v, player);
+                long before = GroupService.read(player,((GroupCommand.SendText) command).group()).sequence();
+                com.november.mcphone.feature.chat.group.GroupMessage sent = GroupService.sendText(player,((GroupCommand.SendText) command).group(),((GroupCommand.SendText) command).text(),((GroupCommand.SendText) command).reply(),((GroupCommand.SendText) command).request());
+                if (sent.sequence() <= before) result(player,((GroupCommand.SendText) command),GroupStatus.OK,((GroupCommand.SendText) command).group());
+                else deliver(player,((GroupCommand.SendText) command).group(),((GroupCommand.SendText) command).request());
+            } else if (command instanceof GroupCommand.MarkRead) {
+                throttle(player, GroupThrottle.Kind.READ); GroupService.markRead(player, ((GroupCommand.MarkRead) command).group(), ((GroupCommand.MarkRead) command).sequence()); directory(player);
+            } else if (command instanceof GroupCommand.Details) {
+                throttle(player, GroupThrottle.Kind.DETAILS); com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.read(player, ((GroupCommand.Details) command).group());
+                reply.accept(player, new GroupReply.Details(((GroupCommand.Details) command).request(), room.revision(), GroupInfo.of(room)));
+            } else if (command instanceof GroupCommand.Delete) delete(((GroupCommand.Delete) command), player);
+            else if (command instanceof GroupCommand.Leave) {
+                throttle(player, GroupThrottle.Kind.MANAGE); List<UUID> recipients = data.book().pendingRecipients(((GroupCommand.Leave) command).group());
+                com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.leave(player, ((GroupCommand.Leave) command).group()); refreshInvitationRecipients(player, recipients);
+                refreshMembers(player, room); result(player, ((GroupCommand.Leave) command), GroupStatus.OK, ((GroupCommand.Leave) command).group());
+            } else if (command instanceof GroupCommand.Dissolve) {
+                throttle(player, GroupThrottle.Kind.MANAGE); List<UUID> recipients = data.book().pendingRecipients(((GroupCommand.Dissolve) command).group());
+                com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.dissolve(player, ((GroupCommand.Dissolve) command).group()); refreshInvitationRecipients(player, recipients);
+                refreshMembers(player, room); result(player, ((GroupCommand.Dissolve) command), GroupStatus.OK, ((GroupCommand.Dissolve) command).group());
+            } else if (command instanceof GroupCommand.Rename) {
+                throttle(player, GroupThrottle.Kind.MANAGE); com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.rename(player, ((GroupCommand.Rename) command).group(), ((GroupCommand.Rename) command).name());
+                refreshMembers(player, room); refreshInvitationRecipients(player, data.book().pendingRecipients(((GroupCommand.Rename) command).group()));
+                result(player, ((GroupCommand.Rename) command), GroupStatus.OK, ((GroupCommand.Rename) command).group());
+            } else if (command instanceof GroupCommand.Invite) {
+                throttle(player, GroupThrottle.Kind.MANAGE); com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.invite(player, ((GroupCommand.Invite) command).group(), ((GroupCommand.Invite) command).members());
+                refreshInvitationRecipients(player, data.book().pendingRecipients(room.id())); result(player, ((GroupCommand.Invite) command), GroupStatus.OK, ((GroupCommand.Invite) command).group());
+            } else if (command instanceof GroupCommand.RespondInvitation) {
+                throttle(player, GroupThrottle.Kind.MANAGE); com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.respondInvitation(player, ((GroupCommand.RespondInvitation) command).group(), ((GroupCommand.RespondInvitation) command).invitation(), ((GroupCommand.RespondInvitation) command).accept());
+                if (((GroupCommand.RespondInvitation) command).accept()) refreshMembers(player, room);
+                notices(player); result(player, ((GroupCommand.RespondInvitation) command), GroupStatus.OK, ((GroupCommand.RespondInvitation) command).group());
+            } else if (command instanceof GroupCommand.Images) images(((GroupCommand.Images) command), player);
+            else if (command instanceof GroupCommand.Upload) upload(((GroupCommand.Upload) command), player);
         } catch (GroupFault error) {
-            if (command instanceof GroupCommand.Delete v) {
+            if (command instanceof GroupCommand.Delete) {
                 ChatDeletionResult status = error.status() == GroupStatus.BUSY ? ChatDeletionResult.BUSY
                         : error.status() == GroupStatus.UNAVAILABLE ? ChatDeletionResult.STORAGE_ERROR : ChatDeletionResult.FORBIDDEN;
-                reply.accept(player, new GroupReply.Deleted(v.request(), v.group(), v.message(), status, 0, List.of()));
+                reply.accept(player, new GroupReply.Deleted(((GroupCommand.Delete) command).request(), ((GroupCommand.Delete) command).group(), ((GroupCommand.Delete) command).message(), status, 0, ImmutableList.of()));
             } else {
                 result(player, command, error.status(), command.group());
                 if (command instanceof GroupCommand.RespondInvitation && error.status() == GroupStatus.INVITATION_GONE) notices(player);
@@ -81,7 +85,7 @@ public final class GroupServer {
     }
     private static void delete(GroupCommand.Delete v, ServerPlayer player) {
         throttle(player, GroupThrottle.Kind.DELETE);
-        boolean changed = GroupService.delete(player, v.group(), v.message()); var room = GroupService.read(player, v.group());
+        boolean changed = GroupService.delete(player, v.group(), v.message()); com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.read(player, v.group());
         reply.accept(player, new GroupReply.Deleted(v.request(), v.group(), v.message(), changed ? ChatDeletionResult.OK
                 : ChatDeletionResult.NOT_FOUND, room.revision(), room.visible(player.getUUID())));
         directory(player);
@@ -93,9 +97,9 @@ public final class GroupServer {
             throttle(player, GroupThrottle.Kind.UPLOAD);
             if (v.count() > ChatImage.maxChunks()) throw new GroupFault(GroupStatus.INVALID);
         }
-        var done = UPLOADS.accept(player, v, ChatImage.maxBytes(), System.currentTimeMillis()); if (done == null) return;
+        com.november.mcphone.feature.chat.group.GroupImageAssembly.Complete done = UPLOADS.accept(player, v, ChatImage.maxBytes(), System.currentTimeMillis()); if (done == null) return;
         if (!ChatImageStore.looksLikePng(done.png())) throw new GroupFault(GroupStatus.INVALID);
-        var server = player.level().getServer();
+        net.minecraft.server.MinecraftServer server = player.level().getServer();
         Util.backgroundExecutor().execute(() -> {
             UUID image = GroupImageFiles.write(server, v.group(), done.png());
             server.execute(() -> {
@@ -104,23 +108,23 @@ public final class GroupServer {
                 catch (GroupFault error) { result(player, v, error.status(), v.group()); }
                 finally {
                     GroupImageFiles.release(server, image);
-                    var data = GroupData.get(server);
-                    if (data.isAvailable()) GroupImageFiles.clean(server, java.util.Set.of(image), GroupService.imageReferences(server, v.group()));
+                    com.november.mcphone.feature.chat.group.GroupData data = GroupData.get(server);
+                    if (data.isAvailable()) GroupImageFiles.clean(server, ImmutableSet.of(image), GroupService.imageReferences(server, v.group()));
                 }
             });
         });
     }
     private static void images(GroupCommand.Images v, ServerPlayer player) {
         throttle(player, GroupThrottle.Kind.IMAGES);
-        var allowed = v.images().stream().distinct().filter(id -> GroupService.mayReadImage(player, v.group(), id)).toList();
-        var server = player.level().getServer();
+        List<UUID> allowed = v.images().stream().distinct().filter(id -> GroupService.mayReadImage(player, v.group(), id)).collect(Java8Collections.toList());
+        net.minecraft.server.MinecraftServer server = player.level().getServer();
         Util.backgroundExecutor().execute(() -> {
             int total = 0;
-            for (var id : allowed) {
+            for (UUID id : allowed) {
                 byte[] data = GroupImageFiles.read(server, id);
                 if (data != null && total + data.length > ChatImage.maxBytes()) break;
                 if (data != null) total += data.length;
-                var packet = data == null ? ChatImageDataPacket.gone(id) : new ChatImageDataPacket(id, data);
+                com.november.mcphone.feature.chat.net.ChatImageDataPacket packet = data == null ? ChatImageDataPacket.gone(id) : new ChatImageDataPacket(id, data);
                 server.execute(() -> { if (!player.hasDisconnected() && GroupService.mayReadImage(player, v.group(), id)) pixels.accept(player, packet); });
             }
         });
@@ -131,26 +135,26 @@ public final class GroupServer {
     private static void directory(ServerPlayer player) { if (!player.hasDisconnected()) reply.accept(player, new GroupReply.Directory(GroupService.summaries(player))); }
     private static void notices(ServerPlayer player) { if (!player.hasDisconnected()) reply.accept(player, new GroupReply.Notices(GroupService.notices(player))); }
     private static void refreshInvitationRecipients(ServerPlayer actor, List<UUID> recipients) {
-        var server = actor.level().getServer();
-        for (var id : recipients) { var player = server.getPlayerList().getPlayer(id); if (player != null) notices(player); }
+        net.minecraft.server.MinecraftServer server = actor.level().getServer();
+        for (UUID id : recipients) { net.minecraft.server.level.ServerPlayer player = server.getPlayerList().getPlayer(id); if (player != null) notices(player); }
     }
     private static void result(ServerPlayer player, GroupCommand command, GroupStatus status, UUID group) {
         if (!player.hasDisconnected()) reply.accept(player, new GroupReply.Result(command.request(), group, status));
     }
     private static void refreshMembers(ServerPlayer actor, GroupRoom room) {
-        var server = actor.level().getServer();
-        for (var member : room.members()) {
-            var online = server.getPlayerList().getPlayer(member.id()); if (online == null) continue;
+        net.minecraft.server.MinecraftServer server = actor.level().getServer();
+        for (com.november.mcphone.feature.chat.group.GroupMember member : room.members()) {
+            net.minecraft.server.level.ServerPlayer online = server.getPlayerList().getPlayer(member.id()); if (online == null) continue;
             directory(online);
             // 离群/解散也刷新旧成员目录，但资料推送必须重新读取并验证当前资格。
-            try { var current = GroupService.read(online, room.id()); reply.accept(online, new GroupReply.Updated(current.revision(), GroupInfo.of(current))); }
+            try { com.november.mcphone.feature.chat.group.GroupRoom current = GroupService.read(online, room.id()); reply.accept(online, new GroupReply.Updated(current.revision(), GroupInfo.of(current))); }
             catch (GroupFault gone) { if (gone.status() != GroupStatus.NOT_MEMBER) throw gone; }
         }
     }
     private static void deliver(ServerPlayer actor, UUID group, UUID request) {
-        var room = GroupService.read(actor, group); var server = actor.level().getServer();
-        for (var member : room.members()) {
-            var online = server.getPlayerList().getPlayer(member.id());
+        com.november.mcphone.feature.chat.group.GroupRoom room = GroupService.read(actor, group); net.minecraft.server.MinecraftServer server = actor.level().getServer();
+        for (com.november.mcphone.feature.chat.group.GroupMember member : room.members()) {
+            net.minecraft.server.level.ServerPlayer online = server.getPlayerList().getPlayer(member.id());
             if (online != null) reply.accept(online, new GroupReply.Message(request, room.revision(), GroupSummary.of(room, member.id())));
         }
     }

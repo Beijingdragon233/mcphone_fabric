@@ -51,7 +51,7 @@ final class ChatImageViewer {
         // 图还没到时这一层没有任何可点的东西，悬停先归零，免得留着上一帧的
         saveHovered = false;
 
-        var texture = ChatImageCache.get(viewingImage);
+        com.november.mcphone.core.client.ImageCodec.Texture texture = ChatImageCache.get(viewingImage);
         if (texture == null) {
             String loading = Component.translatable("mcphone.chat.image_loading").getString();
             g.drawString(font, loading,
@@ -110,7 +110,7 @@ final class ChatImageViewer {
     }
 
     private static void tell(String key, Object... args) {
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) com.november.mcphone.platform.PlayerAccess.message(player, Component.translatable(key, args), true);
     }
 

@@ -65,12 +65,18 @@ public final class CapabilityPolicy {
 
     /** 拒绝时给脚本看的本地化键（不是文本）。 */
     public static String messageKey(Verdict verdict) {
-        return switch (verdict) {
-            case DISABLED -> "mcphone.script.capability.disabled";
-            case NOT_APPROVED -> "mcphone.script.capability.not_approved";
-            case NOT_OPEN -> "mcphone.script.capability.not_open";
-            case UNKNOWN -> "mcphone.script.capability.unknown";
-            case OK -> "";
-        };
+        switch (verdict) {
+            case DISABLED:
+                return "mcphone.script.capability.disabled";
+            case NOT_APPROVED:
+                return "mcphone.script.capability.not_approved";
+            case NOT_OPEN:
+                return "mcphone.script.capability.not_open";
+            case UNKNOWN:
+                return "mcphone.script.capability.unknown";
+            case OK:
+                return "";
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 }

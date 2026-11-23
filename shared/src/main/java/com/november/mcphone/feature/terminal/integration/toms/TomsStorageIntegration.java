@@ -56,7 +56,8 @@ public final class TomsStorageIntegration implements TerminalIntegration {
 
     @Override
     public boolean canOpen(ItemStack stack) {
-        return stack.getItem() instanceof WirelessTerminal terminal && terminal.canOpen(stack);
+        Object terminalMatch;
+        return (terminalMatch = stack.getItem()) instanceof WirelessTerminal && ((WirelessTerminal) terminalMatch).canOpen(stack);
     }
 
     /**
@@ -65,10 +66,11 @@ public final class TomsStorageIntegration implements TerminalIntegration {
      */
     @Override
     public boolean open(ServerPlayer player, ItemStack stack, TerminalSource source) {
-        if (!(stack.getItem() instanceof WirelessTerminal terminal)) return false;
-        if (!terminal.canOpen(stack)) return false;
+        Object terminalMatch_;
+        if (!((terminalMatch_ = stack.getItem()) instanceof WirelessTerminal)) return false;
+        if (!((WirelessTerminal) terminalMatch_).canOpen(stack)) return false;
 
-        terminal.open(player, stack);
+        ((WirelessTerminal) terminalMatch_).open(player, stack);
         return true;
     }
 }

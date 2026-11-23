@@ -63,10 +63,14 @@ public class PlayerRefTest {
      * 而 §23.4 明令"删字段"不允许 —— 加错了就是永久的。这条断言钉住它别被加回来。
      */
     static void noMutableState() {
-        int components = PlayerRef.class.getRecordComponents().length;
-        eq(components, 2, "只有 uuid 与 name 两格");
         java.util.TreeSet<String> names = new java.util.TreeSet<>();
-        for (var c : PlayerRef.class.getRecordComponents()) names.add(c.getName());
+        for (java.lang.reflect.Field field : PlayerRef.class.getDeclaredFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                check(java.lang.reflect.Modifier.isFinal(field.getModifiers()), "字段不可变: " + field.getName());
+                names.add(field.getName());
+            }
+        }
+        eq(names.size(), 2, "只有 uuid 与 name 两格");
         eq(names, new java.util.TreeSet<>(List.of("name", "uuid")), "字段就这两个，别把 online 加回来");
     }
 

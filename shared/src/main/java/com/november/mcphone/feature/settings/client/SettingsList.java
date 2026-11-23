@@ -38,7 +38,42 @@ public final class SettingsList {
      *              用 Supplier 而不是定值：列表只建一次，而设备名是会变的，
      *              每帧现取才不会显示过期的名字
      */
-    public record Item(String label, Runnable action, Supplier<String> value) {
+    public static final class Item {
+        private final String label;
+        private final Runnable action;
+        private final Supplier<String> value;
+
+        public Item(String label, Runnable action, Supplier<String> value) {
+            this.label = label;
+            this.action = action;
+            this.value = value;
+        }
+
+        public String label() { return label; }
+
+        public Runnable action() { return action; }
+
+        public Supplier<String> value() { return value; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Item)) return false;
+            Item that = (Item) other;
+            return java.util.Objects.equals(this.label, that.label)
+                    && java.util.Objects.equals(this.action, that.action)
+                    && java.util.Objects.equals(this.value, that.value);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(label);
+            hash = 31 * hash + java.util.Objects.hashCode(action);
+            hash = 31 * hash + java.util.Objects.hashCode(value);
+            return hash;
+        }
+
+        @Override public String toString() { return "Item[label=" + label + ", action=" + action + ", value=" + value + "]"; }
+
         public Item(String label, Runnable action) {
             this(label, action, null);
         }

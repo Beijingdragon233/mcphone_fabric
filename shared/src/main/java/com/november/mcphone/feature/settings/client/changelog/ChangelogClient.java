@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.settings.client.changelog;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.level.storage.LevelResource;
@@ -15,8 +17,8 @@ public final class ChangelogClient {
     private static List<Changelog.Release> releases;
     public static List<Changelog.Release> releases() {
         if (releases == null) {
-            releases = List.of();
-            try (var stream = ChangelogClient.class.getResourceAsStream("/assets/mcphone/changelog.json")) {
+            releases = ImmutableList.of();
+            try (java.io.InputStream stream = ChangelogClient.class.getResourceAsStream("/assets/mcphone/changelog.json")) {
                 if (stream == null) throw new java.io.IOException("缺少包内更新日志");
                 releases = Changelog.read(new InputStreamReader(stream, StandardCharsets.UTF_8));
             } catch (Exception e) { MCphone.LOGGER.warn("[MCphone] 更新日志读取失败", e); }
@@ -26,10 +28,10 @@ public final class ChangelogClient {
     public static Path pendingRecord() {
         String version = MCphone.getVersion();
         if (!Changelog.shouldNotify(version, "", Changelog.current(releases(), version) != null)) return null;
-        var mc = Minecraft.getInstance();
+        net.minecraft.client.Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.getConnection() == null) return null;
-        var single = mc.getSingleplayerServer();
-        var remote = mc.getCurrentServer();
+        net.minecraft.client.server.IntegratedServer single = mc.getSingleplayerServer();
+        net.minecraft.client.multiplayer.ServerData remote = mc.getCurrentServer();
         String scope = single != null ? "local:" + single.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize()
                 : remote != null ? "remote:" + remote.ip.toLowerCase(Locale.ROOT) : null;
         if (scope == null) return null;

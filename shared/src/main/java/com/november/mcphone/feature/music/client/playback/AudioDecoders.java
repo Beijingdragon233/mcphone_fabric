@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.music.client.playback;
 
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import net.minecraft.client.sounds.AudioStream;
 import net.minecraft.network.chat.Component;
 
@@ -15,7 +18,7 @@ public final class AudioDecoders {
     private AudioDecoders() {}
 
     /** 按顺序问，先问的先认领。WavDecoder 必须排最后：它背后的 javax.sound 会认领别的模组注册进来的 SPI 格式（比如 .mp3），排前面就把这一档抢走了 */
-    private static final List<AudioDecoder> DECODERS = List.of(
+    private static final List<AudioDecoder> DECODERS = ImmutableList.of(
             new OggDecoder(),
             new Mp3Decoder(),
             new WavDecoder()
@@ -23,7 +26,7 @@ public final class AudioDecoders {
 
     /** 界面上提示"支持哪些格式"用，如 "OGG、MP3、WAV" */
     private static final String SUPPORTED_NAMES =
-            String.join("、", DECODERS.stream().map(AudioDecoder::formatName).toList());
+            String.join("、", DECODERS.stream().map(AudioDecoder::formatName).collect(Java8Collections.toList()));
 
     public static String supportedNames() {
         return SUPPORTED_NAMES;

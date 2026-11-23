@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.PhoneScreen;
 import net.minecraft.client.Minecraft;
@@ -63,6 +65,6 @@ public final class LocalScriptUpdates {
         }
         previous.clear();
         previous.putAll(next);
-        return List.copyOf(stable);
+        return ImmutableList.copyOf(stable);
     }
 }

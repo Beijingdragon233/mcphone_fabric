@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.economy.Currency;
@@ -87,7 +89,7 @@ public final class EconomyRuntime {
     /** 断言测试用：直接喂一个 provider 查找函数（{@link #registry()} 为 null）。 */
     EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
                    Function<String, ICurrencyProvider> providers, long now) {
-        this(data, log, gateway, null, providers, List.of(), now);
+        this(data, log, gateway, null, providers, ImmutableList.of(), now);
     }
 
     private EconomyRuntime(EconomyData data, TxnLog log, CurrencyGateway gateway,
@@ -102,7 +104,7 @@ public final class EconomyRuntime {
         this.log = log;
         this.gateway = gateway;
         this.registry = registry;
-        this.configNotes = List.copyOf(configNotes);
+        this.configNotes = ImmutableList.copyOf(configNotes);
         this.providers = providers;
         this.nextSweepAt = now + SWEEP_INTERVAL_MS;
     }
@@ -174,7 +176,7 @@ public final class EconomyRuntime {
         List<String> notes;
         if (specs == null) {
             registerAvailable(registry, data, log);   // 旧兜底：没有配置时的行为，一个字节不变
-            notes = List.of();
+            notes = ImmutableList.of();
         } else {
             notes = registerConfigured(registry, data, log, specs, server);
         }
@@ -242,11 +244,14 @@ public final class EconomyRuntime {
 
     /** 跳过原因键 → 服主看得懂的一句话。 */
     private static String skipText(String reasonKey) {
-        return switch (reasonKey) {
-            case EconomyProviders.SKIP_EMC_NO_WALLET -> "本服没有在用的 EMC 钱包（emc_legacy 需要真钱包在场）";
-            case EconomyProviders.SKIP_ADAPTER_NO_BRIDGE -> "adapter 档还没有实现（目标模组未定），不挂空壳";
-            default -> reasonKey;
-        };
+        switch (reasonKey) {
+            case EconomyProviders.SKIP_EMC_NO_WALLET:
+                return "本服没有在用的 EMC 钱包（emc_legacy 需要真钱包在场）";
+            case EconomyProviders.SKIP_ADAPTER_NO_BRIDGE:
+                return "adapter 档还没有实现（目标模组未定），不挂空壳";
+            default:
+                return reasonKey;
+        }
     }
 
     /**
@@ -383,7 +388,54 @@ public final class EconomyRuntime {
      * @param pruned   清掉了几条很久以前已结清的
      * @param suspect  这一趟新出现的、退款时 provider 抛了异常的几笔 —— 之后不再自动退
      */
-    public record Sweep(int refunded, int failed, int orphaned, int pruned, int suspect) {
+    public static final class Sweep {
+        private final int refunded;
+        private final int failed;
+        private final int orphaned;
+        private final int pruned;
+        private final int suspect;
+
+        public Sweep(int refunded, int failed, int orphaned, int pruned, int suspect) {
+            this.refunded = refunded;
+            this.failed = failed;
+            this.orphaned = orphaned;
+            this.pruned = pruned;
+            this.suspect = suspect;
+        }
+
+        public int refunded() { return refunded; }
+
+        public int failed() { return failed; }
+
+        public int orphaned() { return orphaned; }
+
+        public int pruned() { return pruned; }
+
+        public int suspect() { return suspect; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Sweep)) return false;
+            Sweep that = (Sweep) other;
+            return this.refunded == that.refunded
+                    && this.failed == that.failed
+                    && this.orphaned == that.orphaned
+                    && this.pruned == that.pruned
+                    && this.suspect == that.suspect;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(refunded);
+            hash = 31 * hash + java.util.Objects.hashCode(failed);
+            hash = 31 * hash + java.util.Objects.hashCode(orphaned);
+            hash = 31 * hash + java.util.Objects.hashCode(pruned);
+            hash = 31 * hash + java.util.Objects.hashCode(suspect);
+            return hash;
+        }
+
+        @Override public String toString() { return "Sweep[refunded=" + refunded + ", failed=" + failed + ", orphaned=" + orphaned + ", pruned=" + pruned + ", suspect=" + suspect + "]"; }
+
     }
 
     /**

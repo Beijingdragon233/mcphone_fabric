@@ -1,5 +1,7 @@
 package com.november.mcphone.core.client;
 
+import com.google.common.collect.ImmutableList;
+
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
@@ -40,8 +42,54 @@ public final class AppOptions {
      * 值不存在这里：getter/setter 指向功能自己那份状态（多半又是配置里的一项），
      * 这张表只是个入口。存两份迟早对不上。
      */
-    public record Toggle(String labelKey, String onKey, String offKey,
-                         BooleanSupplier getter, Consumer<Boolean> setter) {
+    public static final class Toggle {
+        private final String labelKey;
+        private final String onKey;
+        private final String offKey;
+        private final BooleanSupplier getter;
+        private final Consumer<Boolean> setter;
+
+        public Toggle(String labelKey, String onKey, String offKey, BooleanSupplier getter, Consumer<Boolean> setter) {
+            this.labelKey = labelKey;
+            this.onKey = onKey;
+            this.offKey = offKey;
+            this.getter = getter;
+            this.setter = setter;
+        }
+
+        public String labelKey() { return labelKey; }
+
+        public String onKey() { return onKey; }
+
+        public String offKey() { return offKey; }
+
+        public BooleanSupplier getter() { return getter; }
+
+        public Consumer<Boolean> setter() { return setter; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Toggle)) return false;
+            Toggle that = (Toggle) other;
+            return java.util.Objects.equals(this.labelKey, that.labelKey)
+                    && java.util.Objects.equals(this.onKey, that.onKey)
+                    && java.util.Objects.equals(this.offKey, that.offKey)
+                    && java.util.Objects.equals(this.getter, that.getter)
+                    && java.util.Objects.equals(this.setter, that.setter);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(labelKey);
+            hash = 31 * hash + java.util.Objects.hashCode(onKey);
+            hash = 31 * hash + java.util.Objects.hashCode(offKey);
+            hash = 31 * hash + java.util.Objects.hashCode(getter);
+            hash = 31 * hash + java.util.Objects.hashCode(setter);
+            return hash;
+        }
+
+        @Override public String toString() { return "Toggle[labelKey=" + labelKey + ", onKey=" + onKey + ", offKey=" + offKey + ", getter=" + getter + ", setter=" + setter + "]"; }
+
 
         public boolean value() {
             return getter.getAsBoolean();
@@ -71,6 +119,6 @@ public final class AppOptions {
 
     /** 这个 App 有哪些开关，没有就是空表 */
     public static List<Toggle> of(ResourceLocation appId) {
-        return BY_APP.getOrDefault(appId, List.of());
+        return BY_APP.getOrDefault(appId, ImmutableList.of());
     }
 }

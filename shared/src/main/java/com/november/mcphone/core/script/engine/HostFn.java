@@ -90,9 +90,9 @@ public final class HostFn {
 
     public static String str(Object[] args, int i, String where) {
         Object v = at(args, i);
-        if (v instanceof CharSequence cs) {
-            SizeGate.check(cs, where);
-            return cs.toString();
+        if (v instanceof CharSequence) {
+            SizeGate.check(((CharSequence) v), where);
+            return ((CharSequence) v).toString();
         }
         throw typeError(args, where, i, "字符串");
     }
@@ -104,32 +104,32 @@ public final class HostFn {
     /** 数字参数：JS 的 number 过来是 Double，宿主注入的整数是 Integer；别的类型不转换，直接拒。 */
     public static double num(Object[] args, int i, String where) {
         Object v = at(args, i);
-        if (v instanceof Double d && Double.isFinite(d)) return d;
-        if (v instanceof Integer n) return n;
+        if (v instanceof Double && Double.isFinite(((Double) v))) return ((Double) v);
+        if (v instanceof Integer) return ((Integer) v);
         throw typeError(args, where, i, "数字");
     }
 
     public static boolean bool(Object[] args, int i, String where) {
         Object v = at(args, i);
-        if (v instanceof Boolean b) return b;
+        if (v instanceof Boolean) return ((Boolean) v);
         throw typeError(args, where, i, "布尔");
     }
 
     /** 一串字符串。元素数受 {@link SizeGate#MAX_ARRAY} 限。 */
     public static List<String> strList(Object[] args, int i, String where) {
         Object v = at(args, i);
-        if (!(v instanceof NativeArray arr)) {
+        if (!(v instanceof NativeArray)) {
             throw typeError(args, where, i, "数组");
         }
-        SizeGate.check(arr, where);
+        SizeGate.check(((NativeArray) v), where);
         List<String> out = new ArrayList<>();
-        for (int k = 0; k < arr.getLength(); k++) {
-            Object e = arr.get(k, arr);
-            if (!(e instanceof CharSequence cs)) {
+        for (int k = 0; k < ((NativeArray) v).getLength(); k++) {
+            Object e = ((NativeArray) v).get(k, ((NativeArray) v));
+            if (!(e instanceof CharSequence)) {
                 throw HostError.invalid(where + " 的第 " + k + " 个元素要字符串");
             }
-            SizeGate.check(cs, where);
-            out.add(cs.toString());
+            SizeGate.check(((CharSequence) e), where);
+            out.add(((CharSequence) e).toString());
         }
         return out;
     }

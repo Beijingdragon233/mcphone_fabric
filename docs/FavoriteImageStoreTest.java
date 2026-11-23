@@ -112,7 +112,7 @@ public final class FavoriteImageStoreTest {
 
             var valid=com.google.gson.JsonParser.parseString(before).getAsJsonObject();
             for(String key:List.of("message","target","group","sender","senderName","messageTime","savedTime","kind","bytes","width","height","frames","frameMs")) {
-                var invalidIndex=valid.deepCopy();invalidIndex.getAsJsonArray("entries").get(0).getAsJsonObject().remove(key);
+                var invalidIndex=com.november.mcphone.util.GsonCompat.copy(valid);invalidIndex.getAsJsonArray("entries").get(0).getAsJsonObject().remove(key);
                 Path invalidPath=root.resolve("invalid-"+key+".json");var emptyStore=new FavoriteStore(invalidPath);
                 Files.writeString(emptyStore.index(),invalidIndex.toString());
                 check(!new FavoriteStore(invalidPath).available(),"新版索引缺少字段必须拒绝："+key);

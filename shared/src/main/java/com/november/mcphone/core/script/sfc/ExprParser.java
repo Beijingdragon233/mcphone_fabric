@@ -1,5 +1,9 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.core.script.layout.StateRules;
 import com.november.mcphone.core.script.sfc.SfcError.Code;
 
@@ -24,7 +28,7 @@ final class ExprParser {
     /** 256 字符里括号最多套 128 层；这道只防递归被别的入口带深。 */
     private static final int MAX_NESTING = 128;
 
-    private static final Set<String> ASSIGNING = Set.of("=", "++", "--", "+=", "-=", "*=", "/=", "%=");
+    private static final Set<String> ASSIGNING = ImmutableSet.of("=", "++", "--", "+=", "-=", "*=", "/=", "%=");
 
     /** 静态类型。ANY 是编译期不知道的（成员访问、下标、两支不同的三目），留给运行期判。 */
     enum T {
@@ -48,7 +52,48 @@ final class ExprParser {
     }
 
     /** 一段解析结果：AST、静态类型、数组时的元素类型、节点数。 */
-    record Typed(Expr expr, T type, T elem, int nodes) {
+    static final class Typed {
+        private final Expr expr;
+        private final T type;
+        private final T elem;
+        private final int nodes;
+
+        Typed(Expr expr, T type, T elem, int nodes) {
+            this.expr = expr;
+            this.type = type;
+            this.elem = elem;
+            this.nodes = nodes;
+        }
+
+        public Expr expr() { return expr; }
+
+        public T type() { return type; }
+
+        public T elem() { return elem; }
+
+        public int nodes() { return nodes; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Typed)) return false;
+            Typed that = (Typed) other;
+            return java.util.Objects.equals(this.expr, that.expr)
+                    && java.util.Objects.equals(this.type, that.type)
+                    && java.util.Objects.equals(this.elem, that.elem)
+                    && this.nodes == that.nodes;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(expr);
+            hash = 31 * hash + java.util.Objects.hashCode(type);
+            hash = 31 * hash + java.util.Objects.hashCode(elem);
+            hash = 31 * hash + java.util.Objects.hashCode(nodes);
+            return hash;
+        }
+
+        @Override public String toString() { return "Typed[expr=" + expr + ", type=" + type + ", elem=" + elem + ", nodes=" + nodes + "]"; }
+
     }
 
     /**
@@ -76,7 +121,7 @@ final class ExprParser {
         }
 
         static java.util.Collection<String> names() {
-            return java.util.List.of(BACKEND);
+            return ImmutableList.of(BACKEND);
         }
 
         /**
@@ -85,10 +130,10 @@ final class ExprParser {
          * 在缺省形状下是 0，后者才是"没有可用的动作"的正确表现。
          */
         static Map<String, Object> defaults() {
-            return Map.of(BACKEND, Map.of(
+            return ImmutableMap.of(BACKEND, ImmutableMap.of(
                     "available", false,
                     "serverName", "",
-                    "actions", java.util.List.of()));
+                    "actions", ImmutableList.of()));
         }
 
         /** 把宿主表补成"至少有一个形状齐全的 backend"。 */
@@ -149,8 +194,9 @@ final class ExprParser {
             for (Scope s = this; s.parent != null; s = s.parent) {
                 if (s.name.equals(n)) return s.elem;
             }
-            if (!(state.get(n) instanceof List<?> list)) return T.ANY;
-            Object r = StateRules.representative(list);
+            Object listMatch;
+            if (!((listMatch = state.get(n)) instanceof List<?>)) return T.ANY;
+            Object r = StateRules.representative(((List<?>) listMatch));
             return r == null ? T.ANY : T.of(r);
         }
 
@@ -167,7 +213,60 @@ final class ExprParser {
     }
 
     /** 词法单元。kind：i 整数、s 字符串、n 名字、p 符号、e 结尾。 */
-    record Tok(char kind, String text, Object value, int line, int col, int offset) {
+    static final class Tok {
+        private final char kind;
+        private final String text;
+        private final Object value;
+        private final int line;
+        private final int col;
+        private final int offset;
+
+        Tok(char kind, String text, Object value, int line, int col, int offset) {
+            this.kind = kind;
+            this.text = text;
+            this.value = value;
+            this.line = line;
+            this.col = col;
+            this.offset = offset;
+        }
+
+        public char kind() { return kind; }
+
+        public String text() { return text; }
+
+        public Object value() { return value; }
+
+        public int line() { return line; }
+
+        public int col() { return col; }
+
+        public int offset() { return offset; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Tok)) return false;
+            Tok that = (Tok) other;
+            return this.kind == that.kind
+                    && java.util.Objects.equals(this.text, that.text)
+                    && java.util.Objects.equals(this.value, that.value)
+                    && this.line == that.line
+                    && this.col == that.col
+                    && this.offset == that.offset;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(kind);
+            hash = 31 * hash + java.util.Objects.hashCode(text);
+            hash = 31 * hash + java.util.Objects.hashCode(value);
+            hash = 31 * hash + java.util.Objects.hashCode(line);
+            hash = 31 * hash + java.util.Objects.hashCode(col);
+            hash = 31 * hash + java.util.Objects.hashCode(offset);
+            return hash;
+        }
+
+        @Override public String toString() { return "Tok[kind=" + kind + ", text=" + text + ", value=" + value + ", line=" + line + ", col=" + col + ", offset=" + offset + "]"; }
+
     }
 
     private final String src;
@@ -403,23 +502,24 @@ final class ExprParser {
     private Typed primary() {
         Tok t = next();
         switch (t.kind) {
-            case 'i' -> {
+            case 'i': {
                 long v = (Long) t.value;
                 if (v > Integer.MAX_VALUE) throw syntax(t, "整数超出 int 范围");
                 return new Typed(new Expr.Lit((int) v), T.INT, T.ANY, 1);
             }
-            case 's' -> {
+            case 's': {
                 return new Typed(new Expr.Lit(t.value), T.STR, T.ANY, 1);
             }
-            case 'n' -> {
+            case 'n': {
                 switch (t.text) {
-                    case "true", "false" -> {
+                    case "true":
+                    case "false": {
                         return new Typed(new Expr.Lit(t.text.equals("true")), T.BOOL, T.ANY, 1);
                     }
-                    case "null" -> {
+                    case "null": {
                         return new Typed(new Expr.Lit(null), T.NULL, T.ANY, 1);
                     }
-                    default -> {
+                    default: {
                         // 先看调用：f(1) 该说「不支持调用」，而不是「不认识 f」
                         if (at("(")) throw SfcError.at(Code.E_EXPR_NO_CALLS, t.line, t.col);
                         T type = scope.typeOf(t.text);
@@ -428,8 +528,7 @@ final class ExprParser {
                     }
                 }
             }
-            default -> {
-            }
+            default: break;
         }
         if (is(t, "(")) {
             Typed e = expr();
@@ -461,7 +560,7 @@ final class ExprParser {
             }
         }
         expect("]");
-        return new Typed(new Expr.ArrayLit(List.copyOf(items)), T.ARR, elem == null ? T.ANY : elem, nodes);
+        return new Typed(new Expr.ArrayLit(ImmutableList.copyOf(items)), T.ARR, elem == null ? T.ANY : elem, nodes);
     }
 
     private Typed object() {
@@ -487,7 +586,7 @@ final class ExprParser {
             }
         }
         expect("}");
-        return new Typed(new Expr.ObjectLit(List.copyOf(keys), List.copyOf(values)), T.OBJ, T.ANY, nodes);
+        return new Typed(new Expr.ObjectLit(ImmutableList.copyOf(keys), ImmutableList.copyOf(values)), T.OBJ, T.ANY, nodes);
     }
 
     private Typed binary(Tok op, Typed l, Typed r, T type) {
@@ -597,17 +696,42 @@ final class ExprParser {
     /** JS 里有、这里刻意没有的写法（§9.5.2），报的时候直接说换成什么。 */
     private static SfcError unexpected(Tok t, String fallback) {
         if (t.kind != 'p') return syntax(t, fallback);
-        String hint = switch (t.text) {
-            case "===" -> "没有 ===，用 ==（本来就不做类型转换）";
-            case "!==" -> "没有 !==，用 !=";
-            case "??", "?." -> "没有 ?? 和 ?.：访问不存在的键本来就得 null";
-            case "&", "|", "^", "~", "<<", ">>" -> "没有位运算";
-            case "`" -> "没有模板字符串，用 + 拼";
-            case "=>" -> "没有箭头函数，逻辑写在 <script> 里（P1）";
-            case "**" -> "没有 **";
-            case ";" -> "表达式里不能写 ;";
-            default -> fallback;
-        };
+        String hint;
+        switch (t.text) {
+            case "===":
+                hint = "没有 ===，用 ==（本来就不做类型转换）";
+                break;
+            case "!==":
+                hint = "没有 !==，用 !=";
+                break;
+            case "??":
+            case "?.":
+                hint = "没有 ?? 和 ?.：访问不存在的键本来就得 null";
+                break;
+            case "&":
+            case "|":
+            case "^":
+            case "~":
+            case "<<":
+            case ">>":
+                hint = "没有位运算";
+                break;
+            case "`":
+                hint = "没有模板字符串，用 + 拼";
+                break;
+            case "=>":
+                hint = "没有箭头函数，逻辑写在 <script> 里（P1）";
+                break;
+            case "**":
+                hint = "没有 **";
+                break;
+            case ";":
+                hint = "表达式里不能写 ;";
+                break;
+            default:
+                hint = fallback;
+                break;
+        }
         return syntax(t, hint);
     }
 
@@ -708,10 +832,19 @@ final class ExprParser {
                     if (d == '\\') {
                         char e = i + 1 < n ? s.charAt(i + 1) : '\n';
                         switch (e) {
-                            case '\\', '\'', '"' -> sb.append(e);
-                            case 'n' -> sb.append('\n');
-                            case 't' -> sb.append('\t');
-                            default -> throw SfcError.at(Code.E_EXPR_SYNTAX, line, col, "不认识的转义 \\" + shown(e));
+                            case '\\':
+                            case '\'':
+                            case '"':
+                                sb.append(e);
+                                break;
+                            case 'n':
+                                sb.append('\n');
+                                break;
+                            case 't':
+                                sb.append('\t');
+                                break;
+                            default:
+                                throw SfcError.at(Code.E_EXPR_SYNTAX, line, col, "不认识的转义 \\" + shown(e));
                         }
                         i += 2;
                         col += 2;

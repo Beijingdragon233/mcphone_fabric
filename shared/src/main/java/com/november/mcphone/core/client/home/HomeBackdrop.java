@@ -34,10 +34,103 @@ public final class HomeBackdrop {
     private int generation;
     private boolean desktopActive;
 
-    private record DesktopRegion(float left, float top, float right, float bottom,
-                                 int windowWidth, int windowHeight, DeviceMetrics metrics) {}
+    private static final class DesktopRegion {
+        private final float left;
+        private final float top;
+        private final float right;
+        private final float bottom;
+        private final int windowWidth;
+        private final int windowHeight;
+        private final DeviceMetrics metrics;
 
-    record DesktopPixels(int contentTop, int contentRight, int contentBottom) {
+        private DesktopRegion(float left, float top, float right, float bottom, int windowWidth, int windowHeight, DeviceMetrics metrics) {
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+            this.windowWidth = windowWidth;
+            this.windowHeight = windowHeight;
+            this.metrics = metrics;
+        }
+
+        public float left() { return left; }
+
+        public float top() { return top; }
+
+        public float right() { return right; }
+
+        public float bottom() { return bottom; }
+
+        public int windowWidth() { return windowWidth; }
+
+        public int windowHeight() { return windowHeight; }
+
+        public DeviceMetrics metrics() { return metrics; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof DesktopRegion)) return false;
+            DesktopRegion that = (DesktopRegion) other;
+            return Float.compare(this.left, that.left) == 0
+                    && Float.compare(this.top, that.top) == 0
+                    && Float.compare(this.right, that.right) == 0
+                    && Float.compare(this.bottom, that.bottom) == 0
+                    && this.windowWidth == that.windowWidth
+                    && this.windowHeight == that.windowHeight
+                    && java.util.Objects.equals(this.metrics, that.metrics);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(left);
+            hash = 31 * hash + java.util.Objects.hashCode(top);
+            hash = 31 * hash + java.util.Objects.hashCode(right);
+            hash = 31 * hash + java.util.Objects.hashCode(bottom);
+            hash = 31 * hash + java.util.Objects.hashCode(windowWidth);
+            hash = 31 * hash + java.util.Objects.hashCode(windowHeight);
+            hash = 31 * hash + java.util.Objects.hashCode(metrics);
+            return hash;
+        }
+
+        @Override public String toString() { return "DesktopRegion[left=" + left + ", top=" + top + ", right=" + right + ", bottom=" + bottom + ", windowWidth=" + windowWidth + ", windowHeight=" + windowHeight + ", metrics=" + metrics + "]"; }
+}
+
+    static final class DesktopPixels {
+        private final int contentTop;
+        private final int contentRight;
+        private final int contentBottom;
+
+        DesktopPixels(int contentTop, int contentRight, int contentBottom) {
+            this.contentTop = contentTop;
+            this.contentRight = contentRight;
+            this.contentBottom = contentBottom;
+        }
+
+        public int contentTop() { return contentTop; }
+
+        public int contentRight() { return contentRight; }
+
+        public int contentBottom() { return contentBottom; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof DesktopPixels)) return false;
+            DesktopPixels that = (DesktopPixels) other;
+            return this.contentTop == that.contentTop
+                    && this.contentRight == that.contentRight
+                    && this.contentBottom == that.contentBottom;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(contentTop);
+            hash = 31 * hash + java.util.Objects.hashCode(contentRight);
+            hash = 31 * hash + java.util.Objects.hashCode(contentBottom);
+            return hash;
+        }
+
+        @Override public String toString() { return "DesktopPixels[contentTop=" + contentTop + ", contentRight=" + contentRight + ", contentBottom=" + contentBottom + "]"; }
+
         static DesktopPixels of(DeviceMetrics metrics, int left, int top, int width, int height) {
             return new DesktopPixels(
                     top + roundOffset(PhoneTheme.STATUS_BAR_HEIGHT, height, metrics.screenH()),
@@ -65,11 +158,11 @@ public final class HomeBackdrop {
         desktopActive = true;
         DesktopRegion region = lastDesktop;
         if (region == null || region.windowWidth() <= 0 || region.windowHeight() <= 0) return;
-        var wallpaper = WallpaperStore.findEntry(NetworkHandler.WakeholderData.get());
+        com.november.mcphone.feature.settings.client.WallpaperStore.WallpaperEntry wallpaper = WallpaperStore.findEntry(NetworkHandler.WakeholderData.get());
         int request = ++generation;
         try {
-            PhoneDesktopCapture.capture(frame -> {
-                try (frame) {
+            PhoneDesktopCapture.capture(captured -> {
+                try (NativeImage frame = captured) {
                     if (request != generation) return;
                     desktop = blurDesktop(frame, region, wallpaper);
                     capturedDesktop = region;

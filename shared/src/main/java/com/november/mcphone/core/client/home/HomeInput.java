@@ -2,8 +2,72 @@ package com.november.mcphone.core.client.home;
 
 /** Pointer state shared by the launcher and folders. Operates on stable IDs in device coordinates. */
 public final class HomeInput {
-    public record Release(String id, boolean dragged, boolean clicked) {}
-    public record FolderDrag(String folderId, String appId) {}
+    public static final class Release {
+        private final String id;
+        private final boolean dragged;
+        private final boolean clicked;
+
+        public Release(String id, boolean dragged, boolean clicked) {
+            this.id = id;
+            this.dragged = dragged;
+            this.clicked = clicked;
+        }
+
+        public String id() { return id; }
+
+        public boolean dragged() { return dragged; }
+
+        public boolean clicked() { return clicked; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Release)) return false;
+            Release that = (Release) other;
+            return java.util.Objects.equals(this.id, that.id)
+                    && this.dragged == that.dragged
+                    && this.clicked == that.clicked;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(id);
+            hash = 31 * hash + java.util.Objects.hashCode(dragged);
+            hash = 31 * hash + java.util.Objects.hashCode(clicked);
+            return hash;
+        }
+
+        @Override public String toString() { return "Release[id=" + id + ", dragged=" + dragged + ", clicked=" + clicked + "]"; }
+}
+    public static final class FolderDrag {
+        private final String folderId;
+        private final String appId;
+
+        public FolderDrag(String folderId, String appId) {
+            this.folderId = folderId;
+            this.appId = appId;
+        }
+
+        public String folderId() { return folderId; }
+
+        public String appId() { return appId; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof FolderDrag)) return false;
+            FolderDrag that = (FolderDrag) other;
+            return java.util.Objects.equals(this.folderId, that.folderId)
+                    && java.util.Objects.equals(this.appId, that.appId);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(folderId);
+            hash = 31 * hash + java.util.Objects.hashCode(appId);
+            return hash;
+        }
+
+        @Override public String toString() { return "FolderDrag[folderId=" + folderId + ", appId=" + appId + "]"; }
+}
 
     private final int dragThreshold;
     private final int swipeThreshold;

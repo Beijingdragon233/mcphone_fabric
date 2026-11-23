@@ -23,13 +23,26 @@ public enum FriendOutcome implements ChatOutcome {
 
     @Override
     public Component message() {
-        String key = switch (this) {
-            case SELF_FULL       -> "mcphone.chat.friend_self_full";
-            case PEER_FULL       -> "mcphone.chat.friend_peer_full";
-            case PEER_INBOX_FULL -> "mcphone.chat.friend_peer_inbox_full";
-            case UNKNOWN_PLAYER  -> "mcphone.chat.friend_unknown_player";
-            case OK, NOTHING     -> null;
-        };
+        String key;
+        switch (this) {
+            case SELF_FULL:
+                key = "mcphone.chat.friend_self_full";
+                break;
+            case PEER_FULL:
+                key = "mcphone.chat.friend_peer_full";
+                break;
+            case PEER_INBOX_FULL:
+                key = "mcphone.chat.friend_peer_inbox_full";
+                break;
+            case UNKNOWN_PLAYER:
+                key = "mcphone.chat.friend_unknown_player";
+                break;
+            case OK:
+            case NOTHING:
+                key = null;
+                break;
+            default: throw new IncompatibleClassChangeError();
+        }
         // 上限参数只有 SELF_FULL 用得上，多传的参数翻译器会忽略
         return key == null ? null : Component.translatable(key, FriendData.MAX_FRIENDS);
     }

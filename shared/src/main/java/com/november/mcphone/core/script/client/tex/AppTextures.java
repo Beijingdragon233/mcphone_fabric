@@ -1,5 +1,6 @@
 package com.november.mcphone.core.script.client.tex;
 
+import java.util.Iterator;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.ImageCodec;
@@ -213,13 +214,13 @@ public final class AppTextures {
      */
     private static boolean hasRoom(App app) {
         if (app.live.size() < MAX_PER_APP) return true;
-        var it = app.live.values().iterator();      // 迭代不算访问，不会把顺序搅乱
+        Iterator<AppTextures.Entry> it = app.live.values().iterator();      // 迭代不算访问，不会把顺序搅乱
         return it.hasNext() && it.next().lastFrame != app.frame;
     }
 
     /** 把最久没画的那张还回去，它下次被画到时重传。调之前先问过 {@link #hasRoom}。 */
     private static void evict(App app) {
-        var it = app.live.entrySet().iterator();
+        Iterator<java.util.Map.Entry<String, AppTextures.Entry>> it = app.live.entrySet().iterator();
         while (app.live.size() >= MAX_PER_APP && it.hasNext()) {
             Entry eldest = it.next().getValue();
             if (eldest.lastFrame == app.frame) return;
@@ -405,16 +406,25 @@ public final class AppTextures {
     }
 
     private static String reason(Result why) {
-        return switch (why) {
-            case MISSING -> "包里没有这个文件";
-            case BAD_PATH -> "只能是 .png";
-            case TOO_LARGE -> "超过 " + (MAX_BYTES / 1024) + " KiB";
-            case TOO_BIG -> "超过 " + MAX_SIDE + "×" + MAX_SIDE;
-            case NOT_PNG -> "不是 PNG";
-            case BROKEN -> "PNG 头没问题，像素解不开";
-            case TOO_MANY -> "这个 App 用不了的图片路径已经有 " + MAX_REJECTED + " 条了";
-            case OK -> "";
-        };
+        switch (why) {
+            case MISSING:
+                return "包里没有这个文件";
+            case BAD_PATH:
+                return "只能是 .png";
+            case TOO_LARGE:
+                return "超过 " + (MAX_BYTES / 1024) + " KiB";
+            case TOO_BIG:
+                return "超过 " + MAX_SIDE + "×" + MAX_SIDE;
+            case NOT_PNG:
+                return "不是 PNG";
+            case BROKEN:
+                return "PNG 头没问题，像素解不开";
+            case TOO_MANY:
+                return "这个 App 用不了的图片路径已经有 " + MAX_REJECTED + " 条了";
+            case OK:
+                return "";
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     // ============================================================

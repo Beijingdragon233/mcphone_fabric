@@ -14,14 +14,40 @@ package com.november.mcphone.api.economy;
  * @param kind 操作分类，如 {@code market:buy}
  * @param ref  调用方自己的单号，用于事后对账
  */
-public record TxnReason(String kind, String ref) {
+public final class TxnReason {
+    private final String kind;
+    private final String ref;
+
+    public String kind() { return kind; }
+
+    public String ref() { return ref; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof TxnReason)) return false;
+        TxnReason that = (TxnReason) other;
+        return java.util.Objects.equals(this.kind, that.kind)
+                && java.util.Objects.equals(this.ref, that.ref);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(kind);
+        hash = 31 * hash + java.util.Objects.hashCode(ref);
+        return hash;
+    }
+
+    @Override public String toString() { return "TxnReason[kind=" + kind + ", ref=" + ref + "]"; }
+
 
     public static final int MAX_KIND = 32;
     public static final int MAX_REF = 64;
 
-    public TxnReason {
+    public TxnReason(String kind, String ref) {
         kind = clean(kind, MAX_KIND, "kind");
         ref = clean(ref, MAX_REF, "ref");
+        this.kind = kind;
+        this.ref = ref;
     }
 
     private static String clean(String s, int max, String field) {

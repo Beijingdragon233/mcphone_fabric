@@ -1,5 +1,7 @@
 package com.november.mcphone.core.client;
 
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.platform.ResourceIds;
 
 import com.november.mcphone.MCphone;
@@ -47,10 +49,39 @@ public final class PhoneSession {
             ResourceIds.create(MCphone.MODID, "reader");
 
     /** 允许续开的 App。加成员见类注释 */
-    private static final Set<ResourceLocation> RESUMABLE = Set.of(CHAT_APP, READER_APP);
+    private static final Set<ResourceLocation> RESUMABLE = ImmutableSet.of(CHAT_APP, READER_APP);
 
     /** 一部设备记一笔。peer 只有 mode 是 CHAT_CONVERSATION 时有意义 */
-    private record Saved(PhoneScreen.Mode mode, UUID peer) {}
+    private static final class Saved {
+        private final PhoneScreen.Mode mode;
+        private final UUID peer;
+
+        private Saved(PhoneScreen.Mode mode, UUID peer) {
+            this.mode = mode;
+            this.peer = peer;
+        }
+
+        public PhoneScreen.Mode mode() { return mode; }
+
+        public UUID peer() { return peer; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Saved)) return false;
+            Saved that = (Saved) other;
+            return java.util.Objects.equals(this.mode, that.mode)
+                    && java.util.Objects.equals(this.peer, that.peer);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(mode);
+            hash = 31 * hash + java.util.Objects.hashCode(peer);
+            return hash;
+        }
+
+        @Override public String toString() { return "Saved[mode=" + mode + ", peer=" + peer + "]"; }
+}
 
     /**
      * 哪一部停在哪一页。
@@ -84,12 +115,22 @@ public final class PhoneSession {
         // （正在读的那本 txt 就只有一部分目标有那一页），而"哪些 Mode 存在"是那一侧的知识。
         // 这里点名一个别的目标没有的常量，那个目标连 shared/ 都编不过。所以调用方传进来的
         // 已经是"能续开的那一页"，见各目标 PhoneScreen 里调 save 的那一句。
-        PhoneScreen.Mode saved = switch (mode) {
-            case CHAT_ADD_CONTACT, CHAT_GROUP_CREATE -> PhoneScreen.Mode.CHAT;
-            case CHAT_GROUP_DETAILS -> PhoneScreen.Mode.CHAT_GROUP_CONVERSATION;
-            case CHAT_NEW_FRIENDS -> PhoneScreen.Mode.CHAT_CONTACTS;
-            default -> mode;
-        };
+        PhoneScreen.Mode saved;
+        switch (mode) {
+            case CHAT_ADD_CONTACT:
+            case CHAT_GROUP_CREATE:
+                saved = PhoneScreen.Mode.CHAT;
+                break;
+            case CHAT_GROUP_DETAILS:
+                saved = PhoneScreen.Mode.CHAT_GROUP_CONVERSATION;
+                break;
+            case CHAT_NEW_FRIENDS:
+                saved = PhoneScreen.Mode.CHAT_CONTACTS;
+                break;
+            default:
+                saved = mode;
+                break;
+        }
         SAVED.put(where, new Saved(saved,
                 saved == PhoneScreen.Mode.CHAT_CONVERSATION || saved == PhoneScreen.Mode.CHAT_GROUP_CONVERSATION ? conversationPeer : null));
     }
@@ -129,10 +170,21 @@ public final class PhoneSession {
 
     /** 这一页属于哪个 App；null 表示不属于任何可续开的 App（主屏、设置、商店……） */
     private static ResourceLocation appOf(PhoneScreen.Mode mode) {
-        return switch (mode) {
-            case CHAT, CHAT_PROFILE, CHAT_CONTACTS, CHAT_NEW_FRIENDS, CHAT_ADD_CONTACT, CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION, CHAT_GROUP_CREATE, CHAT_GROUP_DETAILS -> CHAT_APP;
-            case READER -> READER_APP;
-            default -> null;
-        };
+        switch (mode) {
+            case CHAT:
+            case CHAT_PROFILE:
+            case CHAT_CONTACTS:
+            case CHAT_NEW_FRIENDS:
+            case CHAT_ADD_CONTACT:
+            case CHAT_CONVERSATION:
+            case CHAT_GROUP_CONVERSATION:
+            case CHAT_GROUP_CREATE:
+            case CHAT_GROUP_DETAILS:
+                return CHAT_APP;
+            case READER:
+                return READER_APP;
+            default:
+                return null;
+        }
     }
 }

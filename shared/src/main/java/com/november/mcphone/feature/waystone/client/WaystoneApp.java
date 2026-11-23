@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.waystone.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.client.app.RequiredMod;
 import com.november.mcphone.compat.WaystonesCompat;
 import com.november.mcphone.core.client.PhoneApp;
@@ -28,7 +30,7 @@ public final class WaystoneApp extends PhoneApp {
      */
     @Override
     public List<RequiredMod> companionMods() {
-        return List.of(new RequiredMod(
+        return ImmutableList.of(new RequiredMod(
                 WaystonesCompat.WAYSTONES_MODID,
                 Component.translatable("mcphone.compat.waystones").getString()));
     }

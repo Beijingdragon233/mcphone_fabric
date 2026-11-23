@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.quests.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.client.app.RequiredMod;
 import com.november.mcphone.core.client.PhoneApp;
 import net.minecraft.network.chat.Component;
@@ -60,7 +62,7 @@ public final class QuestsApp extends PhoneApp {
     /** modid 取兼容层的常量："可用性"与"缺什么"必须是同一个来源 */
     @Override
     public List<RequiredMod> companionMods() {
-        return List.of(new RequiredMod(
+        return ImmutableList.of(new RequiredMod(
                 FtbQuestsBook.FTBQUESTS_MODID,
                 Component.translatable("mcphone.compat.ftbquests").getString()));
     }

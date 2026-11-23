@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.chat.client.contextmenu.ChatContextMenuView;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -8,7 +10,7 @@ import java.util.List;
 /** 首页加号菜单：只交出操作意图，好友页面和建群流程由页面协调。 */
 final class ChatHomeMenu {
     enum Action { CREATE_GROUP, ADD_CONTACT }
-    private static final List<ChatContextMenuView.Entry> ENTRIES = List.of(
+    private static final List<ChatContextMenuView.Entry> ENTRIES = ImmutableList.of(
             new ChatContextMenuView.Entry("mcphone.chat.home_menu.create_group", ChatContextMenuView.Icon.CREATE_GROUP, true),
             new ChatContextMenuView.Entry("mcphone.chat.home_menu.add_contact", ChatContextMenuView.Icon.ADD_CONTACT, true));
     private final ChatContextMenuView view = new ChatContextMenuView();
@@ -22,7 +24,14 @@ final class ChatHomeMenu {
     Action choose(double x, double y, int button) {
         int row = button == 0 ? view.hitIndex(x, y) : -1;
         dismiss();
-        return switch (row) { case 0 -> Action.CREATE_GROUP; case 1 -> Action.ADD_CONTACT; default -> null; };
+        switch (row) {
+            case 0:
+                return Action.CREATE_GROUP;
+            case 1:
+                return Action.ADD_CONTACT;
+            default:
+                return null;
+        }
     }
 
     void render(GuiGraphics g, Font font, int x, int y, int width, int height, int right, int bottom, int mx, int my) {

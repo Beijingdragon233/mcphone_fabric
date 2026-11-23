@@ -18,8 +18,9 @@ public final class GalleryApp extends PhoneApp {
     @Override
     public void onPress() {
         // 相册是手机内的一个模式、不另开 Screen；navigateTo 进入时会重扫目录，刚拍的照片立刻可见
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
-            ps.navigateTo(PhoneScreen.Mode.GALLERY);
+        Object psMatch;
+        if ((psMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) {
+            ((PhoneScreen) psMatch).navigateTo(PhoneScreen.Mode.GALLERY);
         }
     }
 }

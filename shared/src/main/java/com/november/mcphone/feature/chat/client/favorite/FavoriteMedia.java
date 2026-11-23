@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client.favorite;
 
+import java.util.Iterator;
+import java.util.Map.Entry;
 import com.november.mcphone.core.client.ImageCodec;
 import com.november.mcphone.feature.chat.ChatImage;
 import com.mojang.blaze3d.platform.NativeImage;
@@ -52,7 +54,7 @@ public final class FavoriteMedia {
         trim();return loaded;
     }
     private void trim() {
-        var iterator=entries.entrySet().iterator();
+        Iterator<Entry<String,FavoriteMedia.Loaded>> iterator=entries.entrySet().iterator();
         while((entries.size()>64 || bytes>MAX_BYTES && entries.size()>4) && iterator.hasNext()) {
             release(iterator.next().getValue());iterator.remove();
         }

@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneNbt;
 import com.november.mcphone.core.PhoneSavedData;
@@ -141,7 +143,7 @@ public final class DeploymentData extends PhoneSavedData {
 
     /** null = 全批；空列表 = 一个都不批；其余取与声明的交集（保持请求顺序、去重）。 */
     private static List<String> pick(List<String> requested, List<String> declared) {
-        if (requested == null) return List.copyOf(declared);
+        if (requested == null) return ImmutableList.copyOf(declared);
         List<String> out = new ArrayList<>();
         for (String w : requested) if (declared.contains(w) && !out.contains(w)) out.add(w);
         return out;
@@ -170,7 +172,7 @@ public final class DeploymentData extends PhoneSavedData {
 
     /** 请求里不在声明集合里的项 —— 回显给命令面，别静默吞掉。 */
     private static List<String> dropped(List<String> requested, List<String> declared) {
-        if (requested == null) return List.of();
+        if (requested == null) return ImmutableList.of();
         List<String> out = new ArrayList<>();
         for (String w : requested) if (!declared.contains(w) && !out.contains(w)) out.add(w);
         return out;
@@ -256,11 +258,48 @@ public final class DeploymentData extends PhoneSavedData {
     }
 
     /** 一次批准的结果：写的部署 + 被丢掉的请求项（回显给命令面）+ 是不是覆盖了旧部署。 */
-    public record Approval(Deployment deployment, List<String> droppedActions, List<String> droppedCapabilities,
-                           boolean replaced) {
-        public Approval {
-            droppedActions = List.copyOf(droppedActions);
-            droppedCapabilities = List.copyOf(droppedCapabilities);
+    public static final class Approval {
+        private final Deployment deployment;
+        private final List<String> droppedActions;
+        private final List<String> droppedCapabilities;
+        private final boolean replaced;
+
+        public Deployment deployment() { return deployment; }
+
+        public List<String> droppedActions() { return droppedActions; }
+
+        public List<String> droppedCapabilities() { return droppedCapabilities; }
+
+        public boolean replaced() { return replaced; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Approval)) return false;
+            Approval that = (Approval) other;
+            return java.util.Objects.equals(this.deployment, that.deployment)
+                    && java.util.Objects.equals(this.droppedActions, that.droppedActions)
+                    && java.util.Objects.equals(this.droppedCapabilities, that.droppedCapabilities)
+                    && this.replaced == that.replaced;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(deployment);
+            hash = 31 * hash + java.util.Objects.hashCode(droppedActions);
+            hash = 31 * hash + java.util.Objects.hashCode(droppedCapabilities);
+            hash = 31 * hash + java.util.Objects.hashCode(replaced);
+            return hash;
+        }
+
+        @Override public String toString() { return "Approval[deployment=" + deployment + ", droppedActions=" + droppedActions + ", droppedCapabilities=" + droppedCapabilities + ", replaced=" + replaced + "]"; }
+
+        public Approval(Deployment deployment, List<String> droppedActions, List<String> droppedCapabilities, boolean replaced) {
+            droppedActions = ImmutableList.copyOf(droppedActions);
+            droppedCapabilities = ImmutableList.copyOf(droppedCapabilities);
+            this.deployment = deployment;
+            this.droppedActions = droppedActions;
+            this.droppedCapabilities = droppedCapabilities;
+            this.replaced = replaced;
         }
     }
 
@@ -270,10 +309,53 @@ public final class DeploymentData extends PhoneSavedData {
      * <p>构造器做上限校验（摘要 64 hex、动作/能力 ≤32 且元素 ≤64）：这些值会进存档、也会进握手，
      * 必须在<b>入队</b>就挡住，而不是等编码期抛。读档走 {@link #fromTag}，坏条目返回 null 由调用方跳过。
      */
-    public record Candidate(String appId, String packageDigest, String frontendDigest, long queuedAt,
-                            List<String> declaredActions, List<String> declaredCapabilities) {
+    public static final class Candidate {
+        private final String appId;
+        private final String packageDigest;
+        private final String frontendDigest;
+        private final long queuedAt;
+        private final List<String> declaredActions;
+        private final List<String> declaredCapabilities;
 
-        public Candidate {
+        public String appId() { return appId; }
+
+        public String packageDigest() { return packageDigest; }
+
+        public String frontendDigest() { return frontendDigest; }
+
+        public long queuedAt() { return queuedAt; }
+
+        public List<String> declaredActions() { return declaredActions; }
+
+        public List<String> declaredCapabilities() { return declaredCapabilities; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Candidate)) return false;
+            Candidate that = (Candidate) other;
+            return java.util.Objects.equals(this.appId, that.appId)
+                    && java.util.Objects.equals(this.packageDigest, that.packageDigest)
+                    && java.util.Objects.equals(this.frontendDigest, that.frontendDigest)
+                    && this.queuedAt == that.queuedAt
+                    && java.util.Objects.equals(this.declaredActions, that.declaredActions)
+                    && java.util.Objects.equals(this.declaredCapabilities, that.declaredCapabilities);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(appId);
+            hash = 31 * hash + java.util.Objects.hashCode(packageDigest);
+            hash = 31 * hash + java.util.Objects.hashCode(frontendDigest);
+            hash = 31 * hash + java.util.Objects.hashCode(queuedAt);
+            hash = 31 * hash + java.util.Objects.hashCode(declaredActions);
+            hash = 31 * hash + java.util.Objects.hashCode(declaredCapabilities);
+            return hash;
+        }
+
+        @Override public String toString() { return "Candidate[appId=" + appId + ", packageDigest=" + packageDigest + ", frontendDigest=" + frontendDigest + ", queuedAt=" + queuedAt + ", declaredActions=" + declaredActions + ", declaredCapabilities=" + declaredCapabilities + "]"; }
+
+
+        public Candidate(String appId, String packageDigest, String frontendDigest, long queuedAt, List<String> declaredActions, List<String> declaredCapabilities) {
             if (!Deployment.validId(appId)) throw new IllegalArgumentException("appId 不合法：" + appId);
             if (!Deployment.validDigest(packageDigest)) {
                 throw new IllegalArgumentException("包摘要必须是 64 位小写 hex：" + packageDigest);
@@ -299,8 +381,14 @@ public final class DeploymentData extends PhoneSavedData {
                     throw new IllegalArgumentException("同一条能力声明了两次：" + cap);
                 }
             }
-            declaredActions = List.copyOf(declaredActions);
-            declaredCapabilities = List.copyOf(declaredCapabilities);
+            declaredActions = ImmutableList.copyOf(declaredActions);
+            declaredCapabilities = ImmutableList.copyOf(declaredCapabilities);
+            this.appId = appId;
+            this.packageDigest = packageDigest;
+            this.frontendDigest = frontendDigest;
+            this.queuedAt = queuedAt;
+            this.declaredActions = declaredActions;
+            this.declaredCapabilities = declaredCapabilities;
         }
 
         CompoundTag toTag() {

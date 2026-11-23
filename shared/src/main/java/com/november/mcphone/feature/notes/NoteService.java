@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.notes;
 
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.core.PhoneItem;
 import com.november.mcphone.core.PhonePlayerData;
 import com.november.mcphone.util.TextSanitizer;
@@ -18,7 +20,7 @@ public final class NoteService {
 
     /** 列表摘要，按最近修改倒序；读操作不校验身上有没有手机 */
     public static List<NoteSummary> buildSummaries(ServerPlayer player) {
-        return notes(player).sortedByRecent().stream().map(NoteSummary::of).toList();
+        return notes(player).sortedByRecent().stream().map(NoteSummary::of).collect(Java8Collections.toList());
     }
 
     public static Optional<Note> getNote(ServerPlayer player, int id) {
@@ -42,7 +44,7 @@ public final class NoteService {
         int targetId = id == NEW_NOTE_ID ? current.nextId() : id;
 
         // 改一个不存在的 id 直接拒绝，否则等于让客户端指定 id 新建
-        if (id != NEW_NOTE_ID && current.find(id).isEmpty()) return false;
+        if (id != NEW_NOTE_ID && !current.find(id).isPresent()) return false;
 
         NoteList updated = current.save(new Note(targetId, body, System.currentTimeMillis()));
         if (updated == current) return false;   // 条数满了，save 原样返回

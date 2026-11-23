@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.feature.chat.group.GroupLimits;
 import com.november.mcphone.util.TextSanitizer;
@@ -13,7 +15,7 @@ final class ChatGroupRename {
     private ChatLayout.Rect save;
     void open(String current) { close(); name.value(current); }
     void close() { name.close(); save = null; }
-    String value() { return TextSanitizer.sanitize(name.query(), GroupLimits.NAME_LENGTH).strip(); }
+    String value() { return Java8.strip(TextSanitizer.sanitize(name.query(), GroupLimits.NAME_LENGTH)); }
     void render(GuiGraphics g, Font font, ChatLayout.Rect area, int mx, int my, String status, boolean pending) {
         name.render(g, font, new ChatLayout.Rect(area.x(), area.y() + 2, area.width(), 12), mx, my, 0);
         ChatUi.text(g, font, ChatUi.truncate(font, Component.translatable(status.isEmpty() ? "mcphone.chat.group.rename_hint" : status).getString(), area.width(), ChatLayout.META_SCALE),

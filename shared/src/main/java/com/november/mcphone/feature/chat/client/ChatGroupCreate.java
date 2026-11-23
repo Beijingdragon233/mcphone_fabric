@@ -1,5 +1,12 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
+import java.util.List;
+import java.util.UUID;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.util.TextSanitizer;
@@ -24,7 +31,7 @@ public final class ChatGroupCreate {
     private final Set<UUID> selected = new LinkedHashSet<>();
     private List<ConversationSummary> source;
     private String query = "", status = "";
-    private List<ChatContactDirectory.Section> sections = List.of();
+    private List<ChatContactDirectory.Section> sections = ImmutableList.of();
     private ChatLayout.Rect confirm;
     private UUID request, created;
     private long requestedAt;
@@ -44,10 +51,10 @@ public final class ChatGroupCreate {
         if (request != null) GroupClientCache.cancel(request);
         request = created = null; confirm = null; selected.clear(); name.close(); search.close(); pane.close();
     }
-    public UUID consumeCreated() { var id = created; created = null; return id; }
+    public UUID consumeCreated() { UUID id = created; created = null; return id; }
     private void pollResult() {
         if (request != null) {
-            var result = GroupClientCache.consume(request);
+            com.november.mcphone.feature.chat.group.net.GroupReply.Result result = GroupClientCache.consume(request);
             if (result != null) {
                 if (result.status() == GroupStatus.OK) created = result.group(); else status = result.status().key();
                 request = null;
@@ -63,16 +70,16 @@ public final class ChatGroupCreate {
         ChatUi.buttonText(g, font, Component.translatable("mcphone.chat.home_menu.create_group").getString(), x + w / 2f, y + 6, ChatLayout.TEXT_SCALE, FontPalette.title());
         y += 14; name.render(g, font, new ChatLayout.Rect(x, y, w, 12), mx, my, tick);
         y += 14; search.render(g, font, new ChatLayout.Rect(x, y, w, ChatLayout.SEARCH_HEIGHT), mx, my, tick); y += ChatLayout.SEARCH_HEIGHT + ChatLayout.SECTION_GAP;
-        var next = ChatClientCache.getConversations(); String nextQuery = search.query();
+        List<com.november.mcphone.feature.chat.net.ConversationSummary> next = ChatClientCache.getConversations(); String nextQuery = search.query();
         if (source != next || !query.equals(nextQuery)) {
             if (!query.equals(nextQuery)) pane.reset(); source = next; query = nextQuery;
             selected.removeIf(id -> next.stream().noneMatch(c -> c.id().equals(id)));
-            sections = directory.sections(next.stream().map(c -> new ChatContactDirectory.Contact(c.id(), c.name(), c.online())).toList(), query);
+            sections = directory.sections(next.stream().map(c -> new ChatContactDirectory.Contact(c.id(), c.name(), c.online())).collect(Java8Collections.toList()), query);
         }
         int bottom = top + height - navH - 2;
         confirm = new ChatLayout.Rect(x, bottom - 14, w, 14);
         pane.render(g, font, sections, new ChatLayout.Rect(x, y, w, Math.max(0, bottom - y - 29)), mx, my,
-                query.isBlank() ? "mcphone.chat.contacts.friends_empty" : "mcphone.chat.contacts.search_empty", this::row);
+                Java8.isBlank(query) ? "mcphone.chat.contacts.friends_empty" : "mcphone.chat.contacts.search_empty", this::row);
         String hint = status.isEmpty() ? (selected.isEmpty()
                 ? Component.translatable("mcphone.chat.group.select_members").getString()
                 : Component.translatable("mcphone.chat.group.selected", selected.size()).getString())
@@ -85,8 +92,8 @@ public final class ChatGroupCreate {
     private boolean ready() { return request == null && !selected.isEmpty(); }
     private String groupName() {
         // 群名选填；先清洗输入，再回退默认名，避免空白/控制字符使创建按钮看似失效。
-        String value = TextSanitizer.sanitize(name.query(), GroupLimits.NAME_LENGTH).strip();
-        if (value.isEmpty()) value = TextSanitizer.sanitize(defaultName.get(), GroupLimits.NAME_LENGTH).strip();
+        String value = Java8.strip(TextSanitizer.sanitize(name.query(), GroupLimits.NAME_LENGTH));
+        if (value.isEmpty()) value = Java8.strip(TextSanitizer.sanitize(defaultName.get(), GroupLimits.NAME_LENGTH));
         return value.isEmpty() ? "Group" : value;
     }
     private void row(GuiGraphics g, Font font, ChatContactDirectory.Contact c, int x, int y, int w, int h, boolean hover) {
@@ -99,7 +106,7 @@ public final class ChatGroupCreate {
         if (confirm != null && confirm.contains(mx, my)) {
             if (!ready()) { status = "mcphone.chat.group.select_members"; return true; }
             request = UUID.randomUUID(); requestedAt = System.currentTimeMillis(); status = ""; GroupClientCache.track(request);
-            send.accept(new GroupCommand.Create(request, groupName(), List.copyOf(selected))); return true;
+            send.accept(new GroupCommand.Create(request, groupName(), ImmutableList.copyOf(selected))); return true;
         }
         UUID id = pane.click(mx, my, button);
         if (id != null) { if (!selected.remove(id) && selected.size() < GroupLimits.MEMBERS - 1) selected.add(id); status = ""; }

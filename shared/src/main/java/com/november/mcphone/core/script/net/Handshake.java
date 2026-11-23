@@ -44,12 +44,99 @@ public final class Handshake {
      *                   没有"条数封顶"这回事（每条能不能装下由它自己的字节数决定）
      * @param features   服主开了哪些口子
      */
-    public record Begin(UUID serverId, String serverName, int scriptApi, long epoch,
-                        int count, Features features) {
+    public static final class Begin {
+        private final UUID serverId;
+        private final String serverName;
+        private final int scriptApi;
+        private final long epoch;
+        private final int count;
+        private final Features features;
+
+        public Begin(UUID serverId, String serverName, int scriptApi, long epoch, int count, Features features) {
+            this.serverId = serverId;
+            this.serverName = serverName;
+            this.scriptApi = scriptApi;
+            this.epoch = epoch;
+            this.count = count;
+            this.features = features;
+        }
+
+        public UUID serverId() { return serverId; }
+
+        public String serverName() { return serverName; }
+
+        public int scriptApi() { return scriptApi; }
+
+        public long epoch() { return epoch; }
+
+        public int count() { return count; }
+
+        public Features features() { return features; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Begin)) return false;
+            Begin that = (Begin) other;
+            return java.util.Objects.equals(this.serverId, that.serverId)
+                    && java.util.Objects.equals(this.serverName, that.serverName)
+                    && this.scriptApi == that.scriptApi
+                    && this.epoch == that.epoch
+                    && this.count == that.count
+                    && java.util.Objects.equals(this.features, that.features);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(serverId);
+            hash = 31 * hash + java.util.Objects.hashCode(serverName);
+            hash = 31 * hash + java.util.Objects.hashCode(scriptApi);
+            hash = 31 * hash + java.util.Objects.hashCode(epoch);
+            hash = 31 * hash + java.util.Objects.hashCode(count);
+            hash = 31 * hash + java.util.Objects.hashCode(features);
+            return hash;
+        }
+
+        @Override public String toString() { return "Begin[serverId=" + serverId + ", serverName=" + serverName + ", scriptApi=" + scriptApi + ", epoch=" + epoch + ", count=" + count + ", features=" + features + "]"; }
+
     }
 
     /** §15.7 的 {@code features}。 */
-    public record Features(boolean externalFetch, boolean vault, boolean serverScripts) {
+    public static final class Features {
+        private final boolean externalFetch;
+        private final boolean vault;
+        private final boolean serverScripts;
+
+        public Features(boolean externalFetch, boolean vault, boolean serverScripts) {
+            this.externalFetch = externalFetch;
+            this.vault = vault;
+            this.serverScripts = serverScripts;
+        }
+
+        public boolean externalFetch() { return externalFetch; }
+
+        public boolean vault() { return vault; }
+
+        public boolean serverScripts() { return serverScripts; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Features)) return false;
+            Features that = (Features) other;
+            return this.externalFetch == that.externalFetch
+                    && this.vault == that.vault
+                    && this.serverScripts == that.serverScripts;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(externalFetch);
+            hash = 31 * hash + java.util.Objects.hashCode(vault);
+            hash = 31 * hash + java.util.Objects.hashCode(serverScripts);
+            return hash;
+        }
+
+        @Override public String toString() { return "Features[externalFetch=" + externalFetch + ", vault=" + vault + ", serverScripts=" + serverScripts + "]"; }
+
     }
 
     /**
@@ -62,12 +149,93 @@ public final class Handshake {
      *                         <b>不参与</b> deployRev 对齐（那是包轴，见 {@link Deployment#revision()}）
      * @param approvedAt 批准时刻（epoch 毫秒），详情页来源行用；0 表示没记
      */
-    public record Deployment(String appId, String deployRev, String frontendDigest,
-                             int visibility, long approvalRevision, long approvedAt, List<String> actions) {
+    public static final class Deployment {
+        private final String appId;
+        private final String deployRev;
+        private final String frontendDigest;
+        private final int visibility;
+        private final long approvalRevision;
+        private final long approvedAt;
+        private final List<String> actions;
+
+        public Deployment(String appId, String deployRev, String frontendDigest, int visibility, long approvalRevision, long approvedAt, List<String> actions) {
+            this.appId = appId;
+            this.deployRev = deployRev;
+            this.frontendDigest = frontendDigest;
+            this.visibility = visibility;
+            this.approvalRevision = approvalRevision;
+            this.approvedAt = approvedAt;
+            this.actions = actions;
+        }
+
+        public String appId() { return appId; }
+
+        public String deployRev() { return deployRev; }
+
+        public String frontendDigest() { return frontendDigest; }
+
+        public int visibility() { return visibility; }
+
+        public long approvalRevision() { return approvalRevision; }
+
+        public long approvedAt() { return approvedAt; }
+
+        public List<String> actions() { return actions; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Deployment)) return false;
+            Deployment that = (Deployment) other;
+            return java.util.Objects.equals(this.appId, that.appId)
+                    && java.util.Objects.equals(this.deployRev, that.deployRev)
+                    && java.util.Objects.equals(this.frontendDigest, that.frontendDigest)
+                    && this.visibility == that.visibility
+                    && this.approvalRevision == that.approvalRevision
+                    && this.approvedAt == that.approvedAt
+                    && java.util.Objects.equals(this.actions, that.actions);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(appId);
+            hash = 31 * hash + java.util.Objects.hashCode(deployRev);
+            hash = 31 * hash + java.util.Objects.hashCode(frontendDigest);
+            hash = 31 * hash + java.util.Objects.hashCode(visibility);
+            hash = 31 * hash + java.util.Objects.hashCode(approvalRevision);
+            hash = 31 * hash + java.util.Objects.hashCode(approvedAt);
+            hash = 31 * hash + java.util.Objects.hashCode(actions);
+            return hash;
+        }
+
+        @Override public String toString() { return "Deployment[appId=" + appId + ", deployRev=" + deployRev + ", frontendDigest=" + frontendDigest + ", visibility=" + visibility + ", approvalRevision=" + approvalRevision + ", approvedAt=" + approvedAt + ", actions=" + actions + "]"; }
+
     }
 
     /** 最后一条。带着同一个 epoch，客户端据此确认这一批是完整的。 */
-    public record End(long epoch) {
+    public static final class End {
+        private final long epoch;
+
+        public End(long epoch) {
+            this.epoch = epoch;
+        }
+
+        public long epoch() { return epoch; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof End)) return false;
+            End that = (End) other;
+            return this.epoch == that.epoch;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(epoch);
+            return hash;
+        }
+
+        @Override public String toString() { return "End[epoch=" + epoch + "]"; }
+
     }
 
     // ---------------------------------------------------------------- 编解码

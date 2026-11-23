@@ -58,11 +58,15 @@ public final class CycleLabels {
     /** 标签。格式是契约的一部分，改了等于把所有 App 的限量计数清零一次。 */
     public static String label(CycleKind kind, Instant at, ZoneId zone, LocalTime dailyAt) {
         LocalDate d = cycleDay(at, zone, dailyAt);
-        return switch (kind) {
-            case DAILY -> String.format("%04d-%02d-%02d", d.getYear(), d.getMonthValue(), d.getDayOfMonth());
-            case WEEKLY -> weekLabel(d);
-            case MONTHLY -> String.format("%04d-%02d", d.getYear(), d.getMonthValue());
-        };
+        switch (kind) {
+            case DAILY:
+                return String.format("%04d-%02d-%02d", d.getYear(), d.getMonthValue(), d.getDayOfMonth());
+            case WEEKLY:
+                return weekLabel(d);
+            case MONTHLY:
+                return String.format("%04d-%02d", d.getYear(), d.getMonthValue());
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     /**
@@ -85,11 +89,19 @@ public final class CycleLabels {
      */
     public static long nextBoundary(CycleKind kind, Instant at, ZoneId zone, LocalTime dailyAt) {
         LocalDate day = cycleDay(at, zone, dailyAt);
-        LocalDate next = switch (kind) {
-            case DAILY -> day.plusDays(1);
-            case WEEKLY -> nextWeekStart(day);
-            case MONTHLY -> day.withDayOfMonth(1).plusMonths(1);
-        };
+        LocalDate next;
+        switch (kind) {
+            case DAILY:
+                next = day.plusDays(1);
+                break;
+            case WEEKLY:
+                next = nextWeekStart(day);
+                break;
+            case MONTHLY:
+                next = day.withDayOfMonth(1).plusMonths(1);
+                break;
+            default: throw new IncompatibleClassChangeError();
+        }
         // 分界点也在 dailyAt 这一刻：周期日是按它切的，边界与切法必须是同一个时刻
         return boundary(next, dailyAt, zone).toInstant().toEpochMilli();
     }

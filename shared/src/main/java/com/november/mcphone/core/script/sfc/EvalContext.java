@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -34,7 +37,7 @@ final class EvalContext {
     int line;
 
     EvalContext(Map<String, Object> state, String file) {
-        this(state, Map.of(), file);
+        this(state, ImmutableMap.of(), file);
     }
 
     EvalContext(Map<String, Object> state, Map<String, Object> host, String file) {
@@ -55,7 +58,7 @@ final class EvalContext {
 
     /** 此刻绑着的 v-for 变量名，外层在前。@click 实例化时拿它捕获，点击时还原。 */
     List<String> boundNames() {
-        return List.copyOf(names);
+        return ImmutableList.copyOf(names);
     }
 
     /** 与 {@link #boundNames()} 一一对应的值。可能有 null（数组里写了 null），所以不用 List.copyOf。 */
@@ -107,7 +110,7 @@ final class EvalContext {
     }
 
     List<String> warnings() {
-        return List.copyOf(warnings);
+        return ImmutableList.copyOf(warnings);
     }
 
     /** 拼接结果超长时截断并记 warn。 */

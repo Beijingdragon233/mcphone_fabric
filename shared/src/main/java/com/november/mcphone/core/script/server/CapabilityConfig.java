@@ -1,9 +1,15 @@
 package com.november.mcphone.core.script.server;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.core.PhonePaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.november.mcphone.util.GsonCompat;
 import com.google.gson.JsonParser;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.JsonScan;
@@ -74,8 +80,60 @@ public final class CapabilityConfig {
     }
 
     /** §30.5 的六个行为开关。默认全 false（原版保守）。 */
-    public record Boundary(boolean resourceMove, boolean crossDimensionTransfer, boolean escrowFreezesDecay,
-                           boolean remoteMachineRead, boolean remoteMachineOperate, boolean storeLivingEntities) {
+    public static final class Boundary {
+        private final boolean resourceMove;
+        private final boolean crossDimensionTransfer;
+        private final boolean escrowFreezesDecay;
+        private final boolean remoteMachineRead;
+        private final boolean remoteMachineOperate;
+        private final boolean storeLivingEntities;
+
+        public Boundary(boolean resourceMove, boolean crossDimensionTransfer, boolean escrowFreezesDecay, boolean remoteMachineRead, boolean remoteMachineOperate, boolean storeLivingEntities) {
+            this.resourceMove = resourceMove;
+            this.crossDimensionTransfer = crossDimensionTransfer;
+            this.escrowFreezesDecay = escrowFreezesDecay;
+            this.remoteMachineRead = remoteMachineRead;
+            this.remoteMachineOperate = remoteMachineOperate;
+            this.storeLivingEntities = storeLivingEntities;
+        }
+
+        public boolean resourceMove() { return resourceMove; }
+
+        public boolean crossDimensionTransfer() { return crossDimensionTransfer; }
+
+        public boolean escrowFreezesDecay() { return escrowFreezesDecay; }
+
+        public boolean remoteMachineRead() { return remoteMachineRead; }
+
+        public boolean remoteMachineOperate() { return remoteMachineOperate; }
+
+        public boolean storeLivingEntities() { return storeLivingEntities; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Boundary)) return false;
+            Boundary that = (Boundary) other;
+            return this.resourceMove == that.resourceMove
+                    && this.crossDimensionTransfer == that.crossDimensionTransfer
+                    && this.escrowFreezesDecay == that.escrowFreezesDecay
+                    && this.remoteMachineRead == that.remoteMachineRead
+                    && this.remoteMachineOperate == that.remoteMachineOperate
+                    && this.storeLivingEntities == that.storeLivingEntities;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(resourceMove);
+            hash = 31 * hash + java.util.Objects.hashCode(crossDimensionTransfer);
+            hash = 31 * hash + java.util.Objects.hashCode(escrowFreezesDecay);
+            hash = 31 * hash + java.util.Objects.hashCode(remoteMachineRead);
+            hash = 31 * hash + java.util.Objects.hashCode(remoteMachineOperate);
+            hash = 31 * hash + java.util.Objects.hashCode(storeLivingEntities);
+            return hash;
+        }
+
+        @Override public String toString() { return "Boundary[resourceMove=" + resourceMove + ", crossDimensionTransfer=" + crossDimensionTransfer + ", escrowFreezesDecay=" + escrowFreezesDecay + ", remoteMachineRead=" + remoteMachineRead + ", remoteMachineOperate=" + remoteMachineOperate + ", storeLivingEntities=" + storeLivingEntities + "]"; }
+
     }
 
     private static final Boundary ALL_OFF = new Boundary(false, false, false, false, false, false);
@@ -101,13 +159,13 @@ public final class CapabilityConfig {
         this.preset = preset;
         this.disabled = Collections.unmodifiableSet(disabled);
         this.boundary = boundary;
-        this.warnings = List.copyOf(warnings);
+        this.warnings = ImmutableList.copyOf(warnings);
         this.error = error == null ? "" : error;
     }
 
     /** 原版默认：standard + 什么都不关 + 边界全关。 */
     public static CapabilityConfig defaults() {
-        return new CapabilityConfig(Preset.STANDARD, Set.of(), ALL_OFF, List.of());
+        return new CapabilityConfig(Preset.STANDARD, ImmutableSet.of(), ALL_OFF, ImmutableList.of());
     }
 
     public Preset preset() {
@@ -187,7 +245,7 @@ public final class CapabilityConfig {
                 if (previous != null) return previous;   // 文件被删了：保留上一份，别默默全开
                 try {
                     Files.createDirectories(file.getParent());
-                    Files.writeString(file, template(), StandardCharsets.UTF_8);
+                    Java8.writeString(file, template(), StandardCharsets.UTF_8);
                     MCphone.LOGGER.info("[MCphone] 能力配置不存在，已生成模板：{}（当前按默认值：standard、无禁用）", file);
                 } catch (IOException e) {
                     MCphone.LOGGER.warn("[MCphone] 生成能力配置模板失败（{}），按默认值继续", file, e);
@@ -198,7 +256,7 @@ public final class CapabilityConfig {
             if (size > MAX_FILE_BYTES) {
                 return reject(fallback, "配置文件太大（" + size + " 字节 > " + MAX_FILE_BYTES + "）");
             }
-            String json = Files.readString(file, StandardCharsets.UTF_8);
+            String json = Java8.readString(file, StandardCharsets.UTF_8);
             CapabilityConfig cfg = parse(json);
             if (!cfg.loadError().isEmpty()) {
                 return reject(fallback, cfg.loadError());
@@ -219,7 +277,7 @@ public final class CapabilityConfig {
     /** 直接拒掉一份解析结果（parse 用；调用方看到 loadError 就不会采用它）。 */
     private static CapabilityConfig rejected(String why, List<String> warnings) {
         warnings.add(why + "，按默认值处理（已生效的那一份不会被覆盖）");
-        return new CapabilityConfig(Preset.STANDARD, Set.of(), ALL_OFF, warnings, why);
+        return new CapabilityConfig(Preset.STANDARD, ImmutableSet.of(), ALL_OFF, warnings, why);
     }
 
     /**
@@ -303,7 +361,7 @@ public final class CapabilityConfig {
                         bool(o, "remote_machine_read", boundary.remoteMachineRead(), warnings),
                         bool(o, "remote_machine_operate", boundary.remoteMachineOperate(), warnings),
                         bool(o, "store_living_entities", boundary.storeLivingEntities(), warnings));
-                for (String key : o.keySet()) {
+                for (String key : GsonCompat.keys(o)) {
                     if (key.startsWith("_")) continue;
                     if (!BOUNDARY_KEYS.contains(key)) warnings.add("boundary 里不认识的开关（已忽略）：" + key);
                 }
@@ -313,7 +371,7 @@ public final class CapabilityConfig {
         }
 
         // 不认识的顶层键 = 段名写错，明确报出来（E28 口径）
-        for (String key : root.keySet()) {
+        for (String key : GsonCompat.keys(root)) {
             if (key.startsWith("_")) continue;
             if (!key.equals("preset") && !key.equals("disabled") && !key.equals("boundary")) {
                 warnings.add("不认识的段（已忽略）：" + key + " —— 认识的只有 preset / disabled / boundary");
@@ -323,7 +381,7 @@ public final class CapabilityConfig {
         return new CapabilityConfig(preset, disabled, boundary, warnings);
     }
 
-    private static final Set<String> BOUNDARY_KEYS = Set.of(
+    private static final Set<String> BOUNDARY_KEYS = ImmutableSet.of(
             "resource_move", "cross_dimension_transfer", "escrow_freezes_decay",
             "remote_machine_read", "remote_machine_operate", "store_living_entities");
 

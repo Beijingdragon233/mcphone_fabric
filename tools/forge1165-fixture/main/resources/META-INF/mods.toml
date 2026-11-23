@@ -1,0 +1,62 @@
+modLoader="javafml"
+loaderVersion="[36,)"
+license="TEST-ONLY / not for distribution"
+
+[[mods]]
+modId="mcphone1165fixture"
+version="1.0.0"
+displayName="MCphone 1.16.5 Phone-Slot Bridge Fixture (TEST ONLY)"
+description='''
+TEST-ONLY dedicated-server fixture. Forces PlayerWaystoneManager and Refined Storage PlayerSlot to
+load inside a real Forge 36 server and asserts the MCphone phone-slot bridge with a FakePlayer.
+Lives under .build-tools/1165-fixture; not production code.
+'''
+
+[[dependencies.mcphone1165fixture]]
+    modId="forge"
+    mandatory=true
+    versionRange="[36,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.mcphone1165fixture]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.16.5,1.17)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.mcphone1165fixture]]
+    modId="mcphone"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.mcphone1165fixture]]
+    modId="waystones"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.mcphone1165fixture]]
+    modId="refinedstorage"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.mcphone1165fixture]]
+    modId="appliedenergistics2"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"
+
+[[dependencies.mcphone1165fixture]]
+    modId="curios"
+    mandatory=false
+    versionRange="*"
+    ordering="AFTER"
+    side="BOTH"

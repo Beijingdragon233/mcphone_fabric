@@ -36,15 +36,72 @@ import net.minecraft.network.FriendlyByteBuf;
  * @param frontendDigest 界面摘要。<b>这不是安全边界</b>（§13.3）：客户端能伪造它，
  *                       服务端只用它回显"界面被改过"，<b>不参与任何授权判断</b>
  */
-public record ScriptRpc(
-        int protocol,
-        long requestId,
-        long connectionEpoch,
-        String appId,
-        String deployRev,
-        String actionId,
-        byte[] params,
-        String frontendDigest) {
+public final class ScriptRpc {
+    private final int protocol;
+    private final long requestId;
+    private final long connectionEpoch;
+    private final String appId;
+    private final String deployRev;
+    private final String actionId;
+    private final byte[] params;
+    private final String frontendDigest;
+
+    public ScriptRpc(int protocol, long requestId, long connectionEpoch, String appId, String deployRev, String actionId, byte[] params, String frontendDigest) {
+        this.protocol = protocol;
+        this.requestId = requestId;
+        this.connectionEpoch = connectionEpoch;
+        this.appId = appId;
+        this.deployRev = deployRev;
+        this.actionId = actionId;
+        this.params = params;
+        this.frontendDigest = frontendDigest;
+    }
+
+    public int protocol() { return protocol; }
+
+    public long requestId() { return requestId; }
+
+    public long connectionEpoch() { return connectionEpoch; }
+
+    public String appId() { return appId; }
+
+    public String deployRev() { return deployRev; }
+
+    public String actionId() { return actionId; }
+
+    public byte[] params() { return params; }
+
+    public String frontendDigest() { return frontendDigest; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ScriptRpc)) return false;
+        ScriptRpc that = (ScriptRpc) other;
+        return this.protocol == that.protocol
+                && this.requestId == that.requestId
+                && this.connectionEpoch == that.connectionEpoch
+                && java.util.Objects.equals(this.appId, that.appId)
+                && java.util.Objects.equals(this.deployRev, that.deployRev)
+                && java.util.Objects.equals(this.actionId, that.actionId)
+                && java.util.Objects.equals(this.params, that.params)
+                && java.util.Objects.equals(this.frontendDigest, that.frontendDigest);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(protocol);
+        hash = 31 * hash + java.util.Objects.hashCode(requestId);
+        hash = 31 * hash + java.util.Objects.hashCode(connectionEpoch);
+        hash = 31 * hash + java.util.Objects.hashCode(appId);
+        hash = 31 * hash + java.util.Objects.hashCode(deployRev);
+        hash = 31 * hash + java.util.Objects.hashCode(actionId);
+        hash = 31 * hash + java.util.Objects.hashCode(params);
+        hash = 31 * hash + java.util.Objects.hashCode(frontendDigest);
+        return hash;
+    }
+
+    @Override public String toString() { return "ScriptRpc[protocol=" + protocol + ", requestId=" + requestId + ", connectionEpoch=" + connectionEpoch + ", appId=" + appId + ", deployRev=" + deployRev + ", actionId=" + actionId + ", params=" + params + ", frontendDigest=" + frontendDigest + "]"; }
+
 
     public static void encode(ScriptRpc m, FriendlyByteBuf buf) {
         buf.writeVarInt(m.protocol());

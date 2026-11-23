@@ -1,5 +1,10 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.core.PhonePaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -59,7 +64,7 @@ public final class EconomyConfig {
 
     /** 一条货币认得的七个字段（顺序照 §22.7 的表）。 */
     public static final List<String> FIELDS =
-            List.of("id", "name", "symbol", "decimals", "provider", "default", "max");
+            ImmutableList.of("id", "name", "symbol", "decimals", "provider", "default", "max");
 
     /** 配置文件大小闸（对抗 D′3，与能力配置同一档）：正常模板 1 KiB 量级，64 KiB 已经宽得没边。 */
     public static final int MAX_FILE_BYTES = 64 * 1024;
@@ -68,10 +73,36 @@ public final class EconomyConfig {
     public static final int MAX_CURRENCIES = 64;
 
     /** 解析结果：可用的表（顺序 = 文件顺序）+ 逐条 problem（人类可读，带行号）。 */
-    public record Result(List<CurrencySpec> specs, List<String> problems) {
-        public Result {
-            specs = List.copyOf(specs);
-            problems = List.copyOf(problems);
+    public static final class Result {
+        private final List<CurrencySpec> specs;
+        private final List<String> problems;
+
+        public List<CurrencySpec> specs() { return specs; }
+
+        public List<String> problems() { return problems; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Result)) return false;
+            Result that = (Result) other;
+            return java.util.Objects.equals(this.specs, that.specs)
+                    && java.util.Objects.equals(this.problems, that.problems);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(specs);
+            hash = 31 * hash + java.util.Objects.hashCode(problems);
+            return hash;
+        }
+
+        @Override public String toString() { return "Result[specs=" + specs + ", problems=" + problems + "]"; }
+
+        public Result(List<CurrencySpec> specs, List<String> problems) {
+            specs = ImmutableList.copyOf(specs);
+            problems = ImmutableList.copyOf(problems);
+            this.specs = specs;
+            this.problems = problems;
         }
 
         public boolean clean() {
@@ -93,24 +124,24 @@ public final class EconomyConfig {
             if (!Files.isRegularFile(file)) {
                 try {
                     Files.createDirectories(file.getParent());
-                    Files.writeString(file, template(), StandardCharsets.UTF_8);
+                    Java8.writeString(file, template(), StandardCharsets.UTF_8);
                     MCphone.LOGGER.info("[MCphone] 货币配置不存在，已生成模板：{}（空表；配了才有钱）", file);
                 } catch (IOException e) {
                     MCphone.LOGGER.error("[MCphone] 生成货币配置模板失败（{}），按空表继续", file, e);
                 }
-                return new Result(List.of(), List.of());
+                return new Result(ImmutableList.of(), ImmutableList.of());
             }
             long size = Files.size(file);
             if (size > MAX_FILE_BYTES) {
                 MCphone.LOGGER.error("[MCphone] 货币配置太大（{} 字节 > {}），按空表继续", size, MAX_FILE_BYTES);
-                return new Result(List.of(), List.of("配置文件太大（" + size + " 字节 > "
+                return new Result(ImmutableList.of(), ImmutableList.of("配置文件太大（" + size + " 字节 > "
                         + MAX_FILE_BYTES + "），整份不加载"));
             }
-            String json = Files.readString(file, StandardCharsets.UTF_8);
+            String json = Java8.readString(file, StandardCharsets.UTF_8);
             return parse(json);
         } catch (IOException e) {
             MCphone.LOGGER.error("[MCphone] 货币配置读不出来（{}），按空表继续", file, e);
-            return new Result(List.of(), List.of("配置文件读不出来：" + e.getMessage()));
+            return new Result(ImmutableList.of(), ImmutableList.of("配置文件读不出来：" + e.getMessage()));
         }
     }
 
@@ -120,7 +151,7 @@ public final class EconomyConfig {
         JsonScan.Problem shape = JsonScan.check(json, 32);
         if (shape != null) {
             problems.add(shape.detail() + "（整份配置不可用）");
-            return new Result(List.of(), problems);
+            return new Result(ImmutableList.of(), problems);
         }
 
         JsonElement parsed;
@@ -128,11 +159,11 @@ public final class EconomyConfig {
             parsed = JsonParser.parseString(json);
         } catch (RuntimeException e) {
             problems.add("不是合法 JSON（" + e.getMessage() + "）（整份配置不可用）");
-            return new Result(List.of(), problems);
+            return new Result(ImmutableList.of(), problems);
         }
         if (!parsed.isJsonObject()) {
             problems.add("顶层必须是一个对象（整份配置不可用）");
-            return new Result(List.of(), problems);
+            return new Result(ImmutableList.of(), problems);
         }
 
         Lines lines = scanLines(json);
@@ -173,7 +204,7 @@ public final class EconomyConfig {
     private static void readEntry(JsonObject obj, int index, int entryLine, Lines lines,
                                   List<CurrencySpec> specs, Set<String> seenIds, List<String> problems) {
         Map<String, Integer> fieldLines =
-                index < lines.entryKeyLines().size() ? lines.entryKeyLines().get(index) : Map.of();
+                index < lines.entryKeyLines().size() ? lines.entryKeyLines().get(index) : ImmutableMap.of();
         Map<String, Object> table = new LinkedHashMap<>();
         for (Map.Entry<String, JsonElement> f : obj.entrySet()) {
             String field = f.getKey();
@@ -226,8 +257,42 @@ public final class EconomyConfig {
     // ---------------------------------------------------------------- 行号
 
     /** 顶层键的行、currency 每个元素的行、元素内字段的行。 */
-    record Lines(Map<String, Integer> topKeys, List<Integer> entryLines,
-                 List<Map<String, Integer>> entryKeyLines) {
+    static final class Lines {
+        private final Map<String, Integer> topKeys;
+        private final List<Integer> entryLines;
+        private final List<Map<String, Integer>> entryKeyLines;
+
+        Lines(Map<String, Integer> topKeys, List<Integer> entryLines, List<Map<String, Integer>> entryKeyLines) {
+            this.topKeys = topKeys;
+            this.entryLines = entryLines;
+            this.entryKeyLines = entryKeyLines;
+        }
+
+        public Map<String, Integer> topKeys() { return topKeys; }
+
+        public List<Integer> entryLines() { return entryLines; }
+
+        public List<Map<String, Integer>> entryKeyLines() { return entryKeyLines; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Lines)) return false;
+            Lines that = (Lines) other;
+            return java.util.Objects.equals(this.topKeys, that.topKeys)
+                    && java.util.Objects.equals(this.entryLines, that.entryLines)
+                    && java.util.Objects.equals(this.entryKeyLines, that.entryKeyLines);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(topKeys);
+            hash = 31 * hash + java.util.Objects.hashCode(entryLines);
+            hash = 31 * hash + java.util.Objects.hashCode(entryKeyLines);
+            return hash;
+        }
+
+        @Override public String toString() { return "Lines[topKeys=" + topKeys + ", entryLines=" + entryLines + ", entryKeyLines=" + entryKeyLines + "]"; }
+
     }
 
     /**
@@ -332,7 +397,7 @@ public final class EconomyConfig {
             }
             i++;
         }
-        return new Lines(Map.copyOf(topKeys), List.copyOf(entryLines), List.copyOf(entryKeyLines));
+        return new Lines(ImmutableMap.copyOf(topKeys), ImmutableList.copyOf(entryLines), ImmutableList.copyOf(entryKeyLines));
     }
 
     private static String unescape(String s) {
@@ -346,12 +411,22 @@ public final class EconomyConfig {
             }
             char e = s.charAt(++i);
             switch (e) {
-                case 'n' -> b.append('\n');
-                case 't' -> b.append('\t');
-                case 'r' -> b.append('\r');
-                case 'b' -> b.append('\b');
-                case 'f' -> b.append('\f');
-                case 'u' -> {
+                case 'n':
+                    b.append('\n');
+                    break;
+                case 't':
+                    b.append('\t');
+                    break;
+                case 'r':
+                    b.append('\r');
+                    break;
+                case 'b':
+                    b.append('\b');
+                    break;
+                case 'f':
+                    b.append('\f');
+                    break;
+                case 'u': {
                     if (i + 4 < s.length()) {
                         try {
                             b.append((char) Integer.parseInt(s.substring(i + 1, i + 5), 16));
@@ -363,7 +438,10 @@ public final class EconomyConfig {
                         b.append(e);
                     }
                 }
-                default -> b.append(e);
+                    break;
+                default:
+                    b.append(e);
+                    break;
             }
         }
         return b.toString();

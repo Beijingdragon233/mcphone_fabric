@@ -417,11 +417,22 @@ public final class Gallery {
 
         if (viewing >= 0) {
             switch (hoveredBtn) {
-                case BACK   -> backToGrid();
-                case PREV   -> step(-1);
-                case NEXT   -> step(1);
-                case DELETE -> confirmDelete();
-                case NONE   -> deleteArmed = false;   // 点空白处即卸掉上膛的删除
+                case BACK:
+                    backToGrid();
+                    break;
+                case PREV:
+                    step(-1);
+                    break;
+                case NEXT:
+                    step(1);
+                    break;
+                case DELETE:
+                    confirmDelete();
+                    break;
+                case NONE:
+                    deleteArmed = false;
+                    break;
+                    // 点空白处即卸掉上膛的删除
             }
             return true;
         }
@@ -475,18 +486,22 @@ public final class Gallery {
     public boolean keyPressed(int keyCode) {
         boolean inViewer = viewing >= 0;
         switch (keyCode) {
-            case 262, 264 -> { if (inViewer) step(1);  else flip(1);  return true; }   // → ↓
-            case 263, 265 -> { if (inViewer) step(-1); else flip(-1); return true; }   // ← ↑
-            case 268 -> {                                                              // Home
+            case 262:
+            case 264: { if (inViewer) step(1);  else flip(1);  return true; }
+                // → ↓
+            case 263:
+            case 265: { if (inViewer) step(-1); else flip(-1); return true; }
+                // ← ↑
+            case 268: {                                                              // Home
                 if (inViewer) { viewing = 0; deleteArmed = false; } else page = 0;
                 return true;
             }
-            case 269 -> {                                                              // End
+            case 269: {                                                              // End
                 if (inViewer) { viewing = Math.max(0, PhotoLibrary.count() - 1); deleteArmed = false; }
                 else page = Math.max(0, lastPage());
                 return true;
             }
-            default -> { return false; }
+            default: { return false; }
         }
     }
 

@@ -1,5 +1,9 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.core.script.sfc.SfcError.Code;
 
 import java.util.LinkedHashMap;
@@ -17,7 +21,7 @@ import java.util.regex.Pattern;
  */
 public final class SfcSplitter {
 
-    public static final Set<String> BLOCKS = Set.of("manifest", "template", "script", "style");
+    public static final Set<String> BLOCKS = ImmutableSet.of("manifest", "template", "script", "style");
 
     private static final Pattern TAG = Pattern.compile("</?([a-z][a-z0-9-]*)>");
     /** 顶格、写歪了的块标签：尖括号里多了空白，或者后面跟了空白。 */
@@ -54,7 +58,7 @@ public final class SfcSplitter {
             if (open != null) {
                 // 顶格的块标签后面跟了空白：编辑器留下的尾随空格最常见，当成内容会报成「没有闭合」且指错行
                 if (!tag && !raw.isEmpty() && raw.charAt(0) == '<') {
-                    Matcher loose = LOOSE.matcher(raw.stripTrailing());
+                    Matcher loose = LOOSE.matcher(Java8.stripTrailing(raw));
                     if (loose.matches() && BLOCKS.contains(loose.group(1))) {
                         throw SfcError.at(Code.E_SFC_BLOCK_FORMAT, i + 1, 1);
                     }
@@ -73,7 +77,7 @@ public final class SfcSplitter {
                 continue;
             }
 
-            if (raw.isBlank()) continue;
+            if (Java8.isBlank(raw)) continue;
             if (tag) {
                 String name = m.group(1);
                 if (raw.charAt(1) == '/') throw SfcError.at(Code.E_SFC_UNEXPECTED_CLOSE, i + 1, 1, name);
@@ -97,7 +101,7 @@ public final class SfcSplitter {
 
     /** 缩进了、同一行还有别的东西的块标签：报格式错比报「块外有内容」更快指到问题。注释不算。 */
     private static boolean looksLikeTag(String raw) {
-        String t = raw.strip();
+        String t = Java8.strip(raw);
         if (t.length() < 2 || t.charAt(0) != '<') return false;
         char c = t.charAt(1);
         return c == '/' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');

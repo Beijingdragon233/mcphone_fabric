@@ -43,7 +43,48 @@ public final class CompanionApps {
     private boolean hoverNext = false;
 
     /** 一行要画的东西，刷新时一次算好（可能抛错的调用不进渲染热路径）；icon 可为 null */
-    private record Row(String name, ResourceLocation icon, String requires, boolean satisfied) {}
+    private static final class Row {
+        private final String name;
+        private final ResourceLocation icon;
+        private final String requires;
+        private final boolean satisfied;
+
+        private Row(String name, ResourceLocation icon, String requires, boolean satisfied) {
+            this.name = name;
+            this.icon = icon;
+            this.requires = requires;
+            this.satisfied = satisfied;
+        }
+
+        public String name() { return name; }
+
+        public ResourceLocation icon() { return icon; }
+
+        public String requires() { return requires; }
+
+        public boolean satisfied() { return satisfied; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Row)) return false;
+            Row that = (Row) other;
+            return java.util.Objects.equals(this.name, that.name)
+                    && java.util.Objects.equals(this.icon, that.icon)
+                    && java.util.Objects.equals(this.requires, that.requires)
+                    && this.satisfied == that.satisfied;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(icon);
+            hash = 31 * hash + java.util.Objects.hashCode(requires);
+            hash = 31 * hash + java.util.Objects.hashCode(satisfied);
+            return hash;
+        }
+
+        @Override public String toString() { return "Row[name=" + name + ", icon=" + icon + ", requires=" + requires + ", satisfied=" + satisfied + "]"; }
+}
 
     /** 进这一页时调用，重新扫一遍 */
     public void refresh() {
@@ -69,7 +110,7 @@ public final class CompanionApps {
             boolean satisfied = true;
             StringBuilder names = new StringBuilder();
             for (RequiredMod mod : required) {
-                if (!names.isEmpty()) names.append("、");
+                if (names.length() != 0) names.append("、");
                 names.append(mod.displayName());
                 if (!ModPresence.isLoaded(mod.modId())) satisfied = false;
             }

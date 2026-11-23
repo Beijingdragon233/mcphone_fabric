@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.music.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.ClientConfig;
 import com.november.mcphone.feature.music.PlayMode;
@@ -25,7 +27,7 @@ public final class MusicController {
     private static final int MAX_CONSECUTIVE_FAILURES = 8;
 
     /** 空表示没在放 */
-    private static List<Track> queue = List.of();
+    private static List<Track> queue = ImmutableList.of();
 
     /** 队列里的位置，-1 表示没有 */
     private static int index = -1;
@@ -40,7 +42,7 @@ public final class MusicController {
     public static void play(List<Track> tracks, int at) {
         if (tracks.isEmpty() || at < 0 || at >= tracks.size()) return;
 
-        queue = List.copyOf(tracks);
+        queue = ImmutableList.copyOf(tracks);
         index = at;
         consecutiveFailures = 0;
         startCurrent();
@@ -49,11 +51,16 @@ public final class MusicController {
     /** 没在放就放当前这首，在放就暂停，暂停就继续 */
     public static void togglePlayPause() {
         switch (LocalPlayback.getState()) {
-            case PLAYING -> LocalPlayback.pause();
-            case PAUSED -> LocalPlayback.resume();
-            case IDLE -> {
+            case PLAYING:
+                LocalPlayback.pause();
+                break;
+            case PAUSED:
+                LocalPlayback.resume();
+                break;
+            case IDLE: {
                 if (current() != null) startCurrent();
             }
+                break;
         }
     }
 
@@ -74,7 +81,7 @@ public final class MusicController {
     public static void stop() {
         LocalPlayback.stop();
         index = -1;
-        queue = List.of();
+        queue = ImmutableList.of();
     }
 
     /** 正在放（或暂停在）哪一首；没有则 null */
@@ -102,17 +109,20 @@ public final class MusicController {
      */
     public static void onTrackEnded(LocalPlayback.Ending ending) {
         switch (ending) {
-            case FINISHED -> {
+            case FINISHED: {
                 consecutiveFailures = 0;
                 advance(false);
             }
-            case SILENT -> {
+                break;
+            case SILENT: {
                 noteProblem(current(),
                         Component.translatable("mcphone.music.problem.silent"),
                         "打开成功，但解码器一个字节都没出");
                 failAndSkip();
             }
-            case STARVED -> { }
+                break;
+            case STARVED: { }
+                break;
         }
     }
 
@@ -124,10 +134,16 @@ public final class MusicController {
             return;
         }
 
-        index = switch (mode) {
-            case SINGLE_LOOP, LIST_LOOP -> (index + 1) % queue.size();
-            case SHUFFLE -> randomOther();
-        };
+        switch (mode) {
+            case SINGLE_LOOP:
+            case LIST_LOOP:
+                index = (index + 1) % queue.size();
+                break;
+            case SHUFFLE:
+                index = randomOther();
+                break;
+            default: throw new IncompatibleClassChangeError();
+        }
         startCurrent();
     }
 
@@ -197,7 +213,7 @@ public final class MusicController {
     }
 
     private static Component reasonOf(IOException e) {
-        return e instanceof UnplayableException u ? u.reason()
+        return e instanceof UnplayableException ? ((UnplayableException) e).reason()
                 : Component.translatable("mcphone.music.problem.broken");
     }
 }

@@ -102,7 +102,7 @@ public final class TerminalOpener {
      */
     private static boolean openIfPossible(ServerPlayer player, ItemStack stack, TerminalSource source) {
         Optional<TerminalIntegration> owner = Terminals.owner(stack);
-        if (owner.isEmpty()) return false;
+        if (!owner.isPresent()) return false;
 
         TerminalIntegration integration = owner.get();
         try {

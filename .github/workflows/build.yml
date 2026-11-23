@@ -18,7 +18,7 @@ on:
   push:
     branches: [master, main, "26.x-"]
   pull_request:
-    branches: [master, main]
+    branches: [master, main, "26.x-"]
 
 jobs:
   # 先把要编哪些读出来，下面按矩阵一个 runner 编一个。
@@ -78,6 +78,13 @@ jobs:
             21
             25
 
+      - name: Setup Java 8 for legacy runtime verification
+        if: matrix.target == '1.16.5-forge'
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '8'
+
       # 【停在 v5，不要升 v6】。v6 把缓存那部分抽成了 gradle-actions-caching，
       # 那是个不再开源的商业组件，启用缓存就等于接受 Gradle 自己那份
       # Terms of Use（https://gradle.com/legal/terms-of-use/）。一个 MIT 的
@@ -132,6 +139,7 @@ jobs:
             exit 1
           fi
           cp "$JAR" "dist/mcphone-${{ steps.b.outputs.version }}-${{ matrix.target }}.jar"
+          ( cd dist && sha256sum *.jar > SHA256SUMS.txt )
           ls -lh dist/
 
       # 名字上带出 buildable —— 一个还没翻 buildable 的目标出的 jar 是拿来试跑的，
@@ -140,7 +148,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mcphone-${{ matrix.target }}${{ steps.b.outputs.buildable == 'true' && '' || '-未验证' }}
-          path: dist/*.jar
+          path: dist/*
           retention-days: 30
 
   # ============================================================

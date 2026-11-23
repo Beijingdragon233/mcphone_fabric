@@ -25,7 +25,36 @@ import org.jetbrains.annotations.Nullable;
  * @param screenW 屏幕内区域宽（不含边框）
  * @param screenH 屏幕内区域高（不含边框）
  */
-public record DeviceMetrics(int screenW, int screenH) {
+public final class DeviceMetrics {
+    private final int screenW;
+    private final int screenH;
+
+    public DeviceMetrics(int screenW, int screenH) {
+        this.screenW = screenW;
+        this.screenH = screenH;
+    }
+
+    public int screenW() { return screenW; }
+
+    public int screenH() { return screenH; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof DeviceMetrics)) return false;
+        DeviceMetrics that = (DeviceMetrics) other;
+        return this.screenW == that.screenW
+                && this.screenH == that.screenH;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(screenW);
+        hash = 31 * hash + java.util.Objects.hashCode(screenH);
+        return hash;
+    }
+
+    @Override public String toString() { return "DeviceMetrics[screenW=" + screenW + ", screenH=" + screenH + "]"; }
+
 
     /** 手机：竖屏 120×200，所有页面最初就是照着它排的版 */
     public static final DeviceMetrics PHONE = new DeviceMetrics(120, 200);

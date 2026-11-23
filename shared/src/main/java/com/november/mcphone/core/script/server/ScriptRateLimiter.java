@@ -65,7 +65,36 @@ public final class ScriptRateLimiter {
     public static final int MAX_PLAYERS = 512;
 
     /** 允许，或者告诉调用方等多久。 */
-    public record Decision(boolean allowed, long retryAfterMs) {
+    public static final class Decision {
+        private final boolean allowed;
+        private final long retryAfterMs;
+
+        public Decision(boolean allowed, long retryAfterMs) {
+            this.allowed = allowed;
+            this.retryAfterMs = retryAfterMs;
+        }
+
+        public boolean allowed() { return allowed; }
+
+        public long retryAfterMs() { return retryAfterMs; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Decision)) return false;
+            Decision that = (Decision) other;
+            return this.allowed == that.allowed
+                    && this.retryAfterMs == that.retryAfterMs;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(allowed);
+            hash = 31 * hash + java.util.Objects.hashCode(retryAfterMs);
+            return hash;
+        }
+
+        @Override public String toString() { return "Decision[allowed=" + allowed + ", retryAfterMs=" + retryAfterMs + "]"; }
+
         static final Decision OK = new Decision(true, 0);
 
         /** 别改名叫 wait —— 那会撞上 Object.wait(long)，编译期就红。 */

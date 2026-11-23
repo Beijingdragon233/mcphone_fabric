@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.client;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.core.script.server.store.VaultPassphrase;
@@ -158,7 +160,7 @@ public final class VaultPage {
         // 三条必须出现的文案（§17.4.4），一条都不许省
         for (String key : new String[]{VaultPassphrase.KEY_WARN_NEVER_LEAVES,
                 VaultPassphrase.KEY_WARN_NO_RECOVERY, VaultPassphrase.KEY_WARN_CONFIRM}) {
-            for (var line : font.split(Component.translatable(key), w)) {
+            for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable(key), w)) {
                 g.drawString(font, line, x, y, PhoneTheme.FONT_COLOR_NAV, false);
                 y += font.lineHeight;
             }
@@ -177,7 +179,7 @@ public final class VaultPage {
         g.drawString(font, label, x, y, PhoneTheme.FONT_COLOR_NAV, false);
         y += ROW;
         g.fill(x, y, x + w, y + ROW, focused ? PhoneTheme.COLOR_BUTTON_HOVER : PhoneTheme.COLOR_BUTTON);
-        g.drawString(font, "*".repeat(buf.size()), x + 2, y + 2, PhoneTheme.FONT_COLOR_BUTTON, false);
+        g.drawString(font, Java8.repeat("*", buf.size()), x + 2, y + 2, PhoneTheme.FONT_COLOR_BUTTON, false);
         return y + ROW + 4;
     }
 

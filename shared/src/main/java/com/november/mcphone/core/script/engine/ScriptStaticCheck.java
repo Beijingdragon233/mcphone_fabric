@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.internal.rhino.javascript.Parser;
 import com.november.mcphone.internal.rhino.javascript.ast.AstNode;
 import com.november.mcphone.internal.rhino.javascript.ast.AstRoot;
@@ -92,20 +94,21 @@ public final class ScriptStaticCheck {
         @Override
         public boolean visit(AstNode node) {
             if (error != null) return false;
-            if (!(node instanceof FunctionCall call)) return true;
-            AstNode target = call.getTarget();
-            if (!(target instanceof Name name) || !"require".equals(name.getIdentifier())) return true;
-            List<AstNode> args = call.getArguments();
+            if (!(node instanceof FunctionCall)) return true;
+            AstNode target = ((FunctionCall) node).getTarget();
+            if (!(target instanceof Name) || !"require".equals(((Name) target).getIdentifier())) return true;
+            List<AstNode> args = ((FunctionCall) node).getArguments();
             if (args == null || args.size() != 1) {
-                error = module + " 第 " + call.getLineno() + " 行：require 只收一个参数";
+                error = module + " 第 " + ((FunctionCall) node).getLineno() + " 行：require 只收一个参数";
                 return false;
             }
-            if (!(args.get(0) instanceof StringLiteral literal)) {
-                error = module + " 第 " + call.getLineno()
+            Object literalMatch;
+            if (!((literalMatch = args.get(0)) instanceof StringLiteral)) {
+                error = module + " 第 " + ((FunctionCall) node).getLineno()
                         + " 行：require 的参数必须是字符串字面量（预检要静态核对模块，动态拼接一律不收）";
                 return false;
             }
-            String spec = literal.getValue();
+            String spec = ((StringLiteral) literalMatch).getValue();
             if (spec == null || (!spec.startsWith("./") && !spec.startsWith("../"))) {
                 error = module + "：" + spec + " —— require 只许包内相对路径（./ 或 ../ 开头）";
                 return false;
@@ -140,7 +143,7 @@ public final class ScriptStaticCheck {
             return true;
         }
         path.add(node);
-        List<String> next = edges.getOrDefault(node, List.of());
+        List<String> next = edges.getOrDefault(node, ImmutableList.of());
         for (String n : next) {
             if (dfs(n, edges, onPath, done, path)) return true;
         }

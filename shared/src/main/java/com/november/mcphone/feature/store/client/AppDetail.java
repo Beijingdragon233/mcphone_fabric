@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.store.client;
 
+import com.november.mcphone.util.Java8;
+
+import java.util.List;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
 import com.november.mcphone.api.client.app.IPhoneApp;
@@ -99,7 +102,7 @@ public final class AppDetail {
      */
     private static ScriptApp scriptOf(AppInfo info) {
         IPhoneApp installed = PhoneScreenRegistry.getApp(info.id());
-        if (installed instanceof ScriptAppAdapter adapter) return adapter.script();
+        if (installed instanceof ScriptAppAdapter) return ((ScriptAppAdapter) installed).script();
         if (!LocalScriptSource.ID.equals(info.sourceId())) return null;
         return LocalScriptSource.scriptOf(info.id());
     }
@@ -132,20 +135,27 @@ public final class AppDetail {
         if (!StoreClientCache.isSynced()) return State.LOADING;
         if (StoreClientCache.has(info.id())) return State.DOWNLOAD;
 
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && !price.canAfford(player)) return State.CANT_AFFORD;
         return State.BUY;
     }
 
     private String labelOf(State s) {
-        return switch (s) {
-            case LOADING -> Component.translatable("mcphone.store.loading").getString();
-            case BLOCKED -> info.blockedReason().getString();
-            case BUY -> Component.translatable("mcphone.store.buy").getString();
-            case CANT_AFFORD -> Component.translatable("mcphone.store.cant_afford").getString();
-            case DOWNLOAD -> Component.translatable("mcphone.store.install").getString();
-            case INSTALLED -> Component.translatable("mcphone.store.installed_label").getString();
-        };
+        switch (s) {
+            case LOADING:
+                return Component.translatable("mcphone.store.loading").getString();
+            case BLOCKED:
+                return info.blockedReason().getString();
+            case BUY:
+                return Component.translatable("mcphone.store.buy").getString();
+            case CANT_AFFORD:
+                return Component.translatable("mcphone.store.cant_afford").getString();
+            case DOWNLOAD:
+                return Component.translatable("mcphone.store.install").getString();
+            case INSTALLED:
+                return Component.translatable("mcphone.store.installed_label").getString();
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     public void render(GuiGraphics g, int phoneLeft, int phoneTop,
@@ -183,7 +193,7 @@ public final class AppDetail {
         g.drawString(font, GuiUtil.truncate(font, info.displayName().getString(), textW),
                 textX, y + 2, FontPalette.title(), false);
 
-        String meta = info.author() == null || info.author().isBlank()
+        String meta = info.author() == null || Java8.isBlank(info.author())
                 ? "v" + info.version()
                 : info.author() + " · v" + info.version();
         g.drawString(font, GuiUtil.truncate(font, meta, textW),
@@ -196,10 +206,10 @@ public final class AppDetail {
 
         int bodyBottom = bottom - BUTTON_H - font.lineHeight - 8;
         String desc = info.description();
-        if (desc == null || desc.isBlank()) {
+        if (desc == null || Java8.isBlank(desc)) {
             desc = Component.translatable("mcphone.store.no_description").getString();
         }
-        for (var line : font.split(Component.literal(desc), w)) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.literal(desc), w)) {
             if (y + font.lineHeight > bodyBottom) break;
             g.drawString(font, line, x, y, FontPalette.body(), false);
             y += font.lineHeight + 1;
@@ -264,11 +274,11 @@ public final class AppDetail {
         if (!needsBackend()) return y;
         if (ClientHandshake.deployment(info.id().toString()) != null) return y;
 
-        var lines = font.split(Component.translatable("mcphone.store.backend_missing"), w - 8);
+        List<net.minecraft.util.FormattedCharSequence> lines = font.split(Component.translatable("mcphone.store.backend_missing"), w - 8);
         int h = lines.size() * font.lineHeight + 6;
         g.fill(x, y, x + w, y + h, PhoneTheme.COLOR_BUTTON_DISABLED);
         int ly = y + 3;
-        for (var line : lines) {
+        for (net.minecraft.util.FormattedCharSequence line : lines) {
             g.drawString(font, line, x + 4, ly, FontPalette.notice(), false);
             ly += font.lineHeight;
         }
@@ -405,18 +415,27 @@ public final class AppDetail {
         y += 3;
 
         // 档位提示。参数按各档的文案填：密钥变了要新旧两个，陌生作者要指纹，已信任要名字与指纹
-        String line = switch (sig.stateKey()) {
-            case "mcphone.sig.key_changed" -> Component.translatable(sig.stateKey(),
+        String line;
+        switch (sig.stateKey()) {
+            case "mcphone.sig.key_changed":
+                line = Component.translatable(sig.stateKey(),
                     String.valueOf(sig.previous()), String.valueOf(sig.fingerprint())).getString();
-            case "mcphone.sig.unknown" -> Component.translatable(sig.stateKey(),
+                break;
+            case "mcphone.sig.unknown":
+                line = Component.translatable(sig.stateKey(),
                     String.valueOf(sig.fingerprint())).getString();
-            case "mcphone.sig.trusted" -> Component.translatable(sig.stateKey(),
+                break;
+            case "mcphone.sig.trusted":
+                line = Component.translatable(sig.stateKey(),
                     info.author(), String.valueOf(sig.fingerprint())).getString();
-            default -> Component.translatable(sig.stateKey()).getString();
-        };
+                break;
+            default:
+                line = Component.translatable(sig.stateKey()).getString();
+                break;
+        }
         int colour = sig.hardRejected() || "mcphone.sig.key_changed".equals(sig.stateKey())
                 ? FontPalette.notice() : FontPalette.subtle();
-        for (var l : font.split(Component.literal(line), w)) {
+        for (net.minecraft.util.FormattedCharSequence l : font.split(Component.literal(line), w)) {
             if (y + font.lineHeight > bodyBottom) return y;
             g.drawString(font, l, x, y, colour, false);
             y += font.lineHeight;
@@ -458,7 +477,7 @@ public final class AppDetail {
             confirmBoxY = -1;
         }
 
-        for (var l : font.split(Component.translatable("mcphone.sig.install_note"), w)) {
+        for (net.minecraft.util.FormattedCharSequence l : font.split(Component.translatable("mcphone.sig.install_note"), w)) {
             if (y + font.lineHeight > bodyBottom) break;
             g.drawString(font, l, x, y, FontPalette.subtle(), false);
             y += font.lineHeight;
@@ -532,13 +551,17 @@ public final class AppDetail {
         if (!btnHovered) return false;
 
         switch (state()) {
-            case BUY -> {
+            case BUY: {
                 // 只是提出请求：结果随同步包回来，按钮届时自己变成"下载"
                 StoreClientCache.purchase(info.id());
                 message = Component.translatable("mcphone.store.purchasing");
             }
-            case DOWNLOAD -> install();
-            default -> { }
+                break;
+            case DOWNLOAD:
+                install();
+                break;
+            default: { }
+                break;
         }
         return true;
     }

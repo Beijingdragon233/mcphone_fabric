@@ -146,7 +146,7 @@ public final class DeviceNameEditor {
 
         // ---- 说明 ----
         // 手机屏幕窄，说明文字用 split 自动折行
-        for (var line : font.split(Component.translatable("mcphone.settings.device_name_hint"), w)) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.settings.device_name_hint"), w)) {
             g.drawString(font, line, x, y, colorHint(), false);
             y += font.lineHeight + 1;
         }

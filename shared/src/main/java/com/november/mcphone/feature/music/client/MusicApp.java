@@ -16,8 +16,9 @@ public final class MusicApp extends PhoneApp {
 
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
-            ps.navigateTo(PhoneScreen.Mode.MUSIC_PLAYER);
+        Object psMatch;
+        if ((psMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) {
+            ((PhoneScreen) psMatch).navigateTo(PhoneScreen.Mode.MUSIC_PLAYER);
         }
     }
 }

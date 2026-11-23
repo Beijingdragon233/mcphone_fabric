@@ -92,42 +92,24 @@ public final class SpiLoader {
     public static <T> List<T> loadSafely(Class<T> service, String what) {
         List<T> out = new ArrayList<>();
 
-        Iterator<ServiceLoader.Provider<T>> it;
+        Iterator<T> it;
         try {
-            it = ServiceLoader.load(service, SpiLoader.class.getClassLoader())
-                    .stream().iterator();
+            it = ServiceLoader.load(service, SpiLoader.class.getClassLoader()).iterator();
         } catch (Throwable t) {
+            if (t instanceof VirtualMachineError) throw (VirtualMachineError) t;
             MCphone.LOGGER.error("[MCphone] {} 扫描无法开始，本次一个都不加载", what, t);
             return out;
         }
 
         int failures = 0;
         while (failures < MAX_FAILURES) {
-            ServiceLoader.Provider<T> provider;
-
-            // 第一步：取下一个候选。类名写错、类不存在会死在这儿，
-            // 此时我们连是哪个类都不知道，只能报个位置
             try {
                 if (!it.hasNext()) break;
-                provider = it.next();
+                out.add(it.next());
             } catch (Throwable t) {
+                if (t instanceof VirtualMachineError) throw (VirtualMachineError) t;
                 failures++;
-                MCphone.LOGGER.error(
-                        "[MCphone] 扫描 {} 时遇到一个坏条目（第 {} 个），已跳过。"
-                                + "多半是某个模组的 META-INF/services 里写了不存在的类名",
-                        what, failures, t);
-                continue;
-            }
-
-            // 第二步：真把它造出来。构造函数抛异常死在这儿，
-            // 这时候类名是知道的，写进日志好让服主知道该找谁
-            try {
-                T instance = provider.get();
-                if (instance != null) out.add(instance);
-            } catch (Throwable t) {
-                failures++;
-                MCphone.LOGGER.error("[MCphone] {} {} 构造失败，已跳过",
-                        what, provider.type().getName(), t);
+                MCphone.LOGGER.error("[MCphone] 扫描 {} 时遇到一个坏条目（第 {} 个），已跳过。", what, failures, t);
             }
         }
 

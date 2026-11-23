@@ -12,15 +12,15 @@ public final class ExactLong {
     }
 
     public static long of(Object value, String where) {
-        if (value instanceof BigInteger integer) {
-            if (integer.compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0
-                    || integer.compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
+        if (value instanceof BigInteger) {
+            if (((BigInteger) value).compareTo(BigInteger.valueOf(Long.MIN_VALUE)) < 0
+                    || ((BigInteger) value).compareTo(BigInteger.valueOf(Long.MAX_VALUE)) > 0) {
                 throw HostError.invalid(where + ": BigInt is outside the signed 64-bit range");
             }
-            return integer.longValue();
+            return ((BigInteger) value).longValue();
         }
-        if (value instanceof Number number) {
-            double candidate = number.doubleValue();
+        if (value instanceof Number) {
+            double candidate = ((Number) value).doubleValue();
             if (!Double.isFinite(candidate) || candidate != Math.rint(candidate)
                     || candidate < JS_SAFE_INT_MIN || candidate > JS_SAFE_INT_MAX) {
                 throw HostError.invalid(where + ": number must be a finite safe integer");

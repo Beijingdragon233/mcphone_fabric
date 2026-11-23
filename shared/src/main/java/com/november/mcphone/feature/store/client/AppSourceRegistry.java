@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.store.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.store.AppInfo;
 import com.november.mcphone.api.client.store.IAppSource;
@@ -38,7 +40,7 @@ public final class AppSourceRegistry {
     /** 全部已注册来源，保持注册顺序 */
     public static List<IAppSource> getSources() {
         ensureLoaded();
-        return List.copyOf(SOURCES.values());
+        return ImmutableList.copyOf(SOURCES.values());
     }
 
     public static IAppSource getSource(ResourceLocation id) {
@@ -127,7 +129,7 @@ public final class AppSourceRegistry {
             synchronized (this) {
                 if (finished) return;
                 finished = true;
-                out = List.copyOf(merged);
+                out = ImmutableList.copyOf(merged);
             }
             Minecraft mc = Minecraft.getInstance();
             if (mc == null || mc.isSameThread()) {
@@ -167,7 +169,7 @@ public final class AppSourceRegistry {
         pending = null;
 
         if (sources.isEmpty()) {
-            callback.accept(List.of());
+            callback.accept(ImmutableList.of());
             return;
         }
 

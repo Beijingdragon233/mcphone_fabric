@@ -1,5 +1,9 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.core.script.layout.NodeParser;
 import com.november.mcphone.core.script.layout.NodeType;
 import com.november.mcphone.core.script.layout.StateRules;
@@ -24,7 +28,48 @@ final class PropRules {
     enum Kind { INT, BOOL, TEXT, STRING, ICON, IMAGE_SRC, BIND_INT, BIND_BOOL, BIND_STRING, TABS, ARGS }
 
     /** 一个属性。staticOnly 的只能写字面值（bind 是 key 名），boundOnly 的只能写 :attr（数组）。 */
-    record Spec(String name, Kind kind, int min, int max) {
+    static final class Spec {
+        private final String name;
+        private final Kind kind;
+        private final int min;
+        private final int max;
+
+        Spec(String name, Kind kind, int min, int max) {
+            this.name = name;
+            this.kind = kind;
+            this.min = min;
+            this.max = max;
+        }
+
+        public String name() { return name; }
+
+        public Kind kind() { return kind; }
+
+        public int min() { return min; }
+
+        public int max() { return max; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Spec)) return false;
+            Spec that = (Spec) other;
+            return java.util.Objects.equals(this.name, that.name)
+                    && java.util.Objects.equals(this.kind, that.kind)
+                    && this.min == that.min
+                    && this.max == that.max;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(kind);
+            hash = 31 * hash + java.util.Objects.hashCode(min);
+            hash = 31 * hash + java.util.Objects.hashCode(max);
+            return hash;
+        }
+
+        @Override public String toString() { return "Spec[name=" + name + ", kind=" + kind + ", min=" + min + ", max=" + max + "]"; }
+
         boolean staticOnly() {
             return kind == Kind.BIND_INT || kind == Kind.BIND_BOOL || kind == Kind.BIND_STRING;
         }
@@ -39,19 +84,31 @@ final class PropRules {
         }
 
         String allowed() {
-            return switch (kind) {
-                case INT -> max == Integer.MAX_VALUE ? "≥ " + min + " 的整数" : min + "–" + max + " 的整数";
-                case BOOL -> "true / false";
-                case TEXT -> "最多 " + textLimit(this) + " 字，除换行外没有控制字符";
-                case STRING -> "字符串";
-                case ICON -> String.join(" ", Names.sorted(NodeParser.ICON_NAMES));
-                case IMAGE_SRC -> "包内相对路径，以 .png 结尾";
-                case BIND_INT -> "state 里一个 int 的 key 名";
-                case BIND_BOOL -> "state 里一个 bool 的 key 名";
-                case BIND_STRING -> "state 里一个 string 的 key 名";
-                case TABS -> ":tabs=\"[{text:'…'}, …]\"，2–4 项，每项恰好一个 text / i18n / icon";
-                case ARGS -> ":args=\"[…]\"，最多 " + NodeParser.MAX_ARGS + " 个 string 或 int";
-            };
+            switch (kind) {
+                case INT:
+                    return max == Integer.MAX_VALUE ? "≥ " + min + " 的整数" : min + "–" + max + " 的整数";
+                case BOOL:
+                    return "true / false";
+                case TEXT:
+                    return "最多 " + textLimit(this) + " 字，除换行外没有控制字符";
+                case STRING:
+                    return "字符串";
+                case ICON:
+                    return String.join(" ", Names.sorted(NodeParser.ICON_NAMES));
+                case IMAGE_SRC:
+                    return "包内相对路径，以 .png 结尾";
+                case BIND_INT:
+                    return "state 里一个 int 的 key 名";
+                case BIND_BOOL:
+                    return "state 里一个 bool 的 key 名";
+                case BIND_STRING:
+                    return "state 里一个 string 的 key 名";
+                case TABS:
+                    return ":tabs=\"[{text:'…'}, …]\"，2–4 项，每项恰好一个 text / i18n / icon";
+                case ARGS:
+                    return ":args=\"[…]\"，最多 " + NodeParser.MAX_ARGS + " 个 string 或 int";
+                default: throw new IncompatibleClassChangeError();
+            }
         }
     }
 
@@ -65,7 +122,7 @@ final class PropRules {
     }
 
     private static final Pattern PLAIN_INT = Pattern.compile("-?\\d{1,10}");
-    private static final Set<String> TAB_FIELDS = Set.of("text", "i18n", "icon");
+    private static final Set<String> TAB_FIELDS = ImmutableSet.of("text", "i18n", "icon");
 
     private PropRules() {
     }
@@ -74,60 +131,81 @@ final class PropRules {
     static Map<String, Spec> of(NodeType type) {
         Map<String, Spec> out = new LinkedHashMap<>();
         switch (type) {
-            case GRID -> put(out, "cols", Kind.INT, 1, 6);
-            case LIST -> put(out, "item-height", Kind.INT, 0, Integer.MAX_VALUE);
-            case SPACER -> put(out, "size", Kind.INT, 0, Integer.MAX_VALUE);
-            case DIVIDER -> put(out, "vertical", Kind.BOOL, 0, 0);
-            case TEXT -> {
+            case GRID:
+                put(out, "cols", Kind.INT, 1, 6);
+                break;
+            case LIST:
+                put(out, "item-height", Kind.INT, 0, Integer.MAX_VALUE);
+                break;
+            case SPACER:
+                put(out, "size", Kind.INT, 0, Integer.MAX_VALUE);
+                break;
+            case DIVIDER:
+                put(out, "vertical", Kind.BOOL, 0, 0);
+                break;
+            case TEXT: {
                 put(out, "text", Kind.TEXT, 0, StateRules.MAX_PAGE_STRING);
                 put(out, "i18n", Kind.STRING, 0, 0);
                 put(out, "args", Kind.ARGS, 0, 0);
             }
-            case IMAGE -> {
+                break;
+            case IMAGE: {
                 put(out, "src", Kind.IMAGE_SRC, 0, 0);
                 put(out, "w", Kind.INT, 1, 120);
                 put(out, "h", Kind.INT, 1, 176);
             }
-            case ICON -> {
+                break;
+            case ICON: {
                 put(out, "name", Kind.ICON, 0, 0);
                 put(out, "size", Kind.INT, 6, 20);
             }
-            case ITEM -> {
+                break;
+            case ITEM: {
                 put(out, "item", Kind.STRING, 0, 0);
                 put(out, "count", Kind.INT, 1, 99);
                 put(out, "size", Kind.INT, 8, 20);
             }
-            case BADGE -> put(out, "count", Kind.INT, 0, Integer.MAX_VALUE);
-            case PROGRESS -> {
+                break;
+            case BADGE:
+                put(out, "count", Kind.INT, 0, Integer.MAX_VALUE);
+                break;
+            case PROGRESS: {
                 put(out, "value", Kind.INT, 0, 100);
                 put(out, "height", Kind.INT, 2, 12);
             }
-            case BUTTON -> {
+                break;
+            case BUTTON: {
                 put(out, "text", Kind.TEXT, 0, 0);
                 put(out, "i18n", Kind.STRING, 0, 0);
                 put(out, "args", Kind.ARGS, 0, 0);
                 put(out, "enabled", Kind.BOOL, 0, 0);
             }
-            case TEXT_INPUT, TEXTAREA -> {
+                break;
+            case TEXT_INPUT:
+            case TEXTAREA: {
                 put(out, "bind", Kind.BIND_STRING, 0, 0);
                 put(out, "placeholder", Kind.TEXT, 0, 0);
                 put(out, "max-length", Kind.INT, 1,
                         type == NodeType.TEXTAREA ? StateRules.MAX_PAGE_STRING : StateRules.MAX_STRING);
                 put(out, "enabled", Kind.BOOL, 0, 0);
             }
-            case TOGGLE -> {
+                break;
+            case TOGGLE: {
                 put(out, "bind", Kind.BIND_BOOL, 0, 0);
                 put(out, "label", Kind.TEXT, 0, 0);
                 put(out, "i18n", Kind.STRING, 0, 0);
                 put(out, "enabled", Kind.BOOL, 0, 0);
             }
-            case TAB_BAR -> {
+                break;
+            case TAB_BAR: {
                 put(out, "bind", Kind.BIND_INT, 0, 0);
                 put(out, "tabs", Kind.TABS, 0, 0);
             }
-            default -> {
+                break;
+            default: {
                 // box / column / row / stack / scroll 没有专有属性
             }
+                break;
         }
         return out;
     }
@@ -138,15 +216,25 @@ final class PropRules {
 
     /** 必填的属性组：组里至少写一个。text 的内容、button 的子元素算不算写了由编译器判。 */
     static List<List<String>> required(NodeType type) {
-        return switch (type) {
-            case TEXT, BUTTON -> List.of(List.of("text", "i18n"));
-            case IMAGE -> List.of(List.of("src"));
-            case ICON -> List.of(List.of("name"));
-            case ITEM -> List.of(List.of("item"));
-            case TOGGLE, TEXT_INPUT, TEXTAREA -> List.of(List.of("bind"));
-            case TAB_BAR -> List.of(List.of("bind"), List.of("tabs"));
-            default -> List.of();
-        };
+        switch (type) {
+            case TEXT:
+            case BUTTON:
+                return ImmutableList.of(ImmutableList.of("text", "i18n"));
+            case IMAGE:
+                return ImmutableList.of(ImmutableList.of("src"));
+            case ICON:
+                return ImmutableList.of(ImmutableList.of("name"));
+            case ITEM:
+                return ImmutableList.of(ImmutableList.of("item"));
+            case TOGGLE:
+            case TEXT_INPUT:
+            case TEXTAREA:
+                return ImmutableList.of(ImmutableList.of("bind"));
+            case TAB_BAR:
+                return ImmutableList.of(ImmutableList.of("bind"), ImmutableList.of("tabs"));
+            default:
+                return ImmutableList.of();
+        }
     }
 
     // ============================================================
@@ -160,31 +248,33 @@ final class PropRules {
             throw new Bad(spec.allowed());
         }
         switch (spec.kind) {
-            case INT -> {
+            case INT: {
                 if (!PLAIN_INT.matcher(raw).matches()) throw new Bad(spec.allowed());
                 long v = Long.parseLong(raw);
                 if (v < spec.min || v > spec.max) throw new Bad(spec.allowed());
                 return (int) v;
             }
-            case BOOL -> {
+            case BOOL: {
                 if (raw.equals("true")) return true;
                 if (raw.equals("false")) return false;
                 throw new Bad(spec.allowed());
             }
-            case TEXT -> {
+            case TEXT: {
                 if (raw.length() > textLimit(spec) || !visible(raw)) throw new Bad(spec.allowed());
                 return raw;
             }
-            case ICON -> {
+            case ICON: {
                 if (!NodeParser.ICON_NAMES.contains(raw)) throw new Bad(spec.allowed());
                 return raw;
             }
-            case IMAGE_SRC -> {
+            case IMAGE_SRC: {
                 if (!imageSrc(raw)) throw new Bad(spec.allowed());
                 return raw;
             }
-            case TABS, ARGS -> throw new Bad(spec.allowed());
-            default -> {
+            case TABS:
+            case ARGS:
+                throw new Bad(spec.allowed());
+            default: {
                 return raw;
             }
         }
@@ -198,40 +288,40 @@ final class PropRules {
     static Object normalize(Spec spec, Object v, EvalContext c, String tag) {
         String where = "<" + tag + "> 的 :" + spec.name;
         switch (spec.kind) {
-            case INT -> {
-                if (!(v instanceof Integer n)) return drop(c, where, v, spec);
-                if (n < spec.min || n > spec.max) {
-                    int clamped = Math.max(spec.min, Math.min(spec.max, n));
-                    c.warn(where + " 得到 " + n + "，夹到 " + clamped);
+            case INT: {
+                if (!(v instanceof Integer)) return drop(c, where, v, spec);
+                if (((Integer) v) < spec.min || ((Integer) v) > spec.max) {
+                    int clamped = Math.max(spec.min, Math.min(spec.max, ((Integer) v)));
+                    c.warn(where + " 得到 " + ((Integer) v) + "，夹到 " + clamped);
                     return clamped;
                 }
-                return n;
+                return ((Integer) v);
             }
-            case BOOL -> {
+            case BOOL: {
                 return v instanceof Boolean ? v : drop(c, where, v, spec);
             }
-            case TEXT -> {
+            case TEXT: {
                 if (v instanceof List<?> || v instanceof Map<?, ?>) c.warn(where + " 得到 " + Values.kind(v) + "，显示为空");
                 return visibleText(Values.text(v), c, where, textLimit(spec));
             }
-            case STRING -> {
+            case STRING: {
                 return v instanceof String ? v : drop(c, where, v, spec);
             }
-            case ICON -> {
-                return v instanceof String s && NodeParser.ICON_NAMES.contains(s) ? s : drop(c, where, v, spec);
+            case ICON: {
+                return v instanceof String && NodeParser.ICON_NAMES.contains(((String) v)) ? ((String) v) : drop(c, where, v, spec);
             }
-            case IMAGE_SRC -> {
-                return v instanceof String s && imageSrc(s) ? s : drop(c, where, v, spec);
+            case IMAGE_SRC: {
+                return v instanceof String && imageSrc(((String) v)) ? ((String) v) : drop(c, where, v, spec);
             }
-            case TABS -> {
+            case TABS: {
                 List<Map<String, Object>> tabs = tabs(v);
                 return tabs != null ? tabs : drop(c, where, v, spec);
             }
-            case ARGS -> {
+            case ARGS: {
                 List<Object> args = args(v);
                 return args != null ? args : drop(c, where, v, spec);
             }
-            default -> {
+            default: {
                 return drop(c, where, v, spec);
             }
         }
@@ -266,27 +356,28 @@ final class PropRules {
     }
 
     private static List<Map<String, Object>> tabs(Object v) {
-        if (!(v instanceof List<?> list) || list.size() < 2 || list.size() > 4) return null;
+        if (!(v instanceof List<?>) || ((List<?>) v).size() < 2 || ((List<?>) v).size() > 4) return null;
         List<Map<String, Object>> out = new ArrayList<>();
-        for (Object item : list) {
-            if (!(item instanceof Map<?, ?> tab) || tab.size() != 1) return null;
-            Map.Entry<?, ?> e = tab.entrySet().iterator().next();
-            if (!TAB_FIELDS.contains(e.getKey()) || !(e.getValue() instanceof String s)) return null;
-            if (e.getKey().equals("icon") ? !NodeParser.ICON_NAMES.contains(s)
-                    : e.getKey().equals("text") && (s.length() > NodeParser.MAX_TEXT || !visible(s))) {
+        for (Object item : ((List<?>) v)) {
+            if (!(item instanceof Map<?, ?>) || ((Map<?, ?>) item).size() != 1) return null;
+            Map.Entry<?, ?> e = ((Map<?, ?>) item).entrySet().iterator().next();
+            Object sMatch;
+            if (!TAB_FIELDS.contains(e.getKey()) || !((sMatch = e.getValue()) instanceof String)) return null;
+            if (e.getKey().equals("icon") ? !NodeParser.ICON_NAMES.contains(((String) sMatch))
+                    : e.getKey().equals("text") && (((String) sMatch).length() > NodeParser.MAX_TEXT || !visible(((String) sMatch)))) {
                 return null;
             }
-            out.add(Map.of((String) e.getKey(), s));
+            out.add(ImmutableMap.of((String) e.getKey(), ((String) sMatch)));
         }
         return Collections.unmodifiableList(out);
     }
 
     private static List<Object> args(Object v) {
-        if (!(v instanceof List<?> list) || list.size() > NodeParser.MAX_ARGS) return null;
-        for (Object item : list) {
+        if (!(v instanceof List<?>) || ((List<?>) v).size() > NodeParser.MAX_ARGS) return null;
+        for (Object item : ((List<?>) v)) {
             if (!(item instanceof String) && !(item instanceof Integer)) return null;
         }
-        return Collections.unmodifiableList(new ArrayList<>(list));
+        return Collections.unmodifiableList(new ArrayList<>(((List<?>) v)));
     }
 
     static boolean visible(String s) {

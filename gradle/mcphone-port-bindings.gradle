@@ -1,5 +1,6 @@
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.provider.SetProperty
 import org.gradle.api.provider.MapProperty
 import org.gradle.api.tasks.InputFiles
@@ -16,6 +17,7 @@ abstract class BindMinecraftApiNames extends DefaultTask {
     @Input abstract MapProperty<String, String> getQualifiedNames()
     @Input abstract MapProperty<String, String> getNames()
     @Input abstract SetProperty<String> getNativeSources()
+    @Input abstract Property<Boolean> getBindOnce()
     @OutputDirectory abstract DirectoryProperty getBoundSources()
 
     @TaskAction
@@ -24,7 +26,27 @@ abstract class BindMinecraftApiNames extends DefaultTask {
         def expected = new HashSet<java.nio.file.Path>()
         def protectedText = java.util.regex.Pattern.compile('(?s)/\\*.*?\\*/|//[^\\r\\n]*|""".*?"""|"(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\'')
         def identifier = java.util.regex.Pattern.compile('[\\p{javaJavaIdentifierStart}][\\p{javaJavaIdentifierPart}]*')
+        // In 1.16.5 a replacement can also be a modern source name (Container, Inventory).
+        // Match against the input only so the resulting qualified name is not rewritten twice.
+        def qualified = qualifiedNames.get()
+        def alternatives = qualified.keySet().sort { a, b -> b.length() <=> a.length() }.collect { name ->
+            def left = Character.isJavaIdentifierPart(name.charAt(0)) ? '(?<![\\p{javaJavaIdentifierPart}])' : ''
+            def right = Character.isJavaIdentifierPart(name.charAt(name.length() - 1)) ? '(?![\\p{javaJavaIdentifierPart}])' : ''
+            left + java.util.regex.Pattern.quote(name) + right
+        }
+        def singlePass = bindOnce.get() ? java.util.regex.Pattern.compile((alternatives + identifier.pattern()).join('|')) : null
         def bindCode = { String code ->
+            if (singlePass != null) {
+                def matcher = singlePass.matcher(code)
+                def result = new StringBuffer()
+                while (matcher.find()) {
+                    def token = matcher.group()
+                    def replacement = qualified.getOrDefault(token, names.get().getOrDefault(token, token))
+                    matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(replacement))
+                }
+                matcher.appendTail(result)
+                return result.toString()
+            }
             qualifiedNames.get().each { before, after -> code = code.replaceAll('(?<![\\w$])' + java.util.regex.Pattern.quote(before) + '(?![\\w$])', java.util.regex.Matcher.quoteReplacement(after)) }
             def matcher = identifier.matcher(code)
             def result = new StringBuffer()
@@ -78,6 +100,12 @@ def overrideRoots = [file('src/main/java').canonicalFile]
 if (project.hasProperty('mcphoneVersionSources')) {
     overrideRoots.add(file(project.mcphoneVersionSources).canonicalFile)
 }
+if (project.hasProperty('mcphoneBindingOverrideLayers')) {
+    def selected = project.mcphoneBindingOverrideLayers as Set
+    def matching = mcphoneLayers.findAll { selected.contains(it.name) }
+    if ((matching.collect { it.name } as Set) != selected) throw new GradleException('Unknown binding override layers: ' + selected)
+    overrideRoots.addAll(matching.collect { it.javaDir.canonicalFile })
+}
 def originalRoots = sourceSets.main.java.srcDirs.collect { root ->
     fileTree(root) {
         include '**/*.java'
@@ -92,6 +120,7 @@ def boundMain = tasks.register('bindMinecraftApiNames', BindMinecraftApiNames) {
     qualifiedNames.set(bindings.qualified as Map<String, String>)
     names.set(bindings.names as Map<String, String>)
     nativeSources.set((bindings.nativeSources ?: []) as Set<String>)
+    bindOnce.set(bindings.bindOnce == true)
     boundSources.set(layout.buildDirectory.dir('generated/sources/mcphone-api-bindings/main'))
 }
 sourceSets.main.java.setSrcDirs([boundMain])
@@ -104,6 +133,7 @@ def boundTests = tasks.register('bindAssertionApiNames', BindMinecraftApiNames) 
     qualifiedNames.set(bindings.qualified as Map<String, String>)
     names.set(bindings.names as Map<String, String>)
     nativeSources.set((bindings.nativeSources ?: []) as Set<String>)
+    bindOnce.set(bindings.bindOnce == true)
     boundSources.set(layout.buildDirectory.dir('generated/sources/mcphone-api-bindings/assertions'))
 }
 assertions.configure { source = files(boundTests) }

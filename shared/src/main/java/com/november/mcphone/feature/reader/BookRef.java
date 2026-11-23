@@ -29,6 +29,52 @@ import net.minecraft.resources.ResourceLocation;
  * @param owner     出自哪个模组，给玩家看的名字。列表第二行就是它——
  *                  几百个模组的整合包里，"这本书是谁的"比副标题有用得多
  */
-public record BookRef(String sourceId, ResourceLocation bookId,
-                      Component title, Component subtitle, String owner) {
+public final class BookRef {
+    private final String sourceId;
+    private final ResourceLocation bookId;
+    private final Component title;
+    private final Component subtitle;
+    private final String owner;
+
+    public BookRef(String sourceId, ResourceLocation bookId, Component title, Component subtitle, String owner) {
+        this.sourceId = sourceId;
+        this.bookId = bookId;
+        this.title = title;
+        this.subtitle = subtitle;
+        this.owner = owner;
+    }
+
+    public String sourceId() { return sourceId; }
+
+    public ResourceLocation bookId() { return bookId; }
+
+    public Component title() { return title; }
+
+    public Component subtitle() { return subtitle; }
+
+    public String owner() { return owner; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof BookRef)) return false;
+        BookRef that = (BookRef) other;
+        return java.util.Objects.equals(this.sourceId, that.sourceId)
+                && java.util.Objects.equals(this.bookId, that.bookId)
+                && java.util.Objects.equals(this.title, that.title)
+                && java.util.Objects.equals(this.subtitle, that.subtitle)
+                && java.util.Objects.equals(this.owner, that.owner);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(sourceId);
+        hash = 31 * hash + java.util.Objects.hashCode(bookId);
+        hash = 31 * hash + java.util.Objects.hashCode(title);
+        hash = 31 * hash + java.util.Objects.hashCode(subtitle);
+        hash = 31 * hash + java.util.Objects.hashCode(owner);
+        return hash;
+    }
+
+    @Override public String toString() { return "BookRef[sourceId=" + sourceId + ", bookId=" + bookId + ", title=" + title + ", subtitle=" + subtitle + ", owner=" + owner + "]"; }
+
 }

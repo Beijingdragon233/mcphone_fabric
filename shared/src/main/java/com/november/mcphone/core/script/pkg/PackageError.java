@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.pkg;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+
 import java.nio.charset.StandardCharsets;
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -98,7 +101,7 @@ public final class PackageError extends RuntimeException {
 
     /** 模板的实参，顺序与模板一致。.vue 的 {@code <manifest>} 报错时拿字段名去找它在第几行。 */
     public List<Object> args() {
-        return List.of(args);
+        return ImmutableList.copyOf(args);
     }
 
     /** 按 {@link Code} 自带的模板成文。调用点只给参数，给不出文案。 */
@@ -133,17 +136,17 @@ public final class PackageError extends RuntimeException {
          * {@code server.js}（PR #44 实跑抓到；旧断言还把"拒 .js"写成了预期，见
          * {@code docs/ScriptPackageTest.java} 的 {@code serverJsPasses}）。
          */
-        public static final Set<String> ALLOWED_EXT = Set.of("json", "mss", "png", "txt", "vue", "js");
+        public static final Set<String> ALLOWED_EXT = ImmutableSet.of("json", "mss", "png", "txt", "vue", "js");
 
         /**
          * 禁止的扩展名。它是「不在允许清单里」的真子集，留着只为报得准：收到 evil.class 时
          * 说「在禁止清单里」比说「不在允许清单里」更快指出问题。
          */
-        public static final Set<String> BANNED_EXT = Set.of(
+        public static final Set<String> BANNED_EXT = ImmutableSet.of(
                 "class", "jar", "zip", "so", "dylib", "dll", "exe", "sh", "bat", "cmd", "jnilib");
 
         /** Windows 保留设备名。带不带扩展名都算，不分大小写。 */
-        private static final Set<String> RESERVED_NAMES = Set.of(
+        private static final Set<String> RESERVED_NAMES = ImmutableSet.of(
                 "con", "prn", "aux", "nul",
                 "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
                 "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9");

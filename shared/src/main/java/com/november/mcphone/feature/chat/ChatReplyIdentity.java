@@ -15,7 +15,8 @@ public final class ChatReplyIdentity {
 
     /** 同一票据不能被用来改写已经存下的正文或引用目标。 */
     public static boolean matches(ChatMessage message, UUID actor, UUID original, String text) {
-        return message.sender().equals(actor) && message.body() instanceof TextBody body
-                && body.text().equals(text) && body.quote().map(q -> q.message().equals(original)).orElse(false);
+        Object bodyMatch;
+        return message.sender().equals(actor) && (bodyMatch = message.body()) instanceof TextBody
+                && ((TextBody) bodyMatch).text().equals(text) && ((TextBody) bodyMatch).quote().map(q -> q.message().equals(original)).orElse(false);
     }
 }

@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,9 +73,9 @@ public final class SharedState {
     public Map<String, java.util.Set<String>> drainDirty() {
         synchronized (dirtyLock) {
             Map<String, java.util.Set<String>> out = new java.util.HashMap<>();
-            dirty.forEach((app, keys) -> out.put(app, Set.copyOf(keys)));
+            dirty.forEach((app, keys) -> out.put(app, ImmutableSet.copyOf(keys)));
             dirty.clear();
-            return Map.copyOf(out);
+            return ImmutableMap.copyOf(out);
         }
     }
 

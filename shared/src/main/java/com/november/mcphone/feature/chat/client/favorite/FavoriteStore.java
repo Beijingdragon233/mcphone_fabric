@@ -1,5 +1,17 @@
 package com.november.mcphone.feature.chat.client.favorite;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
+import java.nio.file.DirectoryStream;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import com.november.mcphone.core.client.AtomicWrite;
 import com.november.mcphone.feature.chat.ChatImage;
 import com.november.mcphone.feature.chat.TextBody;
@@ -20,7 +32,7 @@ public final class FavoriteStore {
     @FunctionalInterface public interface Writer { void write(Path path,String json) throws IOException; }
     private final Path legacy, directory, index;
     private final Writer writer;
-    private volatile Map<String,FavoriteEntry> values=Map.of();
+    private volatile Map<String,FavoriteEntry> values=ImmutableMap.of();
     private volatile boolean available=true;
     private CompletableFuture<?> tail=CompletableFuture.completedFuture(null);
     private final Object queueLock=new Object();
@@ -37,7 +49,7 @@ public final class FavoriteStore {
     public Path directory() { return directory; }
     public Path contentPath(FavoriteEntry entry) { return directory.resolve(entry.kind().folder).resolve(entry.fileName()); }
     public List<FavoriteEntry> snapshot() {
-        var all=new ArrayList<>(values.values());Collections.reverse(all);return List.copyOf(all);
+        ArrayList<FavoriteEntry> all=new ArrayList<>(values.values());Collections.reverse(all);return ImmutableList.copyOf(all);
     }
     public byte[] read(FavoriteEntry entry) throws IOException {
         byte[] data=readBounded(contentPath(entry),entry.kind()==FavoriteEntry.Kind.TEXT?TextBody.MAX_LENGTH*4:ChatImage.MAX_BYTES_CEILING);
@@ -47,7 +59,7 @@ public final class FavoriteStore {
     public String text(FavoriteEntry entry) throws IOException {
         if (entry.kind()!=FavoriteEntry.Kind.TEXT) throw new IOException("不是文字收藏");
         String text=StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(read(entry))).toString();
-        if (text.isBlank() || text.length()>TextBody.MAX_LENGTH) throw new IOException("无效收藏文字");
+        if (Java8.isBlank(text) || text.length()>TextBody.MAX_LENGTH) throw new IOException("无效收藏文字");
         return text;
     }
     /** 有界串行队列；后台任务绑定本 store，绝不重新查询当前账号或服务器。 */
@@ -71,7 +83,7 @@ public final class FavoriteStore {
         try {
             validate(entry,data);
             if (entry.kind()==FavoriteEntry.Kind.IMAGE && imageBytes()+data.length>MAX_IMAGE_BYTES) return Result.LIMIT;
-            var next=new LinkedHashMap<>(values);next.put(entry.key(),entry);
+            LinkedHashMap<String,FavoriteEntry> next=new LinkedHashMap<>(values);next.put(entry.key(),entry);
             String json=encode(next); if (json==null) return Result.LIMIT;
             writePayload(payload,data);
             try { writer.write(index,json); }
@@ -82,7 +94,7 @@ public final class FavoriteStore {
     public synchronized Result remove(String key) {
         if (!available) return Result.STORAGE_ERROR;
         FavoriteEntry old=values.get(key);if (old==null) return Result.OK;
-        var next=new LinkedHashMap<>(values);next.remove(key);
+        LinkedHashMap<String,FavoriteEntry> next=new LinkedHashMap<>(values);next.remove(key);
         try {
             writer.write(index,FavoriteCodec.encode(next));
             values=Collections.unmodifiableMap(next);
@@ -98,14 +110,14 @@ public final class FavoriteStore {
             if (Files.exists(index)) values=Collections.unmodifiableMap(FavoriteCodec.decode(utf8(index)));
             else if (Files.exists(legacy)) {
                 // 原 JSON 始终保留为迁移备份；新索引坏了也不回退旧快照。
-                var texts=FavoriteCodec.legacy(utf8(legacy));var next=new LinkedHashMap<String,FavoriteEntry>();
+                Map<String,FavoriteText> texts=FavoriteCodec.legacy(utf8(legacy));LinkedHashMap<String,FavoriteEntry> next=new LinkedHashMap<String,FavoriteEntry>();
                 for (FavoriteText text:texts.values()) {
-                    var entry=FavoriteEntry.text(text);writePayload(contentPath(entry),text.text().getBytes(StandardCharsets.UTF_8));
+                    FavoriteEntry entry=FavoriteEntry.text(text);writePayload(contentPath(entry),text.text().getBytes(StandardCharsets.UTF_8));
                     next.put(entry.key(),entry);
                 }
                 writer.write(index,FavoriteCodec.encode(next));values=Collections.unmodifiableMap(next);
             }
-            for(String folder:List.of("text","image","audio","file")) Files.createDirectories(directory.resolve(folder));
+            for(String folder:ImmutableList.of("text","image","audio","file")) Files.createDirectories(directory.resolve(folder));
             cleanup();
         } catch (IOException|RuntimeException e) { available=false;warn("读取/迁移",e); }
     }
@@ -115,16 +127,16 @@ public final class FavoriteStore {
     private long imageBytes() throws IOException {
         Path folder=directory.resolve("image");if (!Files.isDirectory(folder)) return 0;
         long bytes=0;
-        try(var files=Files.newDirectoryStream(folder)) {
+        try(DirectoryStream<Path> files=Files.newDirectoryStream(folder)) {
             for(Path file:files) if(Files.isRegularFile(file,LinkOption.NOFOLLOW_LINKS)) bytes=Math.addExact(bytes,Files.size(file));
         }
         return bytes;
     }
     private void cleanup() throws IOException {
-        var referenced=new HashSet<Path>();for(var entry:values.values()) referenced.add(contentPath(entry));
-        for(var kind:FavoriteEntry.Kind.values()) {
+        HashSet<Path> referenced=new HashSet<Path>();for(FavoriteEntry entry:values.values()) referenced.add(contentPath(entry));
+        for(FavoriteEntry.Kind kind:FavoriteEntry.Kind.values()) {
             Path folder=directory.resolve(kind.folder);if(!Files.isDirectory(folder)) continue;
-            try(var files=Files.newDirectoryStream(folder)) {
+            try(DirectoryStream<Path> files=Files.newDirectoryStream(folder)) {
                 for(Path file:files) if(file.getFileName().toString().matches("[0-9a-f]{64}\\.(txt|png)(\\.tmp)?")
                         && !referenced.contains(file)) deletePayload(file);
             }
@@ -140,26 +152,26 @@ public final class FavoriteStore {
         catch(AtomicMoveNotSupportedException e) { Files.move(tmp,file,StandardCopyOption.REPLACE_EXISTING); }
     }
     private static byte[] readBounded(Path file,int maximum) throws IOException {
-        try(var input=Files.newInputStream(file)) {
-            byte[] data=input.readNBytes(maximum+1);if(data.length>maximum) throw new IOException("收藏文件超限");return data;
+        try(java.io.InputStream input=Files.newInputStream(file)) {
+            byte[] data=Java8.readNBytes(input, maximum+1);if(data.length>maximum) throw new IOException("收藏文件超限");return data;
         }
     }
     private static void validate(FavoriteEntry entry,byte[] data) throws IOException {
         if(data==null || data.length!=entry.bytes()) throw new IOException("收藏正文大小错误");
         if(entry.kind()==FavoriteEntry.Kind.TEXT) {
             String text=StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(data)).toString();
-            if(text.isBlank() || text.length()>TextBody.MAX_LENGTH) throw new IOException("无效文字");return;
+            if(Java8.isBlank(text) || text.length()>TextBody.MAX_LENGTH) throw new IOException("无效文字");return;
         }
-        try(var input=ImageIO.createImageInputStream(new ByteArrayInputStream(data))) {
-            var readers=ImageIO.getImageReaders(input);if(!readers.hasNext()) throw new IOException("无效图片");
-            var reader=readers.next();
+        try(javax.imageio.stream.ImageInputStream input=ImageIO.createImageInputStream(new ByteArrayInputStream(data))) {
+            Iterator<javax.imageio.ImageReader> readers=ImageIO.getImageReaders(input);if(!readers.hasNext()) throw new IOException("无效图片");
+            javax.imageio.ImageReader reader=readers.next();
             try {
                 reader.setInput(input,true,true);
                 int w=reader.getWidth(0),h=reader.getHeight(0);
                 if(!reader.getFormatName().equalsIgnoreCase("PNG") || w>ChatImage.SHEET_MAX_SIDE || h>ChatImage.SHEET_MAX_SIDE
                         || w!=entry.width()*ChatImage.cols(entry.frames()) || h!=entry.height()*ChatImage.rows(entry.frames()))
                     throw new IOException("图片帧表与元信息不一致");
-                var decoded=reader.read(0);if(decoded==null) throw new IOException("图片损坏");decoded.flush();
+                java.awt.image.BufferedImage decoded=reader.read(0);if(decoded==null) throw new IOException("图片损坏");decoded.flush();
             } finally { reader.dispose(); }
         }
     }

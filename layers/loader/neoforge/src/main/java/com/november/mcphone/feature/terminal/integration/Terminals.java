@@ -45,7 +45,7 @@ public final class Terminals {
      * volatile：写在 setup 的主线程上，读在服务端线程与客户端渲染线程上。列表本身是不可变的
      * （{@code List.copyOf}），所以只要保证"看得到写入"就够了。
      */
-    private static volatile List<TerminalIntegration> active = List.of();
+    private static volatile List<TerminalIntegration> active = java.util.Collections.emptyList();
 
     /**
      * FMLCommonSetup：挑出装了的那几家。
@@ -85,13 +85,13 @@ public final class Terminals {
                 MCphone.LOGGER.error("「终端」App 接 {} 失败，已跳过这一家", integration.modId(), t);
             }
         }
-        active = List.copyOf(ready);
+        active = com.google.common.collect.ImmutableList.copyOf(ready);
 
         if (ready.isEmpty()) {
             MCphone.LOGGER.info("一家存储模组都没装，「终端」App 不会出现在主屏上");
         } else {
             MCphone.LOGGER.info("「终端」App 接上了：{}",
-                    ready.stream().map(TerminalIntegration::displayName).toList());
+                    ready.stream().map(TerminalIntegration::displayName).collect(java.util.stream.Collectors.toList()));
         }
     }
 

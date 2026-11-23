@@ -2,7 +2,6 @@ package com.november.mcphone.core.script.engine;
 
 import com.november.mcphone.internal.rhino.javascript.Context;
 import com.november.mcphone.internal.rhino.javascript.ContextFactory;
-import com.november.mcphone.internal.rhino.javascript.RegExpLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -19,15 +18,20 @@ public final class PrivateRhinoIdentityTest {
         String actual = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(origin)));
         if (!expected.equals(actual)) throw new AssertionError("实际引擎来源/摘要不同：" + origin);
         if (expectedVersion == null || !expectedVersion.equals(Context.class.getPackage().getImplementationVersion())) throw new AssertionError("引擎版本错误");
-        if (!ContextFactory.class.getProtectionDomain().getCodeSource().getLocation().equals(origin.toUri().toURL())) throw new AssertionError("引擎核心类型来自不同构件");
+        if (!Files.isSameFile(Path.of(ContextFactory.class.getProtectionDomain().getCodeSource().getLocation().toURI()), origin)) throw new AssertionError("引擎核心类型来自不同构件");
         try {
             Class<?> external = Class.forName("org.mozilla.javascript.Context", false, Context.class.getClassLoader());
-            if (external.getProtectionDomain().getCodeSource().getLocation().equals(origin.toUri().toURL()))
+            if (Files.isSameFile(Path.of(external.getProtectionDomain().getCodeSource().getLocation().toURI()), origin))
                 throw new AssertionError("MCPhone 的私有构件含原始 Rhino，外部 mod 自带的引擎则允许共存");
         }
         catch (ClassNotFoundException expectedMissing) { }
-        var provider = ServiceLoader.load(RegExpLoader.class).findFirst().orElseThrow();
-        if (!provider.getClass().getName().equals("com.november.mcphone.internal.rhino.javascript.regexp.RegExpLoaderImpl")) throw new AssertionError("正则服务来源错误");
+        if (!expectedVersion.startsWith("1.7.15.1-")) {
+            Class<?> loader = Class.forName("com.november.mcphone.internal.rhino.javascript.RegExpLoader");
+            Object provider = ServiceLoader.load(loader).findFirst().orElseThrow();
+            if (!provider.getClass().getName().equals("com.november.mcphone.internal.rhino.javascript.regexp.RegExpLoaderImpl")) {
+                throw new AssertionError("正则服务来源错误");
+            }
+        }
         var factory = new ContextFactory();
         try (var context = factory.enterContext()) {
             context.setOptimizationLevel(-1);

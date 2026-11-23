@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.net.ScriptErrorCode;
 import com.november.mcphone.core.script.server.ActionEvaluator;
@@ -37,7 +40,36 @@ public final class RhinoEvaluator implements ActionEvaluator {
     /** Internal-only completion disposition; it is never exposed to scripts or the wire. */
     public enum Disposition { NONE, RESET, STRIKE }
 
-    public record Completion(Outcome outcome, Disposition disposition) {
+    public static final class Completion {
+        private final Outcome outcome;
+        private final Disposition disposition;
+
+        public Completion(Outcome outcome, Disposition disposition) {
+            this.outcome = outcome;
+            this.disposition = disposition;
+        }
+
+        public Outcome outcome() { return outcome; }
+
+        public Disposition disposition() { return disposition; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Completion)) return false;
+            Completion that = (Completion) other;
+            return java.util.Objects.equals(this.outcome, that.outcome)
+                    && java.util.Objects.equals(this.disposition, that.disposition);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(outcome);
+            hash = 31 * hash + java.util.Objects.hashCode(disposition);
+            return hash;
+        }
+
+        @Override public String toString() { return "Completion[outcome=" + outcome + ", disposition=" + disposition + "]"; }
+
         Completion andStrike() {
             return disposition == Disposition.STRIKE ? this : new Completion(outcome, Disposition.STRIKE);
         }
@@ -145,9 +177,14 @@ public final class RhinoEvaluator implements ActionEvaluator {
 
     private void apply(String appId, UUID player, Disposition disposition) {
         switch (disposition) {
-            case NONE -> { }
-            case RESET -> strikes.recordOk(appId, player);
-            case STRIKE -> strikes.recordAbort(appId, player);
+            case NONE: { }
+                break;
+            case RESET:
+                strikes.recordOk(appId, player);
+                break;
+            case STRIKE:
+                strikes.recordAbort(appId, player);
+                break;
         }
     }
 
@@ -212,7 +249,7 @@ public final class RhinoEvaluator implements ActionEvaluator {
         if (actions == null) return none(ScriptErrorCode.NOT_DEPLOYED);
 
         Object fn = ScriptableObject.getProperty(actions, request.actionId());
-        if (!(fn instanceof Callable action)) return none(ScriptErrorCode.NOT_DEPLOYED);
+        if (!(fn instanceof Callable)) return none(ScriptErrorCode.NOT_DEPLOYED);
 
         // 能力门（S18）：拒绝抛可接住的 HostError，脚本没接住时整次调用按它带的码回去。
         // 判定读的是"装配期冻结的已批准集合 + 当前配置快照"，worker 上无副作用。
@@ -227,45 +264,45 @@ public final class RhinoEvaluator implements ActionEvaluator {
         };
 
         ScriptableObject ctx = CtxBuilder.build(cx, call, request.appId(), request.player(), backends, result, ledger, gate);
-        action.call(cx, call, actions, new Object[]{ctx});
+        ((Callable) fn).call(cx, call, actions, new Object[]{ctx});
 
         ScriptErrorCode code = result.code == null ? ScriptErrorCode.INTERNAL : result.code;
         if (ledger.moved() && code != ScriptErrorCode.OK) return none(ScriptErrorCode.UNKNOWN);
         Outcome outcome = new Outcome(code, result.dataJson.getBytes(StandardCharsets.UTF_8),
-                LogText.filter(result.messageKey), result.messageArgs.stream().map(LogText::filter).toList(),
-                0, 0, List.copyOf(result.intents), ledger.moved());
+                LogText.filter(result.messageKey), result.messageArgs.stream().map(LogText::filter).collect(Java8Collections.toList()),
+                0, 0, ImmutableList.copyOf(result.intents), ledger.moved());
         return new Completion(outcome, Disposition.RESET);
     }
 
     private Completion classify(Request request, Throwable failure, MoneyLedger ledger) {
         if (failure instanceof OutcomeUnknown) return none(ScriptErrorCode.UNKNOWN);
-        if (failure instanceof ProviderAbort provider) {
-            return none(provider.mutating() || ledger.moved() ? ScriptErrorCode.UNKNOWN : ScriptErrorCode.INTERNAL);
+        if (failure instanceof ProviderAbort) {
+            return none(((ProviderAbort) failure).mutating() || ledger.moved() ? ScriptErrorCode.UNKNOWN : ScriptErrorCode.INTERNAL);
         }
-        if (failure instanceof HostError host && HostError.classify(host) != null) {
+        if (failure instanceof HostError && HostError.classify(((HostError) failure)) != null) {
             // 业务拒绝（能力门等）：没接住时按它带的码与文案键回去，不记过失。
             // 钱已经动过时仍按"结果不明"优先（E35③）。
-            if (host.resultCode() != null && !ledger.moved()) {
-                return new Completion(new Outcome(host.resultCode(), new byte[0], host.messageKey(),
-                        List.of(), 0, 0, List.of(), false), Disposition.NONE);
+            if (((HostError) failure).resultCode() != null && !ledger.moved()) {
+                return new Completion(new Outcome(((HostError) failure).resultCode(), new byte[0], ((HostError) failure).messageKey(),
+                        ImmutableList.of(), 0, 0, ImmutableList.of(), false), Disposition.NONE);
             }
             return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : none(ScriptErrorCode.INTERNAL);
         }
-        if (failure instanceof ScriptAbort abort) {
+        if (failure instanceof ScriptAbort) {
             MCphone.LOGGER.warn("[MCphone] script aborted app={} action={} detail={}",
                     LogText.filter(request.appId()), LogText.filter(request.actionId()),
-                    LogText.filter(abort.getMessage()));
+                    LogText.filter(((ScriptAbort) failure).getMessage()));
             if (ledger.moved()) return none(ScriptErrorCode.UNKNOWN);
-            return new Completion(Outcome.fail(ScriptErrorCode.INTERNAL), strikeFor(abort));
+            return new Completion(Outcome.fail(ScriptErrorCode.INTERNAL), strikeFor(((ScriptAbort) failure)));
         }
         if (failure instanceof ProviderError
                 || failure instanceof com.november.mcphone.core.script.server.economy.ProviderFailure) {
             return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : none(ScriptErrorCode.INTERNAL);
         }
-        if (failure instanceof RhinoException rhino) {
+        if (failure instanceof RhinoException) {
             MCphone.LOGGER.warn("[MCphone] script error app={} action={} line={} detail={}",
                     LogText.filter(request.appId()), LogText.filter(request.actionId()),
-                    rhino.lineNumber(), LogText.filter(rhino.details()));
+                    ((RhinoException) failure).lineNumber(), LogText.filter(((RhinoException) failure).details()));
             return ledger.moved() ? none(ScriptErrorCode.UNKNOWN) : strike(ScriptErrorCode.INTERNAL);
         }
         MCphone.LOGGER.error("[MCphone] unexpected script evaluation failure app={} action={}",
@@ -294,10 +331,17 @@ public final class RhinoEvaluator implements ActionEvaluator {
     }
 
     private static Disposition strikeFor(ScriptAbort abort) {
-        return switch (abort.reason()) {
-            case INSTRUCTIONS, WALL_CLOCK, STACK -> Disposition.STRIKE;
-            case SIZE, RETAINED, HOST -> Disposition.NONE;
-        };
+        switch (abort.reason()) {
+            case INSTRUCTIONS:
+            case WALL_CLOCK:
+            case STACK:
+                return Disposition.STRIKE;
+            case SIZE:
+            case RETAINED:
+            case HOST:
+                return Disposition.NONE;
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     private static Throwable safeFailure(Throwable failure) {

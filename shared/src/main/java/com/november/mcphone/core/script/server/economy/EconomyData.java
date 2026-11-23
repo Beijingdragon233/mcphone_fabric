@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneNbt;
 import com.november.mcphone.api.economy.TxnResult;
@@ -51,7 +54,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     public static final int DATA_VERSION = 1;
 
     /** 从第 n 版升到第 n+1 版的那一步。目前只有第 1 版，所以是空的。 */
-    private static final Map<Integer, UnaryOperator<CompoundTag>> MIGRATIONS = Map.of();
+    private static final Map<Integer, UnaryOperator<CompoundTag>> MIGRATIONS = ImmutableMap.of();
 
     /** 锁住时给调用方的原因（翻译键）。细节在日志里。 */
     public static final String KEY_LOCKED = "mcphone.economy.unavailable.data_locked";
@@ -257,7 +260,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 锁住的那几种货币。 */
     public Set<String> lockedCurrencies() {
-        return Set.copyOf(lockedCurrencies.keySet());
+        return ImmutableSet.copyOf(lockedCurrencies.keySet());
     }
 
     public EscrowLedger escrow() {
@@ -319,7 +322,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
     public Map<UUID, Long> all(String currencyId) {
         requireUnlocked(currencyId);
         Map<UUID, Long> m = balances.get(currencyId);
-        return m == null ? Map.of() : Map.copyOf(m);
+        return m == null ? ImmutableMap.of() : ImmutableMap.copyOf(m);
     }
 
     // provider 在动账之前就判过锁；走到这里说明有人绕过了它，宁可炸也不许往锁住的账上写
@@ -363,7 +366,7 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         for (String id : ids) {
             CompoundTag c = new CompoundTag();
             CompoundTag bal = new CompoundTag();
-            balances.getOrDefault(id, Map.of()).forEach((p, v) -> bal.putLong(p.toString(), v));
+            balances.getOrDefault(id, ImmutableMap.of()).forEach((p, v) -> bal.putLong(p.toString(), v));
             c.put("balances", bal);
             long[] s = supply(id);
             c.putLong("minted", s[0]);
@@ -541,11 +544,11 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
 
     /** 读一种货币。读不懂返回原因，读懂了返回 null。 */
     private String readCurrency(String id, Tag raw) {
-        if (!(raw instanceof CompoundTag c)) return "不是一张表";
+        if (!(raw instanceof CompoundTag)) return "不是一张表";
         Map<UUID, Long> m = new HashMap<>();
-        if (c.contains("balances")) {
-            if (!PhoneNbt.contains(c, "balances", Tag.TAG_COMPOUND)) return "balances 不是一张表";
-            CompoundTag bal = PhoneNbt.getCompound(c, "balances");
+        if (((CompoundTag) raw).contains("balances")) {
+            if (!PhoneNbt.contains(((CompoundTag) raw), "balances", Tag.TAG_COMPOUND)) return "balances 不是一张表";
+            CompoundTag bal = PhoneNbt.getCompound(((CompoundTag) raw), "balances");
             for (String k : PhoneNbt.getAllKeys(bal)) {
                 UUID p = canonicalUuid(k);
                 // 非规范写法（大写、省了前导零）会被 fromString 归一：两个键落到同一个人，后一个静默盖掉前一个
@@ -558,9 +561,9 @@ public final class EconomyData extends PhoneSavedData implements BalanceStore, T
         long[] s = new long[2];
         String[] keys = {"minted", "burned"};
         for (int i = 0; i < 2; i++) {
-            if (!c.contains(keys[i])) continue;
-            if (!PhoneNbt.contains(c, keys[i], Tag.TAG_LONG)) return keys[i] + " 不是 long";
-            s[i] = PhoneNbt.getLong(c, keys[i]);
+            if (!((CompoundTag) raw).contains(keys[i])) continue;
+            if (!PhoneNbt.contains(((CompoundTag) raw), keys[i], Tag.TAG_LONG)) return keys[i] + " 不是 long";
+            s[i] = PhoneNbt.getLong(((CompoundTag) raw), keys[i]);
             if (s[i] < 0) return keys[i] + " 是负数";
         }
         if (!m.isEmpty()) balances.put(id, m);

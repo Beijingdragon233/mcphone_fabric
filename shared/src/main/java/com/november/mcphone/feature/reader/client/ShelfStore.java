@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.ClientPaths;
 import com.november.mcphone.core.PhonePaths;
 import com.google.gson.Gson;
@@ -74,7 +76,36 @@ public final class ShelfStore {
     private static int revision;
 
     /** 一本书在架上的身份。书源 + 书 id，两者都要——将来不同书源可能有同名的书 */
-    private record Key(String source, String id) {}
+    private static final class Key {
+        private final String source;
+        private final String id;
+
+        private Key(String source, String id) {
+            this.source = source;
+            this.id = id;
+        }
+
+        public String source() { return source; }
+
+        public String id() { return id; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Key)) return false;
+            Key that = (Key) other;
+            return java.util.Objects.equals(this.source, that.source)
+                    && java.util.Objects.equals(this.id, that.id);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(source);
+            hash = 31 * hash + java.util.Objects.hashCode(id);
+            return hash;
+        }
+
+        @Override public String toString() { return "Key[source=" + source + ", id=" + id + "]"; }
+}
 
     private static Key keyOf(BookRef book) {
         return new Key(book.sourceId(), book.bookId().toString());
@@ -186,7 +217,7 @@ public final class ShelfStore {
      */
     public static List<BookRef> shelved(List<BookRef> all) {
         List<Key> books = load();
-        if (books.isEmpty() || all.isEmpty()) return List.of();
+        if (books.isEmpty() || all.isEmpty()) return ImmutableList.of();
 
         // 先给书城建一张索引再按收藏顺序取，而不是两层循环：几十本 × 几本虽然
         // 也不慢，但这段每次收藏之后都要重跑一遍，写成 O(n+m) 不多花力气
@@ -198,7 +229,7 @@ public final class ShelfStore {
             BookRef book = byKey.get(key);
             if (book != null) out.add(book);
         }
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /**

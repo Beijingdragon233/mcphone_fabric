@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.client;
 
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.ui.IPhonePage;
 import com.november.mcphone.api.client.ui.PhoneCanvas;
@@ -59,7 +62,7 @@ public final class ScriptPage implements IPhonePage {
     public static final int MAX_NAV = 8;
 
     /** 会叠按下色的那几种。 */
-    private static final Set<NodeType> INTERACTIVE = Set.of(NodeType.BUTTON, NodeType.TOGGLE, NodeType.TAB_BAR);
+    private static final Set<NodeType> INTERACTIVE = ImmutableSet.of(NodeType.BUTTON, NodeType.TOGGLE, NodeType.TAB_BAR);
 
     /**
      * 字体探针：拿它的宽度看字宽变没变。
@@ -89,7 +92,42 @@ public final class ScriptPage implements IPhonePage {
     /** 当前在哪一页，空串是入口页。 */
     private String current = "";
     /** Back retains exact page instances; changing parameters cannot overwrite a previous entry. */
-    private record BackEntry(String name, UiState state, Map<String, Integer> scroll) {}
+    private static final class BackEntry {
+        private final String name;
+        private final UiState state;
+        private final Map<String, Integer> scroll;
+
+        private BackEntry(String name, UiState state, Map<String, Integer> scroll) {
+            this.name = name;
+            this.state = state;
+            this.scroll = scroll;
+        }
+
+        public String name() { return name; }
+
+        public UiState state() { return state; }
+
+        public Map<String, Integer> scroll() { return scroll; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof BackEntry)) return false;
+            BackEntry that = (BackEntry) other;
+            return java.util.Objects.equals(this.name, that.name)
+                    && java.util.Objects.equals(this.state, that.state)
+                    && java.util.Objects.equals(this.scroll, that.scroll);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(state);
+            hash = 31 * hash + java.util.Objects.hashCode(scroll);
+            return hash;
+        }
+
+        @Override public String toString() { return "BackEntry[name=" + name + ", state=" + state + ", scroll=" + scroll + "]"; }
+}
     private final Deque<BackEntry> back = new ArrayDeque<>();
 
     /** Latest parameter variant per page; back entries retain their exact originating state. */
@@ -449,7 +487,7 @@ public final class ScriptPage implements IPhonePage {
         Supplier<LocalStore> local = storage;
         return session.batch(callback -> {
             if (closed || session != timers || target != state) return;
-            var result = PageStates.delayed(target, script, callback, file, local,
+            com.november.mcphone.core.script.sfc.PageStates.Opened result = PageStates.delayed(target, script, callback, file, local,
                     ignored -> requests(script, target, file), ignored -> timers(script, target, file));
             for (String warning : result.warnings()) MCphone.LOGGER.warn("[MCphone] {}", warning);
             if (!result.warnings().isEmpty()) showToast(Component.translatable("mcphone.script.client_function.failed").getString());
@@ -535,7 +573,7 @@ public final class ScriptPage implements IPhonePage {
         if (name.equals(current) && state.parameters().equals(parameters)) return;
         keepScroll();
         if (back.size() >= MAX_NAV) back.removeLast();   // 丢最老的那层，别让 nav 循环把栈堆满
-        back.push(new BackEntry(current, state, Map.copyOf(scroll)));
+        back.push(new BackEntry(current, state, ImmutableMap.copyOf(scroll)));
         openPage(name, parameters, null);
     }
 
@@ -548,7 +586,8 @@ public final class ScriptPage implements IPhonePage {
 
     /** 关掉这个 App 回主屏。宿主的 navigateTo 会顺手调 {@link #onClose()}。 */
     private void close() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen phone) phone.back();
+        Object phoneMatch;
+        if ((phoneMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) ((PhoneScreen) phoneMatch).back();
     }
 
     @Override

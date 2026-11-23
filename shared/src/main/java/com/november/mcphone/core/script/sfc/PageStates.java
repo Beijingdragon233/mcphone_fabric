@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.Map.Entry;
 import com.november.mcphone.core.script.engine.ClientScript;
 import com.november.mcphone.core.script.http.HttpRequests;
 import com.november.mcphone.core.script.timer.DelayedCallbacks;
@@ -17,7 +20,36 @@ import java.util.function.Function;
 public final class PageStates {
     private final Map<String, UiState> states = new HashMap<>();
 
-    public record Opened(UiState state, List<String> warnings) {}
+    public static final class Opened {
+        private final UiState state;
+        private final List<String> warnings;
+
+        public Opened(UiState state, List<String> warnings) {
+            this.state = state;
+            this.warnings = warnings;
+        }
+
+        public UiState state() { return state; }
+
+        public List<String> warnings() { return warnings; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Opened)) return false;
+            Opened that = (Opened) other;
+            return java.util.Objects.equals(this.state, that.state)
+                    && java.util.Objects.equals(this.warnings, that.warnings);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(state);
+            hash = 31 * hash + java.util.Objects.hashCode(warnings);
+            return hash;
+        }
+
+        @Override public String toString() { return "Opened[state=" + state + ", warnings=" + warnings + "]"; }
+}
 
     public Opened open(String name, CompiledTemplate template, String file, Supplier<LocalStore> storage) {
         return open(name, template, file, storage, null);
@@ -51,17 +83,17 @@ public final class PageStates {
     private static Opened activate(UiState state, ClientScript script, String hook, String file,
                                    Supplier<LocalStore> storage, Function<UiState, HttpRequests> network,
                                    Function<UiState, DelayedCallbacks.Batch> timers) {
-        if (script == null || !script.declares(hook)) return new Opened(state, List.of());
+        if (script == null || !script.declares(hook)) return new Opened(state, ImmutableList.of());
 
         try (LocalStore.Transaction transaction = new LocalStore.Transaction(storage);
              HttpRequests requests = network == null ? null : network.apply(state);
              DelayedCallbacks.Batch tasks = timers == null ? null : timers.apply(state)) {
-            Map<String, Object> next = script.invoke(hook, List.of(), state.values(), state, transaction, requests, tasks);
+            Map<String, Object> next = script.invoke(hook, ImmutableList.of(), state.values(), state, transaction, requests, tasks);
             if (!transaction.commit()) return failed(state, file, hook, "本地存储保存失败，原文件已保留");
-            for (var entry : next.entrySet()) state.set(entry.getKey(), entry.getValue());
+            for (Entry<String,Object> entry : next.entrySet()) state.set(entry.getKey(), entry.getValue());
             if (requests != null) requests.commit();
             if (tasks != null) tasks.commit();
-            return new Opened(state, List.of());
+            return new Opened(state, ImmutableList.of());
         } catch (ClientScript.Failure failure) {
             return failed(state, file, hook, failure.getMessage());
         }
@@ -70,7 +102,7 @@ public final class PageStates {
     /** Restore the exact originating state, even after a different variant of that page was opened. */
     public Opened restore(String name, UiState retained) {
         states.put(name, retained);
-        return new Opened(retained, List.of());
+        return new Opened(retained, ImmutableList.of());
     }
 
     /** Restore a back entry and refresh it once, without reinitializing its retained state or parameters. */
@@ -96,7 +128,7 @@ public final class PageStates {
     private static Opened failed(UiState state, String file, String hook, String reason) {
         String kept = "onInit".equals(hook) ? "，初始化未完成，页面保留默认值"
                 : "onResume".equals(hook) ? "，恢复刷新未完成，页面保留原状态" : "，延迟回调未完成，页面保留原状态";
-        return new Opened(state, List.of(file + " " + hook + "(): " + reason + kept));
+        return new Opened(state, ImmutableList.of(file + " " + hook + "(): " + reason + kept));
     }
 
     /** Deliver into the originating retained page, with the same state/store/request commit rules as a click. */
@@ -111,13 +143,13 @@ public final class PageStates {
         try (HttpRequests batch = requests; DelayedCallbacks.Batch tasks = timers;
              LocalStore.Transaction transaction = new LocalStore.Transaction(storage)) {
             Map<String, Object> next = script.respond(request, response, state, transaction, batch, tasks);
-            if (!transaction.commit()) return List.of(file + " HTTP 回调保存失败，页面和原文件已保留");
-            for (var entry : next.entrySet()) state.set(entry.getKey(), entry.getValue());
+            if (!transaction.commit()) return ImmutableList.of(file + " HTTP 回调保存失败，页面和原文件已保留");
+            for (Entry<String,Object> entry : next.entrySet()) state.set(entry.getKey(), entry.getValue());
             if (batch != null) batch.commit();
             if (tasks != null) tasks.commit();
-            return List.of();
+            return ImmutableList.of();
         } catch (ClientScript.Failure failure) {
-            return List.of(file + " HTTP 回调: " + failure.getMessage() + "，本次回调未完成");
+            return ImmutableList.of(file + " HTTP 回调: " + failure.getMessage() + "，本次回调未完成");
         }
     }
 

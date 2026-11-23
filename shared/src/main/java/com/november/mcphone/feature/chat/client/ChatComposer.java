@@ -36,7 +36,36 @@ final class ChatComposer {
     void focus() { setFocused(true); }
     private java.util.function.BooleanSupplier clearAfterSend = () -> true;
     void clearAfterSend(java.util.function.BooleanSupplier policy) { clearAfterSend=policy; }
-    record Draft(String text, long revision) {}
+    static final class Draft {
+        private final String text;
+        private final long revision;
+
+        Draft(String text, long revision) {
+            this.text = text;
+            this.revision = revision;
+        }
+
+        public String text() { return text; }
+
+        public long revision() { return revision; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Draft)) return false;
+            Draft that = (Draft) other;
+            return java.util.Objects.equals(this.text, that.text)
+                    && this.revision == that.revision;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(text);
+            hash = 31 * hash + java.util.Objects.hashCode(revision);
+            return hash;
+        }
+
+        @Override public String toString() { return "Draft[text=" + text + ", revision=" + revision + "]"; }
+}
     private long revision;
     Draft draft() { return new Draft(box == null ? "" : box.getValue(), revision); }
     boolean clearSubmitted(Draft submitted) {
@@ -93,7 +122,7 @@ final class ChatComposer {
     }
 
     ChatAttachment consumeAttachRequest() {
-        var out = pendingAttach;
+        ChatAttachment out = pendingAttach;
         pendingAttach = null;
         return out;
     }
@@ -148,7 +177,7 @@ final class ChatComposer {
         contentWidth = w;
         String send = Component.translatable("mcphone.chat.send").getString();
         boolean hasText = box != null && ChatLayout.hasText(box.getValue());
-        var layout = ChatLayout.composer(w, ChatUi.width(font, send, ChatLayout.SEND_SCALE), hasText);
+        ChatLayout.Composer layout = ChatLayout.composer(w, ChatUi.width(font, send, ChatLayout.SEND_SCALE), hasText);
         boolean canSendImages = ServerConfig.clientAllowChatImages() && !ChatImageSender.isFull();
         int barX = x + layout.inputX();
         int boxW = layout.inputWidth();

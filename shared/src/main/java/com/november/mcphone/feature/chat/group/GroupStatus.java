@@ -9,7 +9,7 @@ public enum GroupStatus {
     /** 保留已有字节编号；调整枚举声明顺序不能改变网络含义。 */
     public int wireId() { return wireId; }
     public static GroupStatus fromWire(int id) {
-        for (var status : values()) if (status.wireId == id) return status;
+        for (GroupStatus status : values()) if (status.wireId == id) return status;
         throw new io.netty.handler.codec.DecoderException("非法群状态 " + id);
     }
     public String key() { return "mcphone.chat.group.result." + name().toLowerCase(java.util.Locale.ROOT); }

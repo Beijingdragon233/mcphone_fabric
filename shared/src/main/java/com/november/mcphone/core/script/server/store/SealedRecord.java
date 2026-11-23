@@ -11,13 +11,51 @@ package com.november.mcphone.core.script.server.store;
  * @param schemaVersion 记录格式版本，进 AAD
  * @param recordVersion 单调递增，进 AAD，也是防回滚的依据（§17.4.2）
  */
-public record SealedRecord(byte[] salt, byte[] nonce, byte[] cipher,
-                           int schemaVersion, long recordVersion) {
+public final class SealedRecord {
+    private final byte[] salt;
+    private final byte[] nonce;
+    private final byte[] cipher;
+    private final int schemaVersion;
+    private final long recordVersion;
+
+    public byte[] salt() { return salt; }
+
+    public byte[] nonce() { return nonce; }
+
+    public byte[] cipher() { return cipher; }
+
+    public int schemaVersion() { return schemaVersion; }
+
+    public long recordVersion() { return recordVersion; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof SealedRecord)) return false;
+        SealedRecord that = (SealedRecord) other;
+        return java.util.Objects.equals(this.salt, that.salt)
+                && java.util.Objects.equals(this.nonce, that.nonce)
+                && java.util.Objects.equals(this.cipher, that.cipher)
+                && this.schemaVersion == that.schemaVersion
+                && this.recordVersion == that.recordVersion;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(salt);
+        hash = 31 * hash + java.util.Objects.hashCode(nonce);
+        hash = 31 * hash + java.util.Objects.hashCode(cipher);
+        hash = 31 * hash + java.util.Objects.hashCode(schemaVersion);
+        hash = 31 * hash + java.util.Objects.hashCode(recordVersion);
+        return hash;
+    }
+
+    @Override public String toString() { return "SealedRecord[salt=" + salt + ", nonce=" + nonce + ", cipher=" + cipher + ", schemaVersion=" + schemaVersion + ", recordVersion=" + recordVersion + "]"; }
+
 
     /** 当前的记录格式版本。 */
     public static final int SCHEMA = 1;
 
-    public SealedRecord {
+    public SealedRecord(byte[] salt, byte[] nonce, byte[] cipher, int schemaVersion, long recordVersion) {
         if (salt == null || salt.length != VaultCrypto.SALT_BYTES) {
             throw new IllegalArgumentException("salt 要 " + VaultCrypto.SALT_BYTES + " 字节");
         }
@@ -26,5 +64,10 @@ public record SealedRecord(byte[] salt, byte[] nonce, byte[] cipher,
         }
         if (cipher == null || cipher.length == 0) throw new IllegalArgumentException("密文不能为空");
         if (recordVersion < 1) throw new IllegalArgumentException("recordVersion 从 1 起");
+        this.salt = salt;
+        this.nonce = nonce;
+        this.cipher = cipher;
+        this.schemaVersion = schemaVersion;
+        this.recordVersion = recordVersion;
     }
 }

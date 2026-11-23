@@ -70,7 +70,48 @@ public final class TrustState {
      * @param knownFingerprint 这个 appId 上次见到的指纹，只有 {@link State#KEY_CHANGED} 时非 null
      * @param author          包里自称的作者名。<b>装饰，不是身份</b>
      */
-    public record Verdict(State state, String fingerprint, String knownFingerprint, String author) {
+    public static final class Verdict {
+        private final State state;
+        private final String fingerprint;
+        private final String knownFingerprint;
+        private final String author;
+
+        public Verdict(State state, String fingerprint, String knownFingerprint, String author) {
+            this.state = state;
+            this.fingerprint = fingerprint;
+            this.knownFingerprint = knownFingerprint;
+            this.author = author;
+        }
+
+        public State state() { return state; }
+
+        public String fingerprint() { return fingerprint; }
+
+        public String knownFingerprint() { return knownFingerprint; }
+
+        public String author() { return author; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Verdict)) return false;
+            Verdict that = (Verdict) other;
+            return java.util.Objects.equals(this.state, that.state)
+                    && java.util.Objects.equals(this.fingerprint, that.fingerprint)
+                    && java.util.Objects.equals(this.knownFingerprint, that.knownFingerprint)
+                    && java.util.Objects.equals(this.author, that.author);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(state);
+            hash = 31 * hash + java.util.Objects.hashCode(fingerprint);
+            hash = 31 * hash + java.util.Objects.hashCode(knownFingerprint);
+            hash = 31 * hash + java.util.Objects.hashCode(author);
+            return hash;
+        }
+
+        @Override public String toString() { return "Verdict[state=" + state + ", fingerprint=" + fingerprint + ", knownFingerprint=" + knownFingerprint + ", author=" + author + "]"; }
+
     }
 
     /**

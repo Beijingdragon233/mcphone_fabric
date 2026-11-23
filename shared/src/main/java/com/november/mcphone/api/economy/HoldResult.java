@@ -9,12 +9,38 @@ package com.november.mcphone.api.economy;
  * @param result 成了就是 {@link TxnResult#OK}
  * @param id     成了才有，失败时为 null
  */
-public record HoldResult(TxnResult result, EscrowId id) {
+public final class HoldResult {
+    private final TxnResult result;
+    private final EscrowId id;
 
-    public HoldResult {
+    public TxnResult result() { return result; }
+
+    public EscrowId id() { return id; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof HoldResult)) return false;
+        HoldResult that = (HoldResult) other;
+        return java.util.Objects.equals(this.result, that.result)
+                && java.util.Objects.equals(this.id, that.id);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(result);
+        hash = 31 * hash + java.util.Objects.hashCode(id);
+        return hash;
+    }
+
+    @Override public String toString() { return "HoldResult[result=" + result + ", id=" + id + "]"; }
+
+
+    public HoldResult(TxnResult result, EscrowId id) {
         if (result == null) throw new IllegalArgumentException("HoldResult.result 不能为 null");
         if (result == TxnResult.OK && id == null) throw new IllegalArgumentException("OK 必须带 EscrowId");
         if (result != TxnResult.OK && id != null) throw new IllegalArgumentException("失败不许带 EscrowId");
+        this.result = result;
+        this.id = id;
     }
 
     public static HoldResult ok(EscrowId id) {

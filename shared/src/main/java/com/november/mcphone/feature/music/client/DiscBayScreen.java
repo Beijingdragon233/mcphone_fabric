@@ -53,8 +53,9 @@ public class DiscBayScreen extends PhoneContainerScreenBase<DiscBayMenu> {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
-        if (PhoneScreenOpener.open(mc.player) && mc.screen instanceof PhoneScreen phone) {
-            phone.navigateTo(PhoneScreen.Mode.MUSIC_PLAYER);
+        Object phoneMatch;
+        if (PhoneScreenOpener.open(mc.player) && (phoneMatch = mc.screen) instanceof PhoneScreen) {
+            ((PhoneScreen) phoneMatch).navigateTo(PhoneScreen.Mode.MUSIC_PLAYER);
         }
     }
 }

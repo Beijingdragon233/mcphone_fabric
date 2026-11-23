@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.pkg;
 
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.core.PhonePaths;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -236,7 +238,7 @@ public final class AuthorKeys {
     private static boolean restrict(Path file) {
         try {
             Files.setPosixFilePermissions(file,
-                    Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+                    ImmutableSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
             return true;
         } catch (IOException | UnsupportedOperationException | SecurityException e) {
             // Windows / 沙箱安全策略走到这里。真正的 ACL 要平台代码，本步只如实回答"没设上"

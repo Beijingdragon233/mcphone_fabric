@@ -1,5 +1,6 @@
 package com.november.mcphone.feature.settings.client;
 
+import java.util.stream.Stream;
 import com.november.mcphone.platform.ResourceIds;
 
 import com.november.mcphone.core.client.ClientPaths;
@@ -54,16 +55,103 @@ public final class WallpaperStore {
 
     //  数据类 —— 记录图片原始宽高
 
-    public record WallpaperEntry(
-            String fileName,
-            String displayName,
-            ResourceLocation texture,
-            int imageWidth,
-            int imageHeight,
-            BufferedImage preview
-    ) {}
+    public static final class WallpaperEntry {
+        private final String fileName;
+        private final String displayName;
+        private final ResourceLocation texture;
+        private final int imageWidth;
+        private final int imageHeight;
+        private final BufferedImage preview;
 
-    public record CoverCrop(int x, int y, int width, int height) {}
+        public WallpaperEntry(String fileName, String displayName, ResourceLocation texture, int imageWidth, int imageHeight, BufferedImage preview) {
+            this.fileName = fileName;
+            this.displayName = displayName;
+            this.texture = texture;
+            this.imageWidth = imageWidth;
+            this.imageHeight = imageHeight;
+            this.preview = preview;
+        }
+
+        public String fileName() { return fileName; }
+
+        public String displayName() { return displayName; }
+
+        public ResourceLocation texture() { return texture; }
+
+        public int imageWidth() { return imageWidth; }
+
+        public int imageHeight() { return imageHeight; }
+
+        public BufferedImage preview() { return preview; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof WallpaperEntry)) return false;
+            WallpaperEntry that = (WallpaperEntry) other;
+            return java.util.Objects.equals(this.fileName, that.fileName)
+                    && java.util.Objects.equals(this.displayName, that.displayName)
+                    && java.util.Objects.equals(this.texture, that.texture)
+                    && this.imageWidth == that.imageWidth
+                    && this.imageHeight == that.imageHeight
+                    && java.util.Objects.equals(this.preview, that.preview);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(fileName);
+            hash = 31 * hash + java.util.Objects.hashCode(displayName);
+            hash = 31 * hash + java.util.Objects.hashCode(texture);
+            hash = 31 * hash + java.util.Objects.hashCode(imageWidth);
+            hash = 31 * hash + java.util.Objects.hashCode(imageHeight);
+            hash = 31 * hash + java.util.Objects.hashCode(preview);
+            return hash;
+        }
+
+        @Override public String toString() { return "WallpaperEntry[fileName=" + fileName + ", displayName=" + displayName + ", texture=" + texture + ", imageWidth=" + imageWidth + ", imageHeight=" + imageHeight + ", preview=" + preview + "]"; }
+}
+
+    public static final class CoverCrop {
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+
+        public CoverCrop(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        public int x() { return x; }
+
+        public int y() { return y; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof CoverCrop)) return false;
+            CoverCrop that = (CoverCrop) other;
+            return this.x == that.x
+                    && this.y == that.y
+                    && this.width == that.width
+                    && this.height == that.height;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            return hash;
+        }
+
+        @Override public String toString() { return "CoverCrop[x=" + x + ", y=" + y + ", width=" + width + ", height=" + height + "]"; }
+}
 
     /** Source rectangle shared by the normal wallpaper and the folder's sampled wallpaper. */
     public static CoverCrop coverCrop(int imageWidth, int imageHeight, int screenWidth, int screenHeight) {
@@ -153,7 +241,7 @@ public final class WallpaperStore {
         }
 
         List<String> onDisk = new ArrayList<>();
-        try (var stream = Files.list(dir)) {
+        try (Stream<Path> stream = Files.list(dir)) {
             stream.filter(Files::isRegularFile)
                   .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".png"))
                   .sorted()
@@ -225,7 +313,7 @@ public final class WallpaperStore {
     }
 
     private static void release(WallpaperEntry entry) {
-        var textures = Minecraft.getInstance().getTextureManager();
+        net.minecraft.client.renderer.texture.TextureManager textures = Minecraft.getInstance().getTextureManager();
         textures.release(entry.texture());
     }
 

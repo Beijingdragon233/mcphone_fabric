@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat;
 
+import com.google.common.collect.ImmutableList;
+
 import com.mojang.serialization.Codec;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneSavedData;
@@ -33,21 +35,21 @@ public final class ChatDeletionData extends PhoneSavedData {
         return changed;
     }
     public List<ChatMessage> visible(UUID owner, UUID peer, List<ChatMessage> messages) {
-        return isAvailable() ? visibility.filter(owner, peer, messages) : List.of();
+        return isAvailable() ? visibility.filter(owner, peer, messages) : ImmutableList.of();
     }
     public void retain(UUID a, UUID b, Set<UUID> existing) {
         if (isAvailable() && visibility.retain(a, b, existing)) setDirty();
     }
     @Override protected CompoundTag write(CompoundTag tag) {
         if (!isAvailable()) return tag.merge(unreadable.copy());
-        var encoded = CODEC.encodeStart(NbtOps.INSTANCE, new TreeMap<>(visibility.snapshot()));
+        com.mojang.serialization.DataResult<net.minecraft.nbt.Tag> encoded = CODEC.encodeStart(NbtOps.INSTANCE, new TreeMap<>(visibility.snapshot()));
         tag.put("hidden", encoded.result().orElseThrow(() -> new IllegalStateException("个人删除标记写入失败: " + encoded.error())));
         return tag;
     }
     static ChatDeletionData load(CompoundTag tag) {
         try {
-            var decoded = CODEC.parse(NbtOps.INSTANCE, tag.get("hidden"));
-            var value = decoded.result().orElseThrow(() -> new IllegalStateException("个人删除标记读取失败: " + decoded.error()));
+            com.mojang.serialization.DataResult<Map<String,List<UUID>>> decoded = CODEC.parse(NbtOps.INSTANCE, tag.get("hidden"));
+            Map<String,List<UUID>> value = decoded.result().orElseThrow(() -> new IllegalStateException("个人删除标记读取失败: " + decoded.error()));
             return new ChatDeletionData(ChatMessageVisibility.restore(value));
         } catch (RuntimeException error) {
             // SavedData 会捕获加载器抛出的异常并重建空实例。返回保留原文的锁定实例，避免覆盖原文件或恢复已删除消息。

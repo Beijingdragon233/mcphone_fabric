@@ -59,30 +59,197 @@ public final class IdempotencyLedger {
     }
 
     /** 账本里的一条。 */
-    public record Entry(State state, byte[] paramsDigest, long at,
-                        ScriptErrorCode code, byte[] data, long retryAfterMs, long stateRevision) {
+    public static final class Entry {
+        private final State state;
+        private final byte[] paramsDigest;
+        private final long at;
+        private final ScriptErrorCode code;
+        private final byte[] data;
+        private final long retryAfterMs;
+        private final long stateRevision;
+
+        public Entry(State state, byte[] paramsDigest, long at, ScriptErrorCode code, byte[] data, long retryAfterMs, long stateRevision) {
+            this.state = state;
+            this.paramsDigest = paramsDigest;
+            this.at = at;
+            this.code = code;
+            this.data = data;
+            this.retryAfterMs = retryAfterMs;
+            this.stateRevision = stateRevision;
+        }
+
+        public State state() { return state; }
+
+        public byte[] paramsDigest() { return paramsDigest; }
+
+        public long at() { return at; }
+
+        public ScriptErrorCode code() { return code; }
+
+        public byte[] data() { return data; }
+
+        public long retryAfterMs() { return retryAfterMs; }
+
+        public long stateRevision() { return stateRevision; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Entry)) return false;
+            Entry that = (Entry) other;
+            return java.util.Objects.equals(this.state, that.state)
+                    && java.util.Objects.equals(this.paramsDigest, that.paramsDigest)
+                    && this.at == that.at
+                    && java.util.Objects.equals(this.code, that.code)
+                    && java.util.Objects.equals(this.data, that.data)
+                    && this.retryAfterMs == that.retryAfterMs
+                    && this.stateRevision == that.stateRevision;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(state);
+            hash = 31 * hash + java.util.Objects.hashCode(paramsDigest);
+            hash = 31 * hash + java.util.Objects.hashCode(at);
+            hash = 31 * hash + java.util.Objects.hashCode(code);
+            hash = 31 * hash + java.util.Objects.hashCode(data);
+            hash = 31 * hash + java.util.Objects.hashCode(retryAfterMs);
+            hash = 31 * hash + java.util.Objects.hashCode(stateRevision);
+            return hash;
+        }
+
+        @Override public String toString() { return "Entry[state=" + state + ", paramsDigest=" + paramsDigest + ", at=" + at + ", code=" + code + ", data=" + data + ", retryAfterMs=" + retryAfterMs + ", stateRevision=" + stateRevision + "]"; }
+
     }
 
     /** 查一次的结论。 */
-    public sealed interface Verdict {
+    public interface Verdict {
         /** 没见过，可以执行。调用方拿到它之后必须 {@link #reserve} 或什么都不做。 */
-        record Fresh() implements Verdict {
+        final class Fresh implements Verdict {
+            public Fresh() {
+            }
+
+            @Override public boolean equals(Object other) {
+                if (this == other) return true;
+                if (!(other instanceof Fresh)) return false;
+                return true;
+            }
+
+            @Override public int hashCode() {
+                return 0;
+            }
+
+            @Override public String toString() { return "Fresh[]"; }
+
         }
 
         /** 见过且已出结果，把它原样回给客户端。 */
-        record Replay(ScriptErrorCode code, byte[] data, long retryAfterMs, long stateRevision) implements Verdict {
+        final class Replay implements Verdict {
+            private final ScriptErrorCode code;
+            private final byte[] data;
+            private final long retryAfterMs;
+            private final long stateRevision;
+
+            public Replay(ScriptErrorCode code, byte[] data, long retryAfterMs, long stateRevision) {
+                this.code = code;
+                this.data = data;
+                this.retryAfterMs = retryAfterMs;
+                this.stateRevision = stateRevision;
+            }
+
+            public ScriptErrorCode code() { return code; }
+
+            public byte[] data() { return data; }
+
+            public long retryAfterMs() { return retryAfterMs; }
+
+            public long stateRevision() { return stateRevision; }
+
+            @Override public boolean equals(Object other) {
+                if (this == other) return true;
+                if (!(other instanceof Replay)) return false;
+                Replay that = (Replay) other;
+                return java.util.Objects.equals(this.code, that.code)
+                        && java.util.Objects.equals(this.data, that.data)
+                        && this.retryAfterMs == that.retryAfterMs
+                        && this.stateRevision == that.stateRevision;
+            }
+
+            @Override public int hashCode() {
+                int hash = 0;
+                hash = 31 * hash + java.util.Objects.hashCode(code);
+                hash = 31 * hash + java.util.Objects.hashCode(data);
+                hash = 31 * hash + java.util.Objects.hashCode(retryAfterMs);
+                hash = 31 * hash + java.util.Objects.hashCode(stateRevision);
+                return hash;
+            }
+
+            @Override public String toString() { return "Replay[code=" + code + ", data=" + data + ", retryAfterMs=" + retryAfterMs + ", stateRevision=" + stateRevision + "]"; }
+
         }
 
         /** 见过、还在处理。 */
-        record InProgress() implements Verdict {
+        final class InProgress implements Verdict {
+            public InProgress() {
+            }
+
+            @Override public boolean equals(Object other) {
+                if (this == other) return true;
+                if (!(other instanceof InProgress)) return false;
+                return true;
+            }
+
+            @Override public int hashCode() {
+                return 0;
+            }
+
+            @Override public String toString() { return "InProgress[]"; }
+
         }
 
         /** 同一个 requestId 换了参数 —— 客户端有 bug，或在试探。 */
-        record ParamsChanged() implements Verdict {
+        final class ParamsChanged implements Verdict {
+            public ParamsChanged() {
+            }
+
+            @Override public boolean equals(Object other) {
+                if (this == other) return true;
+                if (!(other instanceof ParamsChanged)) return false;
+                return true;
+            }
+
+            @Override public int hashCode() {
+                return 0;
+            }
+
+            @Override public String toString() { return "ParamsChanged[]"; }
+
         }
 
         /** 账本满了，且一条都淘汰不掉。 */
-        record Full(long retryAfterMs) implements Verdict {
+        final class Full implements Verdict {
+            private final long retryAfterMs;
+
+            public Full(long retryAfterMs) {
+                this.retryAfterMs = retryAfterMs;
+            }
+
+            public long retryAfterMs() { return retryAfterMs; }
+
+            @Override public boolean equals(Object other) {
+                if (this == other) return true;
+                if (!(other instanceof Full)) return false;
+                Full that = (Full) other;
+                return this.retryAfterMs == that.retryAfterMs;
+            }
+
+            @Override public int hashCode() {
+                int hash = 0;
+                hash = 31 * hash + java.util.Objects.hashCode(retryAfterMs);
+                return hash;
+            }
+
+            @Override public String toString() { return "Full[retryAfterMs=" + retryAfterMs + "]"; }
+
         }
     }
 

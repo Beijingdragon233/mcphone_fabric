@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.core.script.engine.ClientScript;
 import com.november.mcphone.core.script.layout.StateRules;
 import com.november.mcphone.core.script.sfc.ExprParser.Tok;
@@ -32,7 +34,7 @@ final class ScriptParser {
 
     private static Map<String, Object> literalState(String content) {
         ExprParser p = new ExprParser(content, 1, 1, true);
-        if (p.peek().kind() == 'e') return Map.of();
+        if (p.peek().kind() == 'e') return ImmutableMap.of();
 
         Tok t = p.next();
         if (t.kind() != 'n' || !t.text().equals("state")) throw subset(t);

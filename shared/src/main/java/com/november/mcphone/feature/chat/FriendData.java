@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.chat;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.mojang.serialization.Codec;
 import com.november.mcphone.MCphone;
 import net.minecraft.core.UUIDUtil;
@@ -157,14 +160,14 @@ public class FriendData extends PhoneSavedData {
 
     private static FriendData load(CompoundTag tag) {
         FriendGraph friends = FriendGraph.fromPairKeys(
-                decode(FRIENDSHIPS_CODEC, tag, "friendships", List.of()));
+                decode(FRIENDSHIPS_CODEC, tag, "friendships", ImmutableList.of()));
 
         // Codec 解出来的是不可变集合，必须复制成可变的，否则读档后第一次加申请就抛 UnsupportedOperationException
         Map<UUID, Map<UUID, Long>> requests = new HashMap<>();
-        decode(REQUESTS_CODEC, tag, "requests", Map.of())
+        decode(REQUESTS_CODEC, tag, "requests", ImmutableMap.of())
                 .forEach((to, incoming) -> requests.put(to, new HashMap<>(incoming)));
 
-        Map<UUID, String> names = new HashMap<>(decode(NAMES_CODEC, tag, "names", Map.of()));
+        Map<UUID, String> names = new HashMap<>(decode(NAMES_CODEC, tag, "names", ImmutableMap.of()));
 
         return new FriendData(friends, requests, names);
     }

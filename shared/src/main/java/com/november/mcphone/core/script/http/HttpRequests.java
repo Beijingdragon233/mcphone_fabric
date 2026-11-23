@@ -1,9 +1,13 @@
 package com.november.mcphone.core.script.http;
 
 import java.net.URI;
-import java.net.http.HttpRequest;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Objects;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,17 +24,23 @@ public final class HttpRequests implements AutoCloseable {
     public static final int DEFAULT_TIMEOUT_MS = 30_000;
     // Never reuse IDs while this client is running, including across App closes and account changes.
     private static final AtomicInteger NEXT_ID = new AtomicInteger(1);
-    private static final Set<String> RESTRICTED = Set.of("connection", "content-length", "expect", "host",
-            "upgrade", "transfer-encoding", "proxy-authorization", "proxy-connection");
+    private static final Set<String> RESTRICTED = Collections.unmodifiableSet(new HashSet<>(Arrays.asList("connection", "content-length", "expect", "host",
+            "upgrade", "transfer-encoding", "proxy-authorization", "proxy-connection")));
 
-    public record Request(String url, String method, Map<String, String> headers, String body,
-                          int timeoutMs, String callback, int id) {
+    public static final class Request {
+        private final String url;
+        private final String method;
+        private final Map<String, String> headers;
+        private final String body;
+        private final int timeoutMs;
+        private final String callback;
+        private final int id;
         public Request(String url, String method, Map<String, String> headers, String body,
                        int timeoutMs, String callback) {
             this(url, method, headers, body, timeoutMs, callback, 0);
         }
 
-        public Request {
+        public Request(String url, String method, Map<String, String> headers, String body, int timeoutMs, String callback, int id) {
             if (id < 0) throw invalid("请求编号不能为负数");
             if (url == null || url.length() > 2048) throw invalid("URL 最多 2048 个字符");
             URI uri;
@@ -51,7 +61,7 @@ public final class HttpRequests implements AutoCloseable {
             if (headers == null || headers.size() > 16) throw invalid("请求头最多 16 项");
             Map<String, String> checked = new LinkedHashMap<>();
             int bytes = 0;
-            for (var entry : headers.entrySet()) {
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
                 String key = entry.getKey(), value = entry.getValue();
                 if (key == null || key.length() > 64 || !key.matches("[!#$%&'*+.^_`|~0-9A-Za-z-]+")) {
                     throw invalid("请求头名称不合法");
@@ -71,15 +81,78 @@ public final class HttpRequests implements AutoCloseable {
             }
             // Validate with the actual JDK parser now, before state or storage is committed. No I/O here.
             try {
-                HttpRequest.Builder builder = HttpRequest.newBuilder(uri);
-                checked.forEach(builder::header);
+                ScriptHttpTransport.validate(uri, checked);
             } catch (IllegalArgumentException e) { throw invalid("URL 或请求头不被 HTTP 客户端接受"); }
-            headers = Map.copyOf(checked);
+            this.headers = Collections.unmodifiableMap(checked);
+            this.url = url;
+            this.method = method;
+            this.body = body;
+            this.timeoutMs = timeoutMs;
+            this.callback = callback;
+            this.id = id;
+        }
+
+        public String url() { return url; }
+        public String method() { return method; }
+        public Map<String, String> headers() { return headers; }
+        public String body() { return body; }
+        public int timeoutMs() { return timeoutMs; }
+        public String callback() { return callback; }
+        public int id() { return id; }
+
+        @Override public boolean equals(Object other) {
+            if (!(other instanceof Request)) return false;
+            Request r = (Request) other;
+            return id == r.id && timeoutMs == r.timeoutMs && url.equals(r.url) && method.equals(r.method)
+                    && headers.equals(r.headers) && body.equals(r.body) && callback.equals(r.callback);
+        }
+
+        @Override public int hashCode() {
+            int hash = url.hashCode();
+            hash = hash * 31 + method.hashCode();
+            hash = hash * 31 + headers.hashCode();
+            hash = hash * 31 + body.hashCode();
+            hash = hash * 31 + timeoutMs;
+            hash = hash * 31 + callback.hashCode();
+            return hash * 31 + id;
+        }
+
+        @Override public String toString() {
+            return "Request[url=" + url + ", method=" + method + ", headers=" + headers + ", body=" + body
+                    + ", timeoutMs=" + timeoutMs + ", callback=" + callback + ", id=" + id + "]";
         }
     }
 
     /** HTTP errors retain status/body; transport errors use status 0 and a stable, non-sensitive code. */
-    public record Result(int status, String body, String error) {}
+    public static final class Result {
+        private final int status;
+        private final String body;
+        private final String error;
+
+        public Result(int status, String body, String error) {
+            this.status = status;
+            this.body = body;
+            this.error = error;
+        }
+
+        public int status() { return status; }
+        public String body() { return body; }
+        public String error() { return error; }
+
+        @Override public boolean equals(Object other) {
+            if (!(other instanceof Result)) return false;
+            Result r = (Result) other;
+            return status == r.status && Objects.equals(body, r.body) && Objects.equals(error, r.error);
+        }
+
+        @Override public int hashCode() {
+            return (status * 31 + Objects.hashCode(body)) * 31 + Objects.hashCode(error);
+        }
+
+        @Override public String toString() {
+            return "Result[status=" + status + ", body=" + body + ", error=" + error + "]";
+        }
+    }
 
     private final int capacity;
     private final Consumer<List<Request>> sender;
@@ -102,7 +175,7 @@ public final class HttpRequests implements AutoCloseable {
         this.capacity = Math.max(0, Math.min(MAX_PENDING, capacity));
         this.sender = sender;
         this.session = session;
-        this.cancellable = session == null ? Set.of() : session.requestIds();
+        this.cancellable = session == null ? Collections.emptySet() : session.requestIds();
     }
 
     /** Retain the original internal caller signature; scripts use enqueue to obtain the ID. */
@@ -127,8 +200,8 @@ public final class HttpRequests implements AutoCloseable {
 
     public void commit() {
         if (closed) throw new IllegalStateException("请求批次已经结束");
-        List<Request> requests = List.copyOf(staged);
-        Set<Integer> cancelled = Set.copyOf(cancellations);
+        List<Request> requests = Collections.unmodifiableList(new ArrayList<>(staged));
+        Set<Integer> cancelled = new LinkedHashSet<>(cancellations);
         close();
         if (session != null) for (int id : cancelled) session.cancel(id);
         if (!requests.isEmpty()) sender.accept(requests);

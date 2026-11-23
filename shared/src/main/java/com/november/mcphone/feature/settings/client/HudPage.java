@@ -118,7 +118,7 @@ public final class HudPage {
 
         //  说明：自动那条怎么算、手动那个键是哪个。两句合成一段而不是各占一段——
         //  这块屏幕只有 120×200，每空一行都是从下面挤出来的
-        for (var line : font.split(Component.translatable("mcphone.hud.enabled_hint",
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.hud.enabled_hint",
                 PhoneKeys.HUD_TOGGLE.translatedName()), w)) {
             if (y + font.lineHeight > bottom) break;
             g.drawString(font, line, x, y, FontPalette.dim(), false);
@@ -177,7 +177,7 @@ public final class HudPage {
         y += BTN + 2;
 
         //  怎么唤出鼠标、唤出之后能干什么。键名取自玩家的实际绑定，改键后提示自动跟着变
-        for (var line : font.split(Component.translatable("mcphone.hud.interact_hint",
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.hud.interact_hint",
                 PhoneKeys.HUD_INTERACT.translatedName()), w)) {
             if (y + font.lineHeight > bottom) break;
             g.drawString(font, line, x, y, FontPalette.dim(), false);
@@ -202,7 +202,7 @@ public final class HudPage {
      * 同一句话就可能多出一行。不设这道闸的话，多出来的那行会直接压在底下那个按钮上。
      */
     private int drawWrapped(GuiGraphics g, Font font, String key, int x, int y, int w, int bottom) {
-        for (var line : font.split(Component.translatable(key), w)) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable(key), w)) {
             if (y + font.lineHeight > bottom) break;
             g.drawString(font, line, x, y, FontPalette.dim(), false);
             y += font.lineHeight;

@@ -106,7 +106,7 @@ public final class ChatMediaPicker {
         if (items.isEmpty()) {
             hoveredIdx = -1;
             hoveredPager = 0;
-            for (var line : font.split(Component.translatable(emptyKey), w)) {
+            for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable(emptyKey), w)) {
                 g.drawString(font, line, x, y, FontPalette.subtle(), false);
                 y += font.lineHeight;
             }
@@ -205,11 +205,16 @@ public final class ChatMediaPicker {
     /** 方向键翻页，Home/End 跳首尾页——攒了几百张时只能一页页点箭头会很难受 */
     public boolean keyPressed(int keyCode) {
         switch (keyCode) {
-            case 262, 264 -> { flip(1); return true; }    // → ↓
-            case 263, 265 -> { flip(-1); return true; }   // ← ↑
-            case 268 -> { page = 0; return true; }        // Home
-            case 269 -> { page = lastPage(); return true; }
-            default -> { return false; }
+            case 262:
+            case 264: { flip(1); return true; }
+                // → ↓
+            case 263:
+            case 265: { flip(-1); return true; }
+                // ← ↑
+            case 268: { page = 0; return true; }
+                // Home
+            case 269: { page = lastPage(); return true; }
+            default: { return false; }
         }
     }
 

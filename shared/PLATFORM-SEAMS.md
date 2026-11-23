@@ -298,6 +298,60 @@ Minecraft 1.20.1，在其之前，那一侧只能使用能力。`getCapability(.
 
 ## 1.18.2 Forge
 
+<!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.16.5-forge -->
+
+#### 共用代码引用了的（23）
+
+**新平台必须提供同名类型**，否则 shared/ 与共享层编不过。全限定名是硬约束；方法体是抄现成的一份还是自己写，看那个文件。
+
+- `MCphone`　—— 加载器导入
+- `api.client.ui.PhoneMultiLineEditBox`
+- `compat.WaystonesCompat`
+- `core.ModItems`　—— 加载器导入
+- `core.ModSounds`　—— 加载器导入
+- `core.PhonePlayerData`　—— 加载器导入
+- `core.ServerConfig`　—— 加载器导入
+- `core.client.AppHotkeys`　—— 加载器导入
+- `core.client.ClientConfig`　—— 加载器导入
+- `core.client.PhoneHud`　—— 加载器导入
+- `core.menu.ModMenus`　—— 加载器导入
+- `core.net.MCphoneNetwork`　—— 加载器导入
+- `core.net.NetworkHandler`
+- `feature.music.DiscService`　—— 加载器导入
+- `feature.music.net.MusicNetworking`
+- `feature.terminal.TerminalCharger`　—— 加载器导入、注入的方法
+- `feature.terminal.integration.ae2.PhoneWirelessHost`
+- `feature.terminal.integration.refinedstorage.RefinedStorageIntegration`
+- `platform.CuriosInventories`　—— 加载器导入
+- `platform.ModPresence`　—— 加载器导入
+- `platform.PlayerAbilities`　—— 加载器导入
+- `platform.PlayerEffects`　—— 加载器导入
+- `platform.client.KeyModifiers`　—— 加载器导入
+
+#### 平台内部的（17）
+
+只在这个平台自己的代码里用到。新平台不必提供同名类型。
+
+- `MCphoneClient`　—— 加载器导入
+- `compat.CompatModules`　—— 加载器导入
+- `compat.IntegratedDynamicsCompat`　—— 加载器导入
+- `compat.PhoneWaystoneSelection`
+- `compat.Waystones7`　—— 加载器导入
+- `core.ModCapabilities`　—— 加载器导入、注入的方法
+- `core.ModCreativeTabs`
+- `core.PhoneScreenOnCleanup`　—— 加载器导入
+- `feature.camera.client.CameraHandler`　—— 加载器导入
+- `feature.store.net.StoreNetworking`
+- `feature.terminal.TerminalSlotSync`　—— 加载器导入
+- `mixin.ae2.Ae2wtlibStillValidMixin`
+- `mixin.ae2.ContainerHostMixin`
+- `mixin.ae2.ContainerSlotMixin`
+- `mixin.refinedstorage.PlayerSlotMixin`
+- `mixin.waystones.WarpItemMixin`
+- `platform.client.ClientTicks`　—— 加载器导入
+
+<!-- 1.16.5-forge 结束 -->
+
 <!-- 下面这段由 ./gradlew updateSeamsDoc 生成，别手改：1.18.2-forge -->
 
 #### 共用代码引用了的（22）

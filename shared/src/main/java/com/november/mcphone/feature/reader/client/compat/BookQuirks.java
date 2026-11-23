@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client.compat;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.feature.reader.BookRef;
 import net.minecraft.client.gui.GuiGraphics;
@@ -35,7 +37,7 @@ public final class BookQuirks {
     private BookQuirks() {}
 
     /** 全部特例。加新的就往这里加一行 */
-    private static final List<BookQuirk> QUIRKS = List.of(
+    private static final List<BookQuirk> QUIRKS = ImmutableList.of(
             new ArsNouveauQuirk()
     );
 
@@ -116,7 +118,7 @@ public final class BookQuirks {
             }
         }
 
-        active = List.copyOf(out);
+        active = ImmutableList.copyOf(out);
         return active;
     }
 }

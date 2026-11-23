@@ -18,7 +18,36 @@ public final class Style {
     public enum TextAlign { LEFT, CENTER, RIGHT }
 
     /** width / height 的值。只有 FIXED 带像素数，其余 value 为 0。 */
-    public record SizeSpec(Kind kind, int value) {
+    public static final class SizeSpec {
+        private final Kind kind;
+        private final int value;
+
+        public SizeSpec(Kind kind, int value) {
+            this.kind = kind;
+            this.value = value;
+        }
+
+        public Kind kind() { return kind; }
+
+        public int value() { return value; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof SizeSpec)) return false;
+            SizeSpec that = (SizeSpec) other;
+            return java.util.Objects.equals(this.kind, that.kind)
+                    && this.value == that.value;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(kind);
+            hash = 31 * hash + java.util.Objects.hashCode(value);
+            return hash;
+        }
+
+        @Override public String toString() { return "SizeSpec[kind=" + kind + ", value=" + value + "]"; }
+
 
         public enum Kind { AUTO, FILL, FIXED }
 
@@ -211,24 +240,39 @@ public final class Style {
         Builder b = new Builder();
         if (type == null) return b;
         switch (type) {
-            case ROW -> b.layout = Layout.ROW;
-            case STACK -> b.layout = Layout.STACK;
-            case SCROLL, LIST -> b.height = SizeSpec.FILL;      // §6.5 height 备注
-            case BUTTON -> {                                     // §5.3、§6.2
+            case ROW:
+                b.layout = Layout.ROW;
+                break;
+            case STACK:
+                b.layout = Layout.STACK;
+                break;
+            case SCROLL:
+            case LIST:
+                b.height = SizeSpec.FILL;
+                break;
+                // §6.5 height 备注
+            case BUTTON: {                                     // §5.3、§6.2
                 b.padTop = b.padBottom = 2;
                 b.padLeft = b.padRight = 6;
                 b.background = Token.BUTTON;
                 b.hoverBackground(Token.BUTTON_HOVER);
             }
-            case TEXT_INPUT, TEXTAREA -> {
+                break;
+            case TEXT_INPUT:
+            case TEXTAREA: {
                 b.width = SizeSpec.FILL;
                 b.padTop = b.padBottom = 3;
                 b.padLeft = b.padRight = 3;
                 b.background = Token.BUTTON;
                 b.hoverBackground(Token.BUTTON_HOVER);
             }
-            case DIVIDER -> b.color = Token.SUBTLE;             // §5.2
-            default -> { }
+                break;
+            case DIVIDER:
+                b.color = Token.SUBTLE;
+                break;
+                // §5.2
+            default: { }
+                break;
         }
         return b;
     }

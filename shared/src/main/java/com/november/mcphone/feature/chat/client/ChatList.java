@@ -1,5 +1,10 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
+import java.util.ArrayList;
 import com.november.mcphone.core.ServerConfig;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneSkin;
@@ -52,10 +57,39 @@ public final class ChatList {
     private final ChatHomeMenu homeMenu = new ChatHomeMenu();
     private boolean pendingCreate, hoveredGroup;
     private UUID pendingGroup;
-    private record Row(ConversationSummary summary, GroupSummary group) {}
+    private static final class Row {
+        private final ConversationSummary summary;
+        private final GroupSummary group;
+
+        private Row(ConversationSummary summary, GroupSummary group) {
+            this.summary = summary;
+            this.group = group;
+        }
+
+        public ConversationSummary summary() { return summary; }
+
+        public GroupSummary group() { return group; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Row)) return false;
+            Row that = (Row) other;
+            return java.util.Objects.equals(this.summary, that.summary)
+                    && java.util.Objects.equals(this.group, that.group);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(summary);
+            hash = 31 * hash + java.util.Objects.hashCode(group);
+            return hash;
+        }
+
+        @Override public String toString() { return "Row[summary=" + summary + ", group=" + group + "]"; }
+}
     private List<ConversationSummary> rowFriends;
     private List<GroupSummary> rowGroups;
-    private List<Row> cachedRows = List.of();
+    private List<Row> cachedRows = ImmutableList.of();
     private boolean pendingContacts, pendingProfile;
 
     /** 鼠标停在谁那一行上，null 表示没有。记人不记下标，理由见类注释 */
@@ -86,7 +120,7 @@ public final class ChatList {
         pendingClose = false;
         homeMenu.dismiss();
         pendingCreate = hoveredGroup = false; pendingGroup = null;
-        rowFriends = null; rowGroups = null; cachedRows = List.of();
+        rowFriends = null; rowGroups = null; cachedRows = ImmutableList.of();
         search.reset(); rowQuery = ""; scrollOffset = 0;
     }
 
@@ -96,7 +130,7 @@ public final class ChatList {
     /** 机身外与导航栏的点击也先交到这里，只处理菜单，不让操作穿透。 */
     public boolean contextMouseClicked(double x, double y, int button) {
         if (!hasContextMenu()) return false;
-        var action = homeMenu.choose(x, y, button);
+        ChatHomeMenu.Action action = homeMenu.choose(x, y, button);
         if (action == ChatHomeMenu.Action.ADD_CONTACT) pendingAddContact = true;
         else if (action == ChatHomeMenu.Action.CREATE_GROUP) pendingCreate = true;
         return true;
@@ -108,7 +142,7 @@ public final class ChatList {
         pendingOpen = null;
         return out;
     }
-    public UUID consumeGroupOpenRequest() { var out = pendingGroup; pendingGroup = null; return out; }
+    public UUID consumeGroupOpenRequest() { UUID out = pendingGroup; pendingGroup = null; return out; }
     public boolean consumeCreateRequest() { boolean out = pendingCreate; pendingCreate = false; return out; }
 
     public boolean consumeAddContactRequest() {
@@ -179,12 +213,12 @@ public final class ChatList {
     }
 
     private void renderEmpty(GuiGraphics g, Font font, int x, int y, int w) {
-        ChatUi.text(g, font, Component.translatable(search.query().isBlank() ? "mcphone.chat.empty" : "mcphone.chat.contacts.search_empty").getString(),
+        ChatUi.text(g, font, Component.translatable(Java8.isBlank(search.query()) ? "mcphone.chat.empty" : "mcphone.chat.contacts.search_empty").getString(),
                 x, y, ChatLayout.TEXT_SCALE, FontPalette.subtle());
-        if (!search.query().isBlank()) return;
+        if (!Java8.isBlank(search.query())) return;
         y += ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE) + 2;
 
-        for (var line : font.split(Component.translatable("mcphone.chat.empty_hint"),
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.chat.empty_hint"),
                 ChatLayout.unscaledWidth(w, ChatLayout.TEXT_SCALE))) {
             ChatUi.text(g, font, line, x, y, ChatLayout.TEXT_SCALE, FontPalette.dim());
             y += ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE);
@@ -200,7 +234,7 @@ public final class ChatList {
         for (int i = scrollOffset; i < list.size(); i++) {
             if (y + rowH > bottom) break;
 
-            var row = list.get(i); ConversationSummary c = row.summary();
+            ChatList.Row row = list.get(i); ConversationSummary c = row.summary();
             boolean hovered = !hasContextMenu() && ChatLayout.hit(mouseX, mouseY, x, y, w, rowH);
             if (hovered) { hoveredPeer = c.id(); hoveredGroup = row.group() != null; }
             ChatUi.glass(g, ChatGlass.Surface.CARD, x, y, w, rowH, hovered);
@@ -222,9 +256,9 @@ public final class ChatList {
         boolean canTeleport = group == null && c.online() && ServerConfig.clientAllowFriendTeleport();
         String unread = c.unread() > 0 ? unreadLabel(c.unread()) : "";
         int badgeW = unread.isEmpty() ? 0 : Math.max(ChatLayout.UNREAD_HEIGHT, UnreadBadge.width(font, unread));
-        var layout = ChatLayout.card(w, ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE),
+        ChatLayout.Card layout = ChatLayout.card(w, ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE),
                 ChatUi.lineHeight(font, ChatLayout.META_SCALE), rightW, badgeW, canTeleport);
-        var frame = layout.avatarFrame();
+        ChatLayout.Rect frame = layout.avatarFrame();
         ChatUi.glass(g, ChatGlass.Surface.AVATAR, x + frame.x(), y + frame.y(),
                 frame.width(), frame.height(), false);
         if (group == null) PlayerAvatar.draw(g, c.id(), x + frame.x() + ChatLayout.AVATAR_FRAME,
@@ -247,7 +281,7 @@ public final class ChatList {
             ChatUi.text(g, font, right, x + layout.timeX(), y + layout.timeY(), ChatLayout.META_SCALE, colorTime());
         }
         if (c.unread() > 0) {
-            var badge = layout.unread();
+            ChatLayout.Rect badge = layout.unread();
             ChatUi.glass(g, ChatGlass.Surface.BADGE, x + badge.x(), y + badge.y(),
                     badge.width(), badge.height(), false);
             UnreadBadge.label(g, font, unread, x + badge.x() + badge.width() / 2f,
@@ -353,18 +387,18 @@ public final class ChatList {
         GroupTransport.directory();
     }
     private List<Row> rows() {
-        var friends = ChatClientCache.getConversations(); var groups = GroupClientCache.groups();
+        List<com.november.mcphone.feature.chat.net.ConversationSummary> friends = ChatClientCache.getConversations(); List<com.november.mcphone.feature.chat.group.GroupSummary> groups = GroupClientCache.groups();
         String query = search.query();
         if (friends == rowFriends && groups == rowGroups && rowQuery.equals(query)) return cachedRows;
         if (!rowQuery.equals(query)) scrollOffset = 0;
         rowQuery = query;
         rowFriends = friends; rowGroups = groups;
-        var out = new java.util.ArrayList<Row>();
+        ArrayList<ChatList.Row> out = new java.util.ArrayList<Row>();
         friends.stream().filter(c -> ChatContactDirectory.matches(c.name(), query)).forEach(c -> out.add(new Row(c, null)));
         groups.stream().filter(group -> ChatContactDirectory.matches(group.name(), query)).forEach(group -> out.add(new Row(new ConversationSummary(group.id(), group.name(), false,
                 group.last().map(m -> m.message().body()), group.lastTime(), group.unread()), group)));
         out.sort(java.util.Comparator.comparingLong((Row row) -> row.summary().lastTime()).reversed());
-        cachedRows = List.copyOf(out); return cachedRows;
+        cachedRows = ImmutableList.copyOf(out); return cachedRows;
     }
 
     private static int rowHeight(Font font) {

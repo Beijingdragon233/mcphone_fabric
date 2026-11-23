@@ -30,8 +30,8 @@ public enum DefaultWallpaper {
     }
 
     public BufferedImage sample(int width, int height) {
-        var result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
-        var graphics = result.createGraphics();
+        java.awt.image.BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D graphics = result.createGraphics();
         try {
             graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             graphics.drawImage(pixels(), 0, 0, width, height, null);
@@ -45,7 +45,7 @@ public enum DefaultWallpaper {
         if (pixels != null) return pixels;
         int width = metrics.screenW();
         int height = metrics.screenH();
-        var result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        java.awt.image.BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         // CSS angles start at north and turn clockwise. The gradient line spans the box's projection.
         double angle = Math.toRadians(154);
         double dx = Math.sin(angle) * width;

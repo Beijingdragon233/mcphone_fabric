@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client.source;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.feature.reader.BookRef;
@@ -33,13 +35,13 @@ public final class ExternalBookSource implements BookSource {
     private static final String SOURCE_ID = "external";
 
     /** 全部外部手册。加新的就往这里加一行 */
-    private static final List<ExternalBook> WHITELIST = List.of(
+    private static final List<ExternalBook> WHITELIST = ImmutableList.of(
             new ImmersiveEngineeringManual(),
             new OriginsOfDarkness()
     );
 
     /** 扫出来的书，类型必须是中性的——上层引用本类时不该被牵连着加载别人的类 */
-    private List<BookRef> books = List.of();
+    private List<BookRef> books = ImmutableList.of();
 
     /** 上一次记进日志的本数，-1 表示还没记过。与 PatchouliSource 同一个理由 */
     private int loggedCount = -1;
@@ -82,7 +84,7 @@ public final class ExternalBookSource implements BookSource {
             }
         }
 
-        books = List.copyOf(out);
+        books = ImmutableList.copyOf(out);
 
         if (books.size() != loggedCount) {
             loggedCount = books.size();

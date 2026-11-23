@@ -64,7 +64,36 @@ public final class CuriosCompat {
      * 刻意不直接返回 Curios 的 SlotResult：那个类型一旦漏到外面，
      * 外面的代码就跟着碰上了 Curios，本类的隔离也就白做了。
      */
-    public record CurioSlotRef(String slotId, int index) {}
+    public static final class CurioSlotRef {
+        private final String slotId;
+        private final int index;
+
+        public CurioSlotRef(String slotId, int index) {
+            this.slotId = slotId;
+            this.index = index;
+        }
+
+        public String slotId() { return slotId; }
+
+        public int index() { return index; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof CurioSlotRef)) return false;
+            CurioSlotRef that = (CurioSlotRef) other;
+            return java.util.Objects.equals(this.slotId, that.slotId)
+                    && this.index == that.index;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(slotId);
+            hash = 31 * hash + java.util.Objects.hashCode(index);
+            return hash;
+        }
+
+        @Override public String toString() { return "CurioSlotRef[slotId=" + slotId + ", index=" + index + "]"; }
+}
 
     /** 找出饰品栏里第一个符合条件的物品在哪。没装 Curios 时一律为空 */
     public static Optional<CurioSlotRef> findEquipped(LivingEntity entity,

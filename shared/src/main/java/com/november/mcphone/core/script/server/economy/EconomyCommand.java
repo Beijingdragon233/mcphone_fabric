@@ -115,7 +115,7 @@ public final class EconomyCommand {
 
     /** 注册表交出来的是网关包装；对账要看里面那一档。 */
     private static ICurrencyProvider unwrap(ICurrencyProvider provider) {
-        return provider instanceof GatedCurrencyProvider gated ? gated.inner() : provider;
+        return provider instanceof GatedCurrencyProvider ? ((GatedCurrencyProvider) provider).inner() : provider;
     }
 
     private static String tierOf(ICurrencyProvider provider) {

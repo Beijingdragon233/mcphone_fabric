@@ -27,13 +27,15 @@ public final class PhoneScreenOnSync {
     }
 
     private static PhoneScreen fullscreenPhone() {
-        return Minecraft.getInstance().screen instanceof PhoneScreen screen ? screen : null;
+        Object screenMatch;
+        return (screenMatch = Minecraft.getInstance().screen) instanceof PhoneScreen ? ((PhoneScreen) screenMatch) : null;
     }
 
     private static int handBit(PhoneScreen screen) {
         if (screen == null) return 0;
-        if (!(screen.location() instanceof PhoneLocation.InHand inHand)) return 0;
-        return inHand.hand() == InteractionHand.MAIN_HAND
+        Object inHandMatch;
+        if (!((inHandMatch = screen.location()) instanceof PhoneLocation.InHand)) return 0;
+        return ((PhoneLocation.InHand) inHandMatch).hand() == InteractionHand.MAIN_HAND
                 ? PhoneScreenOnPacket.MAIN_HAND : PhoneScreenOnPacket.OFF_HAND;
     }
 

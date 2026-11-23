@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.layout;
 
+import com.november.mcphone.util.Java8Collections;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -51,9 +53,9 @@ public final class StateRules {
 
     /** Count all string leaves, including arrays/objects; callers validate shape before counting. */
     public static long textUnits(Object value) {
-        if (value instanceof String s) return s.length();
-        if (value instanceof List<?> list) return list.stream().mapToLong(StateRules::textUnits).sum();
-        if (value instanceof Map<?, ?> map) return map.values().stream().mapToLong(StateRules::textUnits).sum();
+        if (value instanceof String) return ((String) value).length();
+        if (value instanceof List<?>) return ((List<?>) value).stream().mapToLong(StateRules::textUnits).sum();
+        if (value instanceof Map<?, ?>) return ((Map<?, ?>) value).values().stream().mapToLong(StateRules::textUnits).sum();
         return 0;
     }
 
@@ -69,11 +71,11 @@ public final class StateRules {
         String kind = kind(value);
         if (kind == null) return "只能是 int / bool / string / array / object，给的是 " + (value == null ? "null" : "别的");
         switch (kind) {
-            case "string" -> {
+            case "string": {
                 int len = ((String) value).length();
                 return limits && len > stringLimit ? "字符串 " + len + " 字，最多 " + stringLimit + " 字" : null;
             }
-            case "array" -> {
+            case "array": {
                 if (depth >= MAX_DEPTH) return "嵌套超过 " + MAX_DEPTH + " 层";
                 List<?> list = (List<?>) value;
                 if (limits && list.size() > MAX_ARRAY) return "数组 " + list.size() + " 项，最多 " + MAX_ARRAY + " 项";
@@ -83,28 +85,29 @@ public final class StateRules {
                     if (why != null) return why;
                     // 同构：模板里 v-for 出来的每一项要能用同一套写法读，对象要同一组键。空数组不当基准，否则 [[], [1], ['x']] 能过
                     if (ref != null && !sameShape(ref, e)) return "数组元素要同一种形状，混了 " + shape(ref) + " 和 " + shape(e);
-                    if (ref == null || ref instanceof List<?> r && r.isEmpty()) ref = e;
+                    if (ref == null || ref instanceof List<?> && ((List<?>) ref).isEmpty()) ref = e;
                 }
                 return null;
             }
-            case "object" -> {
+            case "object": {
                 if (depth >= MAX_DEPTH) return "嵌套超过 " + MAX_DEPTH + " 层";
                 Map<?, ?> map = (Map<?, ?>) value;
                 if (limits && map.size() > MAX_OBJECT_KEYS) {
                     return "对象 " + map.size() + " 个键，最多 " + MAX_OBJECT_KEYS + " 个";
                 }
                 for (Map.Entry<?, ?> e : map.entrySet()) {
-                    if (!(e.getKey() instanceof String k) || !KEY.matcher(k).matches()) {
+                    Object kMatch;
+                    if (!((kMatch = e.getKey()) instanceof String) || !KEY.matcher(((String) kMatch)).matches()) {
                         return "对象的键 '" + e.getKey() + "' 要" + KEY_RULE;
                     }
                     Object v = e.getValue();
-                    if (v instanceof List<?> || v instanceof Map<?, ?>) return "对象只能一层，'" + k + "' 的值不能再是 array / object";
+                    if (v instanceof List<?> || v instanceof Map<?, ?>) return "对象只能一层，'" + ((String) kMatch) + "' 的值不能再是 array / object";
                     String why = check(v, depth + 1, limits, stringLimit);
                     if (why != null) return why;
                 }
                 return null;
             }
-            default -> {
+            default: {
                 return null;
             }
         }
@@ -116,11 +119,11 @@ public final class StateRules {
      */
     public static String fits(Object declared, Object value) {
         if (!Objects.equals(kind(declared), kind(value))) {
-            return "是 " + kind(declared) + "，不能写入 " + (value == null ? "null" : Objects.requireNonNullElse(kind(value), "别的"));
+            return "是 " + kind(declared) + "，不能写入 " + (value == null ? "null" : com.november.mcphone.util.Java8.requireNonNullElse(kind(value), "别的"));
         }
-        if (declared instanceof List<?> d && value instanceof List<?> v) {
-            Object de = representative(d);
-            Object ve = representative(v);
+        if (declared instanceof List<?> && value instanceof List<?>) {
+            Object de = representative(((List<?>) declared));
+            Object ve = representative(((List<?>) value));
             if (de != null && ve != null && !sameShape(de, ve)) return "的元素要是 " + shape(de) + "，给的是 " + shape(ve);
         } else if (declared instanceof Map<?, ?> && !sameShape(declared, value)) {
             return "要是 " + shape(declared) + "，给的是 " + shape(value);
@@ -131,7 +134,7 @@ public final class StateRules {
     /** 数组里拿来代表元素形状的那一项：优先非空的子数组。空数组返回 null。 */
     public static Object representative(List<?> list) {
         for (Object e : list) {
-            if (!(e instanceof List<?> l && l.isEmpty())) return e;
+            if (!(e instanceof List<?> && ((List<?>) e).isEmpty())) return e;
         }
         return list.isEmpty() ? null : list.get(0);
     }
@@ -139,25 +142,25 @@ public final class StateRules {
     /** 同种类；对象的键与各键的种类相同；数组套数组时比两边的代表项（各自内部已经同构）。空数组与任何数组同形。 */
     private static boolean sameShape(Object a, Object b) {
         if (!Objects.equals(kind(a), kind(b))) return false;
-        if (a instanceof Map<?, ?> ma && b instanceof Map<?, ?> mb) {
-            if (!ma.keySet().equals(mb.keySet())) return false;
-            for (Object k : ma.keySet()) {
-                if (!Objects.equals(kind(ma.get(k)), kind(mb.get(k)))) return false;
+        if (a instanceof Map<?, ?> && b instanceof Map<?, ?>) {
+            if (!((Map<?, ?>) a).keySet().equals(((Map<?, ?>) b).keySet())) return false;
+            for (Object k : ((Map<?, ?>) a).keySet()) {
+                if (!Objects.equals(kind(((Map<?, ?>) a).get(k)), kind(((Map<?, ?>) b).get(k)))) return false;
             }
             return true;
         }
-        if (a instanceof List<?> la && b instanceof List<?> lb) {
-            Object ra = representative(la);
-            Object rb = representative(lb);
+        if (a instanceof List<?> && b instanceof List<?>) {
+            Object ra = representative(((List<?>) a));
+            Object rb = representative(((List<?>) b));
             return ra == null || rb == null || sameShape(ra, rb);
         }
         return true;
     }
 
     private static String shape(Object v) {
-        if (v instanceof Map<?, ?> m) return "object" + new TreeSet<>(m.keySet().stream().map(String::valueOf).toList());
-        if (v instanceof List<?> l) {
-            Object r = representative(l);
+        if (v instanceof Map<?, ?>) return "object" + new TreeSet<>(((Map<?, ?>) v).keySet().stream().map(String::valueOf).collect(Java8Collections.toList()));
+        if (v instanceof List<?>) {
+            Object r = representative(((List<?>) v));
             return r == null ? "array" : "array<" + shape(r) + ">";
         }
         return String.valueOf(kind(v));
@@ -165,14 +168,14 @@ public final class StateRules {
 
     /** 只读的深拷贝。state 里的数组交给模板读，被外面改了会让两次重排之间悄悄变样。 */
     public static Object freeze(Object value) {
-        if (value instanceof List<?> list) {
-            List<Object> out = new ArrayList<>(list.size());
-            for (Object e : list) out.add(freeze(e));
+        if (value instanceof List<?>) {
+            List<Object> out = new ArrayList<>(((List<?>) value).size());
+            for (Object e : ((List<?>) value)) out.add(freeze(e));
             return Collections.unmodifiableList(out);
         }
-        if (value instanceof Map<?, ?> map) {
+        if (value instanceof Map<?, ?>) {
             Map<String, Object> out = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> e : map.entrySet()) out.put(String.valueOf(e.getKey()), freeze(e.getValue()));
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) value).entrySet()) out.put(String.valueOf(e.getKey()), freeze(e.getValue()));
             return Collections.unmodifiableMap(out);
         }
         return value;

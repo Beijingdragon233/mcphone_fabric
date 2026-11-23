@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.cost.EmcWallets;
 import com.november.mcphone.api.economy.Currency;
 import com.november.mcphone.api.economy.ICurrencyProvider;
@@ -38,14 +40,81 @@ public final class EconomyProviders {
     public static final String SKIP_UNKNOWN_PROVIDER = "mcphone.economy.skip.unknown_provider";
 
     /** 一条货币的注册计划。{@code skipReasonKey} 非空 = 不注册，日志照它打。 */
-    public record Planned(CurrencySpec spec, boolean register, boolean isDefault, String skipReasonKey) {
+    public static final class Planned {
+        private final CurrencySpec spec;
+        private final boolean register;
+        private final boolean isDefault;
+        private final String skipReasonKey;
+
+        public Planned(CurrencySpec spec, boolean register, boolean isDefault, String skipReasonKey) {
+            this.spec = spec;
+            this.register = register;
+            this.isDefault = isDefault;
+            this.skipReasonKey = skipReasonKey;
+        }
+
+        public CurrencySpec spec() { return spec; }
+
+        public boolean register() { return register; }
+
+        public boolean isDefault() { return isDefault; }
+
+        public String skipReasonKey() { return skipReasonKey; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Planned)) return false;
+            Planned that = (Planned) other;
+            return java.util.Objects.equals(this.spec, that.spec)
+                    && this.register == that.register
+                    && this.isDefault == that.isDefault
+                    && java.util.Objects.equals(this.skipReasonKey, that.skipReasonKey);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(spec);
+            hash = 31 * hash + java.util.Objects.hashCode(register);
+            hash = 31 * hash + java.util.Objects.hashCode(isDefault);
+            hash = 31 * hash + java.util.Objects.hashCode(skipReasonKey);
+            return hash;
+        }
+
+        @Override public String toString() { return "Planned[spec=" + spec + ", register=" + register + ", isDefault=" + isDefault + ", skipReasonKey=" + skipReasonKey + "]"; }
+
     }
 
     /** 计划表 + 顺带收集的警告（多条 default 之类）。 */
-    public record Plan(List<Planned> entries, List<String> warnings) {
-        public Plan {
-            entries = List.copyOf(entries);
-            warnings = List.copyOf(warnings);
+    public static final class Plan {
+        private final List<Planned> entries;
+        private final List<String> warnings;
+
+        public List<Planned> entries() { return entries; }
+
+        public List<String> warnings() { return warnings; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Plan)) return false;
+            Plan that = (Plan) other;
+            return java.util.Objects.equals(this.entries, that.entries)
+                    && java.util.Objects.equals(this.warnings, that.warnings);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(entries);
+            hash = 31 * hash + java.util.Objects.hashCode(warnings);
+            return hash;
+        }
+
+        @Override public String toString() { return "Plan[entries=" + entries + ", warnings=" + warnings + "]"; }
+
+        public Plan(List<Planned> entries, List<String> warnings) {
+            entries = ImmutableList.copyOf(entries);
+            warnings = ImmutableList.copyOf(warnings);
+            this.entries = entries;
+            this.warnings = warnings;
         }
     }
 
@@ -73,23 +142,28 @@ public final class EconomyProviders {
             boolean register;
             String skipReason;
             switch (spec.provider()) {
-                case "builtin", "scoreboard" -> {
+                case "builtin":
+                case "scoreboard": {
                     register = true;
                     skipReason = "";
                 }
-                case "emc_legacy" -> {
+                    break;
+                case "emc_legacy": {
                     register = hasEmcWallet;
                     skipReason = hasEmcWallet ? "" : SKIP_EMC_NO_WALLET;
                 }
-                // adapter：桥未到货，一律不注册（哪怕将来有桥，也要先在 build 里加实现）
-                case "adapter" -> {
+                    break;
+                    // adapter：桥未到货，一律不注册（哪怕将来有桥，也要先在 build 里加实现）
+                case "adapter": {
                     register = false;
                     skipReason = SKIP_ADAPTER_NO_BRIDGE;
                 }
-                default -> {
+                    break;
+                default: {
                     register = false;
                     skipReason = SKIP_UNKNOWN_PROVIDER;
                 }
+                    break;
             }
             boolean isDefault = false;
             if (spec.isDefault()) {
@@ -112,14 +186,18 @@ public final class EconomyProviders {
     public static ICurrencyProvider build(Planned planned, EconomyData data,
                                           Supplier<MinecraftServer> server, TxnLog log) {
         Currency currency = planned.spec().toCurrency();
-        return switch (planned.spec().provider()) {
-            case "builtin" -> new BuiltinProvider(currency, data, data.escrow(), log,
+        switch (planned.spec().provider()) {
+            case "builtin":
+                return new BuiltinProvider(currency, data, data.escrow(), log,
                     System::currentTimeMillis, false, planned.spec().effectiveMax());
-            case "scoreboard" -> new ScoreboardProvider(currency, server, data.escrow(), log,
+            case "scoreboard":
+                return new ScoreboardProvider(currency, server, data.escrow(), log,
                     System::currentTimeMillis, false, planned.spec().effectiveMax());
-            case "emc_legacy" -> new LegacyWalletProvider(currency);
-            default -> throw new IllegalStateException("这一档不能构造（计划里应已跳过）："
+            case "emc_legacy":
+                return new LegacyWalletProvider(currency);
+            default:
+                throw new IllegalStateException("这一档不能构造（计划里应已跳过）："
                     + planned.spec().provider());
-        };
+        }
     }
 }

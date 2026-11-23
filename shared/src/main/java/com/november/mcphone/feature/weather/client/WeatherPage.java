@@ -143,11 +143,15 @@ public final class WeatherPage {
      * 代价只是这一句 switch，而它漏了分支编译当场不过。
      */
     private static Weather.Precip toPrecip(Biome.Precipitation p) {
-        return switch (p) {
-            case NONE -> Weather.Precip.NONE;
-            case RAIN -> Weather.Precip.RAIN;
-            case SNOW -> Weather.Precip.SNOW;
-        };
+        switch (p) {
+            case NONE:
+                return Weather.Precip.NONE;
+            case RAIN:
+                return Weather.Precip.RAIN;
+            case SNOW:
+                return Weather.Precip.SNOW;
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     /**

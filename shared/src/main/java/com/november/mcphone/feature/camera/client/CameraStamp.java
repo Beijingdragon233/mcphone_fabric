@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.camera.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.core.client.AppOptions;
 import com.november.mcphone.core.client.ClientConfig;
@@ -99,7 +101,7 @@ public final class CameraStamp {
      * 坐标是内建的第一项；别的项由各自的功能 {@link #register} 进来。这里只管
      * "有哪些项、怎么排"，不管每一项印什么。
      */
-    private static final List<PhotoStamp> STAMPS = new ArrayList<>(List.of(COORDS_STAMP));
+    private static final List<PhotoStamp> STAMPS = new ArrayList<>(ImmutableList.of(COORDS_STAMP));
 
     /**
      * 登记一项。在客户端初始化时调一次即可 —— 与 {@code AppOptions.register} 同一套路数：

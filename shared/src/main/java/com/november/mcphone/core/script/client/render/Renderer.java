@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.client.render;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.client.ui.PhoneCanvas;
 import com.november.mcphone.api.client.ui.PhoneStyle;
 import com.november.mcphone.core.client.GuiUtil;
@@ -69,12 +71,18 @@ public final class Renderer {
 
     /** button 看 enabledIf（写了就覆盖 enabled）与 enabled，toggle 看 enabled，别的类型恒为 true。 */
     public static boolean isEnabled(LayoutNode n, UiState state) {
-        return switch (n.node.type()) {
-            case BUTTON -> n.node.props().get("enabledIf") instanceof Node.ShowIf condition
-                    ? state.test(condition) : n.node.flag("enabled", true);
-            case TOGGLE, TEXT_INPUT, TEXTAREA -> n.node.flag("enabled", true);
-            default -> true;
-        };
+        Object conditionMatch;
+        switch (n.node.type()) {
+            case BUTTON:
+                return (conditionMatch = n.node.props().get("enabledIf")) instanceof Node.ShowIf
+                    ? state.test(((Node.ShowIf) conditionMatch)) : n.node.flag("enabled", true);
+            case TOGGLE:
+            case TEXT_INPUT:
+            case TEXTAREA:
+                return n.node.flag("enabled", true);
+            default:
+                return true;
+        }
     }
 
     /** 把 scrollY 夹进 [0, scrollMax]。内容变短后旧的 scrollY 会越界，画与判之前都先夹一次。 */
@@ -132,7 +140,8 @@ public final class Renderer {
 
     /** tab-bar 的分段，每项是恰好一个 text / i18n / icon 的表（NodeParser 校验过）。 */
     static List<?> tabs(LayoutNode tabBar) {
-        return tabBar.node.props().get("tabs") instanceof List<?> tabs ? tabs : List.of();
+        Object tabsMatch;
+        return (tabsMatch = tabBar.node.props().get("tabs")) instanceof List<?> ? ((List<?>) tabsMatch) : ImmutableList.of();
     }
 
     // ============================================================
@@ -170,11 +179,16 @@ public final class Renderer {
         int innerH = Math.max(0, n.h - s.padTop() - s.padBottom());
 
         switch (type) {
-            case TEXT_INPUT, TEXTAREA -> {
+            case TEXT_INPUT:
+            case TEXTAREA: {
                 if (f.inputs != null) f.inputs.draw(n, c, fg);
             }
-            case TEXT, BUTTON -> drawLines(g, font, n.lines(), s, px, py, innerW, fg, clipTop, clipBottom);
-            case IMAGE -> {
+                break;
+            case TEXT:
+            case BUTTON:
+                drawLines(g, font, n.lines(), s, px, py, innerW, fg, clipTop, clipBottom);
+                break;
+            case IMAGE: {
                 ResourceLocation tex = AppTextures.of(f.pkg, n.node.str("src", ""));
                 if (tex == null) {
                     drawPlaceholder(g, p, px, py, innerW, innerH);
@@ -183,8 +197,11 @@ public final class Renderer {
                     GuiUtil.drawTexture(g, tex, px, py, innerW, innerH, innerW, innerH);
                 }
             }
-            case ICON -> IconAtlas.draw(g, n.node.str("name", "info"), px, py, n.node.num("size", 8), fg);
-            case ITEM -> {
+                break;
+            case ICON:
+                IconAtlas.draw(g, n.node.str("name", "info"), px, py, n.node.num("size", 8), fg);
+                break;
+            case ITEM: {
                 int size = n.node.num("size", 16);
                 ItemStack stack = ItemRefs.resolve(n.node.str("item", ""), n.node.num("count", 1));
                 if (!GuiUtil.drawItemIcon(g, stack, px, py, size)) {
@@ -194,14 +211,16 @@ public final class Renderer {
                     drawItemCount(g, font, stack.getCount(), px, py, size);
                 }
             }
-            case BADGE -> {
+                break;
+            case BADGE: {
                 int count = n.node.num("count", 0);
                 if (count == 0) break;
                 int badgeBg = color(s.background(), p);
                 g.fill(x, y, x + n.w, y + n.h, badgeBg != 0 ? badgeBg : p.accentColor());
                 g.drawString(font, count > 99 ? "99+" : String.valueOf(count), px + 2, py, fg, false);
             }
-            case PROGRESS -> {
+                break;
+            case PROGRESS: {
                 int barH = Math.min(n.node.num("height", 4), innerH);
                 int value = Math.max(0, Math.min(100, n.node.num("value", 0)));
                 g.fill(px, py, px + innerW, py + barH, p.buttonColor());
@@ -209,12 +228,20 @@ public final class Renderer {
                 if (value > 0 && innerW > 0) filled = Math.max(1, filled);   // 开始了就至少 1px（§5.2）
                 if (filled > 0) g.fill(px, py, px + filled, py + barH, p.accentColor());
             }
-            case DIVIDER -> g.fill(x, y, x + n.w, y + n.h, s.color() != null ? fg : p.subtleColor());
-            case TOGGLE -> drawToggle(g, font, p, n, f.state, enabled, px, py, innerW, innerH, fg);
-            case TAB_BAR -> drawTabs(g, font, p, n, f.state, x, y);
-            default -> {
+                break;
+            case DIVIDER:
+                g.fill(x, y, x + n.w, y + n.h, s.color() != null ? fg : p.subtleColor());
+                break;
+            case TOGGLE:
+                drawToggle(g, font, p, n, f.state, enabled, px, py, innerW, innerH, fg);
+                break;
+            case TAB_BAR:
+                drawTabs(g, font, p, n, f.state, x, y);
+                break;
+            default: {
                 // 容器与 spacer 只有底色和边框
             }
+                break;
         }
 
         if (borderLast) drawBorder(g, s.border(), bc, x, y, n.w, n.h);
@@ -247,11 +274,19 @@ public final class Renderer {
         for (int i = range[0]; i < range[1]; i++) {
             String line = lines.get(i);
             int lw = font.width(line);
-            int tx = switch (s.textAlign()) {
-                case LEFT -> px;
-                case CENTER -> px + (innerW - lw) / 2;
-                case RIGHT -> px + innerW - lw;
-            };
+            int tx;
+            switch (s.textAlign()) {
+                case LEFT:
+                    tx = px;
+                    break;
+                case CENTER:
+                    tx = px + (innerW - lw) / 2;
+                    break;
+                case RIGHT:
+                    tx = px + innerW - lw;
+                    break;
+                default: throw new IncompatibleClassChangeError();
+            }
             g.drawString(font, line, tx, ty, fg, s.shadow());
             ty += font.lineHeight;
         }
@@ -313,13 +348,16 @@ public final class Renderer {
             boolean active = i == selected;
             g.fill(sx, y, sx + sw, y + n.h, active ? p.accentColor() : p.buttonColor());
             if (i > 0) g.fill(sx, y, sx + 1, y + n.h, p.screenBackground());
-            if (!(tabs.get(i) instanceof Map<?, ?> tab)) continue;
+            Object tabValue = tabs.get(i);
+            if (!(tabValue instanceof Map<?, ?>)) continue;
+            Map<?, ?> tab = (Map<?, ?>) tabValue;
             int tc = active ? p.titleColor() : p.subtleColor();
-            if (tab.get("icon") instanceof String icon) {
-                IconAtlas.draw(g, icon, sx + (sw - TAB_ICON) / 2, y + (n.h - TAB_ICON) / 2, TAB_ICON, tc);
+            Object iconMatch;
+            if ((iconMatch = tab.get("icon")) instanceof String) {
+                IconAtlas.draw(g, ((String) iconMatch), sx + (sw - TAB_ICON) / 2, y + (n.h - TAB_ICON) / 2, TAB_ICON, tc);
             } else {
                 Object label = tab.containsKey("text") ? tab.get("text") : tab.get("i18n");
-                String shown = GuiUtil.truncate(font, label instanceof String t ? t : "", sw - 2);
+                String shown = GuiUtil.truncate(font, label instanceof String ? ((String) label) : "", sw - 2);
                 g.drawString(font, shown, sx + (sw - font.width(shown)) / 2, y + (n.h - font.lineHeight) / 2, tc,
                         false);
             }
@@ -329,17 +367,28 @@ public final class Renderer {
     /** 语义色 → 当前配色的 ARGB。null（none，只有底色类属性收）返回 0，调用方据此不画。 */
     static int color(Style.Token token, PhoneStyle p) {
         if (token == null) return 0;
-        return switch (token) {
-            case TITLE -> p.titleColor();
-            case BODY -> p.bodyColor();
-            case SUBTLE -> p.subtleColor();
-            case ACCENT -> p.accentColor();
-            case SCREEN -> p.screenBackground();
-            case PRESSED -> p.pressedOverlay();
-            case BUTTON -> p.buttonColor();
-            case BUTTON_HOVER -> p.buttonHoverColor();
-            case BUTTON_DISABLED -> p.buttonDisabledColor();
-            case BUTTON_DISABLED_TEXT -> p.buttonDisabledTextColor();
-        };
+        switch (token) {
+            case TITLE:
+                return p.titleColor();
+            case BODY:
+                return p.bodyColor();
+            case SUBTLE:
+                return p.subtleColor();
+            case ACCENT:
+                return p.accentColor();
+            case SCREEN:
+                return p.screenBackground();
+            case PRESSED:
+                return p.pressedOverlay();
+            case BUTTON:
+                return p.buttonColor();
+            case BUTTON_HOVER:
+                return p.buttonHoverColor();
+            case BUTTON_DISABLED:
+                return p.buttonDisabledColor();
+            case BUTTON_DISABLED_TEXT:
+                return p.buttonDisabledTextColor();
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 }

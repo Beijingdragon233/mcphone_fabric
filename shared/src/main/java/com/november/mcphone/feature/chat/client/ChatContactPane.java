@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.GuiUtil;
 import java.util.List;
@@ -15,10 +17,10 @@ final class ChatContactPane {
     }
     private final ChatContactScroll scroll = new ChatContactScroll();
     private ChatLayout.Rect bounds;
-    private List<ChatContactDirectory.Section> sections = List.of();
+    private List<ChatContactDirectory.Section> sections = ImmutableList.of();
     private int previousHeight = -1;
     void reset() { scroll.reset(); }
-    void close() { bounds = null; sections = List.of(); scroll.clear(); previousHeight = -1; }
+    void close() { bounds = null; sections = ImmutableList.of(); scroll.clear(); previousHeight = -1; }
 
     void render(GuiGraphics g, Font font, List<ChatContactDirectory.Section> next,
                 ChatLayout.Rect area, int mx, int my, String emptyKey) {
@@ -33,7 +35,7 @@ final class ChatContactPane {
         if (area.height() <= 0) return;
         if (next.isEmpty()) {
             int y = area.y() + 3;
-            for (var line : font.split(Component.translatable(emptyKey),
+            for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable(emptyKey),
                     ChatLayout.unscaledWidth(area.width() - 6, ChatLayout.TEXT_SCALE))) {
                 if (y + ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE) > area.y() + area.height()) break;
                 ChatUi.text(g, font, line, area.x() + 3, y, ChatLayout.TEXT_SCALE, FontPalette.subtle());
@@ -44,7 +46,7 @@ final class ChatContactPane {
         int width = area.width() - 9;
         GuiUtil.enableScissor(g, area.x(), area.y(), area.x() + width, area.y() + area.height());
         try {
-            for (var row : scroll.rows()) {
+            for (ChatContactScroll.Row row : scroll.rows()) {
                 int y = area.y() + row.top() - scroll.offset();
                 if (y + row.height() <= area.y()) continue;
                 if (y >= area.y() + area.height()) break;
@@ -83,7 +85,7 @@ final class ChatContactPane {
             return null;
         }
         int contentY = (int) (my - bounds.y()) + scroll.offset();
-        for (var row : scroll.rows()) {
+        for (ChatContactScroll.Row row : scroll.rows()) {
             if (contentY >= row.top() && contentY < row.top() + row.height())
                 return row.heading() ? null : row.contact().id();
         }
@@ -91,10 +93,10 @@ final class ChatContactPane {
     }
     UUID avatarAt(double mx,double my,int button) {
         if (button!=0 || bounds==null || !bounds.contains(mx,my)) return null;
-        for (var row:scroll.rows()) {
+        for (ChatContactScroll.Row row:scroll.rows()) {
             if (row.heading()) continue;
             int y=bounds.y()+row.top()-scroll.offset();
-            var avatar=ChatContactRow.layout(bounds.x(),y,bounds.width()-9,row.height(),false).avatar();
+            ChatLayout.Rect avatar=ChatContactRow.layout(bounds.x(),y,bounds.width()-9,row.height(),false).avatar();
             if (avatar.contains(mx,my)) return row.contact().id();
         }
         return null;

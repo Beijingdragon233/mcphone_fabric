@@ -77,7 +77,7 @@ public final class CurrencyRegistry {
     }
 
     private static ICurrencyProvider unwrap(ICurrencyProvider p) {
-        while (p instanceof GatedCurrencyProvider g) p = g.inner();
+        while (p instanceof GatedCurrencyProvider) p = ((GatedCurrencyProvider) p).inner();
         return p;
     }
 

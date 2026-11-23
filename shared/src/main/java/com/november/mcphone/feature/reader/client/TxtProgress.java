@@ -57,7 +57,36 @@ public final class TxtProgress {
     private static Map<String, Spot> progress;
 
     /** 读到第几章的第几页 */
-    public record Spot(int chapter, int page) {
+    public static final class Spot {
+        private final int chapter;
+        private final int page;
+
+        public Spot(int chapter, int page) {
+            this.chapter = chapter;
+            this.page = page;
+        }
+
+        public int chapter() { return chapter; }
+
+        public int page() { return page; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Spot)) return false;
+            Spot that = (Spot) other;
+            return this.chapter == that.chapter
+                    && this.page == that.page;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(chapter);
+            hash = 31 * hash + java.util.Objects.hashCode(page);
+            return hash;
+        }
+
+        @Override public String toString() { return "Spot[chapter=" + chapter + ", page=" + page + "]"; }
+
 
         public static final Spot START = new Spot(0, 0);
     }

@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.november.mcphone.util.Java8;
+import java.nio.file.Paths;
+
 import com.november.mcphone.core.script.engine.ClientScript;
 import com.november.mcphone.core.script.layout.Node;
 import com.november.mcphone.core.script.layout.UiState;
@@ -52,7 +55,7 @@ public final class ClientScriptTest {
 
     private static void rollback(String body) {
         Fixture f = fixture("state.count = 7; " + body);
-        Map<String, Object> before = Map.copyOf(f.state.values());
+        Map<String, Object> before = com.google.common.collect.ImmutableMap.copyOf(f.state.values());
         int revision = f.state.revision();
         Statements.Outcome result = f.fire();
         check(!result.applied() && !result.warnings().isEmpty(), "failure reported: " + body);
@@ -75,7 +78,7 @@ public final class ClientScriptTest {
         check(loop.fire().applied() && loop.state.getInt("count") == 10, "local variables, loops and branches");
         Fixture array = fixture("state.rows[0].n = 2; state.rows.push({ n: 3, label: 'b' }); state.rows.reverse();");
         check(array.fire().applied(), "nested plain object and array mutations");
-        check(array.state.get("rows").equals(List.of(Map.of("n", 3, "label", "b"), Map.of("n", 2, "label", "a"))), "arrays converted without Java wrappers");
+        check(array.state.get("rows").equals(com.google.common.collect.ImmutableList.of(com.google.common.collect.ImmutableMap.of("n", 3, "label", "b"), com.google.common.collect.ImmutableMap.of("n", 2, "label", "a"))), "arrays converted without Java wrappers");
         Fixture fresh = fixture("if (typeof remembered !== 'undefined') throw 'retained'; remembered = 1; state.count++;");
         check(fresh.fire().applied() && fresh.fire().applied(), "temporary globals do not persist across calls");
         Fixture isolated = fixture("state.result = state.draft;");
@@ -98,13 +101,13 @@ public final class ClientScriptTest {
         rejected(INITIAL + "function call() {}", "run()", SfcError.Code.E_SCRIPT_FUNCTION);
         rejected(INITIAL + "function parseInt() {}", "run()", SfcError.Code.E_SCRIPT_FUNCTION);
         rejected(INITIAL + "function run( {}", "run()", SfcError.Code.E_SCRIPT_FUNCTION);
-        rejected(INITIAL + "function run() { state.flag = " + "!".repeat(5000) + "true; }", "run()", SfcError.Code.E_SCRIPT_FUNCTION);
+        rejected(INITIAL + "function run() { state.flag = " + Java8.repeat("!", 5000) + "true; }", "run()", SfcError.Code.E_SCRIPT_FUNCTION);
         rejected(INITIAL + "function run() {}\nrun()", "run()", SfcError.Code.E_SCRIPT_P0_SUBSET);
         rejected(INITIAL + "var x = 1; function run() {}", "run()", SfcError.Code.E_SCRIPT_P0_SUBSET);
         rejected("state = { result: 1 + 1 }; function run() {}", "run()", SfcError.Code.E_SCRIPT_P0_SUBSET);
         rejected(INITIAL + "function run() {}", "run(1)", SfcError.Code.E_EXPR_SYNTAX);
         rejected(INITIAL + "function run() {}", "missing()", SfcError.Code.E_EXPR_NO_CALLS);
-        rejected(INITIAL + "function run() {}\n//" + "x".repeat(ClientScript.MAX_SOURCE), "run()", SfcError.Code.E_SCRIPT_FUNCTION);
+        rejected(INITIAL + "function run() {}\n//" + Java8.repeat("x", ClientScript.MAX_SOURCE), "run()", SfcError.Code.E_SCRIPT_FUNCTION);
         StringBuilder many = new StringBuilder(INITIAL);
         for (int i = 0; i <= ClientScript.MAX_FUNCTIONS; i++) many.append("function f").append(i).append("() {}\n");
         rejected(many.toString(), "f0()", SfcError.Code.E_SCRIPT_FUNCTION);
@@ -159,14 +162,14 @@ public final class ClientScriptTest {
         Fixture comments = fixture("// } function fake() {\nstate.result = '} function fake() {'; /* { } */");
         check(comments.fire().applied() && comments.echo().equals("} function fake() {"), "AST extraction respects strings and comments");
 
-        Path sample = Path.of("../../docs/samples/client-functions.vue");
-        if (!Files.isRegularFile(sample)) sample = Path.of("docs/samples/client-functions.vue");
-        SfcCompiler.App app = SfcCompiler.compile("client-functions.vue", Files.readString(sample, StandardCharsets.UTF_8));
+        Path sample = Paths.get("../../docs/samples/client-functions.vue");
+        if (!Files.isRegularFile(sample)) sample = Paths.get("docs/samples/client-functions.vue");
+        SfcCompiler.App app = SfcCompiler.compile("client-functions.vue", Java8.readString(sample, StandardCharsets.UTF_8));
         UiState sampleState = UiState.of(app.template().initialState());
         sampleState.set("draft", "  Alice  ");
         TemplateInstance sampleTemplate = new TemplateInstance(app.template(), "client-functions.vue");
         TemplateInstance.Tree sampleTree = sampleTemplate.instantiate(sampleState);
-        Node button = sampleTree.root().children().stream().filter(n -> "check".equals(n.id())).findFirst().orElseThrow();
+        Node button = sampleTree.root().children().stream().filter(n -> "check".equals(n.id())).findFirst().orElseThrow(AssertionError::new);
         check(sampleTree.click(button, sampleState, 0).applied() && sampleState.getString("result").equals("你好，Alice"), "installable sample executes through real button transaction");
         sampleState.set("draft", "  ");
         check(sampleTree.click(button, sampleState, 0).applied() && sampleState.getString("result").equals("请输入名字"), "sample validation branch");

@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.client.render;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.platform.ResourceIds;
 
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -17,7 +19,7 @@ import java.util.List;
 public final class IconAtlas {
 
     /** 图集里从左到右的顺序。改了要重跑 docs/make_script_icons.py，否则名字和图对不上。 */
-    public static final List<String> NAMES = List.of(
+    public static final List<String> NAMES = ImmutableList.of(
             "back", "forward", "up", "down", "check", "cross",
             "plus", "minus", "gear", "search", "info", "warn");
 

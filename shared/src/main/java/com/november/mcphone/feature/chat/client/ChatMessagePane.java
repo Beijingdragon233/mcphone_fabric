@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneTheme;
@@ -35,18 +39,188 @@ final class ChatMessagePane {
     private List<ChatMessage> laidOutFrom;
     private int laidOutWidth = -1;
     private boolean group, laidOutGroup;
-    private List<Block> blocks = List.of();
+    private List<Block> blocks = ImmutableList.of();
     private final ChatScrollState scroll = new ChatScrollState();
     private final List<ImageHit> imageHits = new ArrayList<>();
     private int messageTop, messageBottom;
     private final ChatTextSelection selection = new ChatTextSelection();
     private final List<TextHit> textHits = new ArrayList<>();
     private final List<MessageHit> messageHits = new ArrayList<>();
-    private record MessageHit(ChatMessage message, int x, int y, int width, int height) {}
+    private static final class MessageHit {
+        private final ChatMessage message;
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+
+        private MessageHit(ChatMessage message, int x, int y, int width, int height) {
+            this.message = message;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        public ChatMessage message() { return message; }
+
+        public int x() { return x; }
+
+        public int y() { return y; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof MessageHit)) return false;
+            MessageHit that = (MessageHit) other;
+            return java.util.Objects.equals(this.message, that.message)
+                    && this.x == that.x
+                    && this.y == that.y
+                    && this.width == that.width
+                    && this.height == that.height;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(message);
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            return hash;
+        }
+
+        @Override public String toString() { return "MessageHit[message=" + message + ", x=" + x + ", y=" + y + ", width=" + width + ", height=" + height + "]"; }
+}
     private double dragX, dragY;
-    private record TextHit(Block block, int x, int y, int lineStep) {}
-    private record ImageHit(UUID image, int x, int y, int w, int h) {}
-    private record Nickname(String text, float x, float y) {}
+    private static final class TextHit {
+        private final Block block;
+        private final int x;
+        private final int y;
+        private final int lineStep;
+
+        private TextHit(Block block, int x, int y, int lineStep) {
+            this.block = block;
+            this.x = x;
+            this.y = y;
+            this.lineStep = lineStep;
+        }
+
+        public Block block() { return block; }
+
+        public int x() { return x; }
+
+        public int y() { return y; }
+
+        public int lineStep() { return lineStep; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof TextHit)) return false;
+            TextHit that = (TextHit) other;
+            return java.util.Objects.equals(this.block, that.block)
+                    && this.x == that.x
+                    && this.y == that.y
+                    && this.lineStep == that.lineStep;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(block);
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            hash = 31 * hash + java.util.Objects.hashCode(lineStep);
+            return hash;
+        }
+
+        @Override public String toString() { return "TextHit[block=" + block + ", x=" + x + ", y=" + y + ", lineStep=" + lineStep + "]"; }
+}
+    private static final class ImageHit {
+        private final UUID image;
+        private final int x;
+        private final int y;
+        private final int w;
+        private final int h;
+
+        private ImageHit(UUID image, int x, int y, int w, int h) {
+            this.image = image;
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+        }
+
+        public UUID image() { return image; }
+
+        public int x() { return x; }
+
+        public int y() { return y; }
+
+        public int w() { return w; }
+
+        public int h() { return h; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof ImageHit)) return false;
+            ImageHit that = (ImageHit) other;
+            return java.util.Objects.equals(this.image, that.image)
+                    && this.x == that.x
+                    && this.y == that.y
+                    && this.w == that.w
+                    && this.h == that.h;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(image);
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            hash = 31 * hash + java.util.Objects.hashCode(w);
+            hash = 31 * hash + java.util.Objects.hashCode(h);
+            return hash;
+        }
+
+        @Override public String toString() { return "ImageHit[image=" + image + ", x=" + x + ", y=" + y + ", w=" + w + ", h=" + h + "]"; }
+}
+    private static final class Nickname {
+        private final String text;
+        private final float x;
+        private final float y;
+
+        private Nickname(String text, float x, float y) {
+            this.text = text;
+            this.x = x;
+            this.y = y;
+        }
+
+        public String text() { return text; }
+
+        public float x() { return x; }
+
+        public float y() { return y; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Nickname)) return false;
+            Nickname that = (Nickname) other;
+            return java.util.Objects.equals(this.text, that.text)
+                    && Float.compare(this.x, that.x) == 0
+                    && Float.compare(this.y, that.y) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(text);
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            return hash;
+        }
+
+        @Override public String toString() { return "Nickname[text=" + text + ", x=" + x + ", y=" + y + "]"; }
+}
 
     void reset() {
         peer = selfId = laidOutSelf = null;
@@ -55,7 +229,7 @@ final class ChatMessagePane {
         laidOutWidth = -1;
         group = laidOutGroup = false;
         senderName = message -> "";
-        blocks = List.of();
+        blocks = ImmutableList.of();
         imageHits.clear();
         textHits.clear();
         messageHits.clear();
@@ -72,7 +246,7 @@ final class ChatMessagePane {
     void prepareMenu(UUID message) { selection.release(); if (!selection.owns(message)) selection.clear(); }
     ChatMessage messageAt(double mx, double my) {
         if (my < messageTop || my >= messageBottom) return null;
-        for (var hit : messageHits) {
+        for (ChatMessagePane.MessageHit hit : messageHits) {
             if (GuiUtil.hit(mx, my, hit.x(), hit.y(), hit.width(), hit.height())) return hit.message();
         }
         return null;
@@ -115,7 +289,7 @@ final class ChatMessagePane {
     }
 
     private static int indexAt(TextHit hit, double mx, double my) {
-        var origin = hit.block().textOrigin();
+        ChatLayout.TextOrigin origin = hit.block().textOrigin();
         return hit.block().text().indexAt((mx - hit.x() - origin.x()) / ChatLayout.TEXT_SCALE,
                 my - hit.y() - origin.y(), hit.lineStep());
     }
@@ -159,7 +333,7 @@ final class ChatMessagePane {
 
         if (blocks.isEmpty()) {
             int y = top;
-            for (var line : font.split(Component.translatable("mcphone.chat.conversation_empty"),
+            for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.chat.conversation_empty"),
                     ChatLayout.unscaledWidth(w, ChatLayout.TEXT_SCALE))) {
                 ChatUi.text(g, font, line, x, y, ChatLayout.TEXT_SCALE, colorEmpty());
                 y += ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE);
@@ -201,7 +375,7 @@ final class ChatMessagePane {
         if (avatar != null) PlayerAvatar.draw(g, avatar,
                 b.self() ? x + w - AVATAR_SIZE : x, avatarY, AVATAR_SIZE);
         int bx = bubbleX(b, x, w);
-        var nickname = nickname(font, b, x, y, w);
+        ChatMessagePane.Nickname nickname = nickname(font, b, x, y, w);
         if (nickname != null) ChatUi.text(g, font, nickname.text(), nickname.x(), nickname.y(),
                 ChatLayout.GROUP_NAME_SCALE, FontPalette.subtle());
 
@@ -215,12 +389,13 @@ final class ChatMessagePane {
 
         ChatUi.bubble(g, b.self(), bx, contentY, b.w(), b.h());
 
-        if (b.message().body() instanceof com.november.mcphone.feature.chat.TextBody text && text.quote().isPresent())
-            ChatReplyView.draw(g,font,text.quote().get(),bx+3,contentY,b.w()-6);
+        Object textMatch;
+        if ((textMatch = b.message().body()) instanceof com.november.mcphone.feature.chat.TextBody && ((com.november.mcphone.feature.chat.TextBody) textMatch).quote().isPresent())
+            ChatReplyView.draw(g,font,((com.november.mcphone.feature.chat.TextBody) textMatch).quote().get(),bx+3,contentY,b.w()-6);
         renderSelection(g, font, b, bx, contentY);
-        var origin = b.textOrigin();
+        ChatLayout.TextOrigin origin = b.textOrigin();
         float ty = contentY + origin.y();
-        for (var line : b.lines()) {
+        for (net.minecraft.util.FormattedCharSequence line : b.lines()) {
             ChatUi.text(g, font, line, bx + origin.x(), ty, ChatLayout.TEXT_SCALE,
                     b.self() ? COLOR_TEXT_SELF : COLOR_TEXT_PEER);
             ty += ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE);
@@ -235,9 +410,9 @@ final class ChatMessagePane {
         if (!group || block.type() == BlockType.STAMP) return null;
         String name = senderName.apply(block.message());
         int available = ChatLayout.messageContentWidth(width);
-        if (name == null || name.isBlank() || available <= 0) return null;
+        if (name == null || Java8.isBlank(name) || available <= 0) return null;
         name = ChatUi.truncate(font, name, available, ChatLayout.GROUP_NAME_SCALE);
-        var origin = ChatLayout.groupName(width, font.width(name), block.self());
+        ChatLayout.TextOrigin origin = ChatLayout.groupName(width, font.width(name), block.self());
         return new Nickname(name, x + origin.x(), y + origin.y());
     }
 
@@ -254,7 +429,7 @@ final class ChatMessagePane {
 
     private void renderSelection(GuiGraphics g, Font font, Block b, int bx, int y) {
         if (!selection.owns(b.message().id()) || selection.start() == selection.end()) return;
-        var origin = b.textOrigin();
+        ChatLayout.TextOrigin origin = b.textOrigin();
         int step = ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE);
         g.pose().pushPose();
         try {
@@ -262,7 +437,7 @@ final class ChatMessagePane {
             g.pose().translate(bx + origin.x(), y + origin.y(), 0);
             g.pose().scale(ChatLayout.TEXT_SCALE / 16f, ChatLayout.TEXT_SCALE / 16f, 1);
             for (int line = 0; line < b.text().lines().size(); line++) {
-                for (var span : b.text().lines().get(line).spans(selection.start(), selection.end())) {
+                for (ChatTextLayout.Span span : b.text().lines().get(line).spans(selection.start(), selection.end())) {
                     int top = Math.round(line * step / ChatLayout.TEXT_SCALE * 16f);
                     g.fill(Math.round(span.left() * 16f), top,
                             Math.round(span.right() * 16f), top + font.lineHeight * 16, PhoneTheme.COLOR_CHAT_SELECTION);
@@ -280,7 +455,7 @@ final class ChatMessagePane {
         // 每帧都告知：条目被逐出后会被重建成一条空的，而放大图那一层只有一个 id
         ChatImageCache.declare(b.image(), b.frames(), b.frameMs());
 
-        var texture = ChatImageCache.get(b.image());
+        com.november.mcphone.core.client.ImageCodec.Texture texture = ChatImageCache.get(b.image());
         if (texture != null) {
             // 有像素才记位置：点一张还没到、或者已经过期的图，放大了也只是一块空白
             imageHits.add(new ImageHit(b.image(), bx, y, w, h));
@@ -290,11 +465,20 @@ final class ChatMessagePane {
 
         g.fill(bx, y, bx + w, y + h, PhoneTheme.COLOR_SCRIM);
 
-        String hint = switch (ChatImageCache.status(b.image())) {
-            case GONE -> Component.translatable("mcphone.chat.image_expired").getString();
-            case BROKEN -> Component.translatable("mcphone.chat.image_broken_local").getString();
-            case LOADING, READY -> "…";
-        };
+        String hint;
+        switch (ChatImageCache.status(b.image())) {
+            case GONE:
+                hint = Component.translatable("mcphone.chat.image_expired").getString();
+                break;
+            case BROKEN:
+                hint = Component.translatable("mcphone.chat.image_broken_local").getString();
+                break;
+            case LOADING:
+            case READY:
+                hint = "…";
+                break;
+            default: throw new IncompatibleClassChangeError();
+        }
         // 先截再居中：那一块窄的时候（一张竖图）「已过期」放不下，按截断前的宽度算会偏出去
         hint = GuiUtil.truncate(font, hint, w - 2);
         g.drawString(font, hint,

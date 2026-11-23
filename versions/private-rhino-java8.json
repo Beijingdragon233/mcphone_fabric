@@ -1,0 +1,13 @@
+{
+  "coordinate": "com.november.mcphone.internal:rhino:1.7.15.1-mcphone.2",
+  "version": "1.7.15.1-mcphone.2",
+  "mavenPath": "vendor/maven/com/november/mcphone/internal/rhino/1.7.15.1-mcphone.2",
+  "files": {
+    "provenance.properties": "c65f10226f632e3129a2476ad21b0614c580b2fc1bfdd15880a4eb06c1eceffe",
+    "rhino-1.7.15.1-mcphone.2-sources.jar": "75c4c73167d9ddd6194bfebfd461ac131fd6cdba003f3dc1ee7451732fd744e4",
+    "rhino-1.7.15.1-mcphone.2.jar": "3984bbc84e783cb06e0a59242850f99675637ed086d5ef5579f783098c823344",
+    "rhino-1.7.15.1-mcphone.2.pom": "56ae8655eccff67a058f0fb3ba7c67699c250d1a264d6741dc6a72640214194d"
+  },
+  "allowedProductionPackage": "com.november.mcphone.core.script.engine",
+  "minimumJava": 8
+}

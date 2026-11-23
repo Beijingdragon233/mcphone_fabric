@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client.source;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.platform.ResourceIds;
 
 import com.november.mcphone.MCphone;
@@ -41,7 +43,7 @@ public final class TxtBookSource implements BookSource {
     /** 书 id 的前缀，形如 {@code mcphone:txt/3f2a...} */
     private static final String PATH_PREFIX = "txt/";
 
-    private List<BookRef> books = List.of();
+    private List<BookRef> books = ImmutableList.of();
 
     /** 上一次记进日志的本数，-1 表示还没记过。与另外几个书源同一个理由：别刷屏 */
     private int loggedCount = -1;
@@ -75,7 +77,7 @@ public final class TxtBookSource implements BookSource {
                     null,
                     ownerLine(entry)));
         }
-        books = List.copyOf(out);
+        books = ImmutableList.copyOf(out);
 
         // 扫到的本地书一律上架：玩家把文件放进目录，这个动作本身就是"我要看它"，
         // 不该再要求他去书城点一次 ☆，见 ShelfStore.ensureShelved
@@ -119,8 +121,9 @@ public final class TxtBookSource implements BookSource {
             return;
         }
 
-        if (Minecraft.getInstance().screen instanceof PhoneScreen phone) {
-            phone.openTxtBook(entry);
+        Object phoneMatch;
+        if ((phoneMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) {
+            ((PhoneScreen) phoneMatch).openTxtBook(entry);
         }
     }
 

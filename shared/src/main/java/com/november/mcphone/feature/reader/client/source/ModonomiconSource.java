@@ -1,5 +1,10 @@
 package com.november.mcphone.feature.reader.client.source;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
+import java.util.Map.Entry;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.feature.reader.BookRef;
@@ -28,7 +33,7 @@ final class ModonomiconSource implements BookSource {
     private static final String PACKAGE = "com.klikli_dev.modonomicon.";
     private static final ResourceLocation SCRIPTURA_VITAE = ResourceIds.create("neovitae", "guide");
 
-    private List<BookRef> books = List.of();
+    private List<BookRef> books = ImmutableList.of();
     private final Map<ResourceLocation, ItemStack> icons = new HashMap<>();
     private boolean resolved;
     private Api api;
@@ -53,28 +58,29 @@ final class ModonomiconSource implements BookSource {
 
     @Override
     public List<String> searchAliases(BookRef book) {
-        return SCRIPTURA_VITAE.equals(book.bookId()) ? List.of("命血宝典", "命血手札", "Scriptura Vitae") : List.of();
+        return SCRIPTURA_VITAE.equals(book.bookId()) ? ImmutableList.of("命血宝典", "命血手札", "Scriptura Vitae") : ImmutableList.of();
     }
 
     @Override
     public void refresh() {
-        books = List.of();
+        books = ImmutableList.of();
         icons.clear();
         Api access = resolve();
         if (access == null) return;
 
-        var entries = new ArrayList<BookRef>();
+        ArrayList<com.november.mcphone.feature.reader.BookRef> entries = new ArrayList<BookRef>();
         try {
-            for (var entry : access.books().entrySet()) {
-                if (!(entry.getKey() instanceof ResourceLocation id) || entry.getValue() == null) continue;
+            for (Entry<?,?> entry : access.books().entrySet()) {
+                Object idMatch;
+                if (!((idMatch = entry.getKey()) instanceof ResourceLocation) || entry.getValue() == null) continue;
                 try {
                     String name = (String) access.name().invoke(entry.getValue());
-                    Component title = name == null || name.isBlank()
-                            ? Component.literal(id.getPath()) : Component.translatable(name);
-                    entries.add(new BookRef(MOD_ID, id, title, null, BookSource.modName(id.getNamespace())));
-                    identifyIcon(access, id, entry.getValue());
+                    Component title = name == null || Java8.isBlank(name)
+                            ? Component.literal(((ResourceLocation) idMatch).getPath()) : Component.translatable(name);
+                    entries.add(new BookRef(MOD_ID, ((ResourceLocation) idMatch), title, null, BookSource.modName(((ResourceLocation) idMatch).getNamespace())));
+                    identifyIcon(access, ((ResourceLocation) idMatch), entry.getValue());
                 } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
-                    MCphone.LOGGER.warn("[MCphone] 读取 Modonomicon 手册 {} 失败", id, failure);
+                    MCphone.LOGGER.warn("[MCphone] 读取 Modonomicon 手册 {} 失败", ((ResourceLocation) idMatch), failure);
                 }
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
@@ -84,7 +90,7 @@ final class ModonomiconSource implements BookSource {
         entries.sort(Comparator.comparing(BookRef::owner)
                 .thenComparing(book -> book.title().getString())
                 .thenComparing(book -> book.bookId().toString()));
-        books = List.copyOf(entries);
+        books = ImmutableList.copyOf(entries);
         if (books.size() != loggedCount) {
             loggedCount = books.size();
             MCphone.LOGGER.info("[MCphone] 书城扫到 {} 本 Modonomicon 手册", loggedCount);
@@ -142,10 +148,10 @@ final class ModonomiconSource implements BookSource {
         try {
             if (access.icon() == null) return;
             Object result = access.icon().invoke(book);
-            if (result instanceof ItemStack stack && !stack.isEmpty()) {
-                icons.put(id, stack);
-            } else if (result instanceof ResourceLocation itemId) {
-                var item = BuiltInRegistries.ITEM.get(itemId);
+            if (result instanceof ItemStack && !((ItemStack) result).isEmpty()) {
+                icons.put(id, ((ItemStack) result));
+            } else if (result instanceof ResourceLocation) {
+                net.minecraft.world.item.Item item = BuiltInRegistries.ITEM.get(((ResourceLocation) result));
                 if (item != Items.AIR) icons.put(id, new ItemStack(item));
             }
         } catch (ReflectiveOperationException | RuntimeException | LinkageError ignored) {
@@ -184,7 +190,7 @@ final class ModonomiconSource implements BookSource {
     }
 
     private static Method findIconMethod(Class<?> book) {
-        for (String name : List.of("getBookItem", "getCustomBookItem")) {
+        for (String name : ImmutableList.of("getBookItem", "getCustomBookItem")) {
             try {
                 return book.getMethod(name);
             } catch (NoSuchMethodException ignored) {
@@ -194,7 +200,66 @@ final class ModonomiconSource implements BookSource {
         return null;
     }
 
-    private record Api(Method data, Method catalog, Method name, Method gui, Method open, Method address, Method icon) {
+    private static final class Api {
+        private final Method data;
+        private final Method catalog;
+        private final Method name;
+        private final Method gui;
+        private final Method open;
+        private final Method address;
+        private final Method icon;
+
+        private Api(Method data, Method catalog, Method name, Method gui, Method open, Method address, Method icon) {
+            this.data = data;
+            this.catalog = catalog;
+            this.name = name;
+            this.gui = gui;
+            this.open = open;
+            this.address = address;
+            this.icon = icon;
+        }
+
+        public Method data() { return data; }
+
+        public Method catalog() { return catalog; }
+
+        public Method name() { return name; }
+
+        public Method gui() { return gui; }
+
+        public Method open() { return open; }
+
+        public Method address() { return address; }
+
+        public Method icon() { return icon; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Api)) return false;
+            Api that = (Api) other;
+            return java.util.Objects.equals(this.data, that.data)
+                    && java.util.Objects.equals(this.catalog, that.catalog)
+                    && java.util.Objects.equals(this.name, that.name)
+                    && java.util.Objects.equals(this.gui, that.gui)
+                    && java.util.Objects.equals(this.open, that.open)
+                    && java.util.Objects.equals(this.address, that.address)
+                    && java.util.Objects.equals(this.icon, that.icon);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(data);
+            hash = 31 * hash + java.util.Objects.hashCode(catalog);
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(gui);
+            hash = 31 * hash + java.util.Objects.hashCode(open);
+            hash = 31 * hash + java.util.Objects.hashCode(address);
+            hash = 31 * hash + java.util.Objects.hashCode(icon);
+            return hash;
+        }
+
+        @Override public String toString() { return "Api[data=" + data + ", catalog=" + catalog + ", name=" + name + ", gui=" + gui + ", open=" + open + ", address=" + address + ", icon=" + icon + "]"; }
+
         Map<?, ?> books() throws ReflectiveOperationException {
             return (Map<?, ?>) catalog.invoke(data.invoke(null));
         }

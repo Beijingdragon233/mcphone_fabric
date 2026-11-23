@@ -40,7 +40,7 @@ public final class ChatConversation {
             (target, message, request) -> {
                 if (channel != null) channel.delete(message, request);
             }, request -> { if (channel != null) channel.cancelDelete(request); },
-            key -> { var player = Minecraft.getInstance().player;
+            key -> { net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
                 if (player != null) com.november.mcphone.platform.PlayerAccess.message(player, Component.translatable(key), true); }, this::favorite, this::replyTo);
     private UUID peer;
     private long lastRequestMs;
@@ -166,7 +166,8 @@ public final class ChatConversation {
                 messages.prepareMenu(target.id());
                 composer.dismissAttachmentMenu();
                 composer.blur();
-                actions.open(peer, target.id(), target.body() instanceof TextBody text ? text.text() : null,
+                Object textMatch;
+                actions.open(peer, target.id(), (textMatch = target.body()) instanceof TextBody ? ((TextBody) textMatch).text() : null,
                         messages.selectedText(target.id()), mx, my);
             }
             return true;
@@ -215,12 +216,12 @@ public final class ChatConversation {
     /** 服务端回声才插入消息，避免校验拒收后客户端还留下假消息。 */
     private void send(String text) {
         if (peer == null) return;
-        if (reply.id().isEmpty()) {
+        if (!reply.id().isPresent()) {
             cancelSubmission();
             channel.send(text);
         } else {
-            UUID original = reply.id().orElseThrow();
-            var draft = composer.draft();
+            UUID original = reply.id().orElseThrow(java.util.NoSuchElementException::new);
+            ChatComposer.Draft draft = composer.draft();
             long now = submissionTime();
             if (submission == null || !submission.matches(original,draft)) {
                 cancelSubmission();
@@ -233,7 +234,7 @@ public final class ChatConversation {
 
     /** 位置是独立的普通文字消息，不提交或清理输入框里尚未发送的引用草稿。 */
     public void sendLocation() {
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) sendLocation(player.blockPosition());
     }
     void sendLocation(BlockPos position) {
@@ -244,7 +245,7 @@ public final class ChatConversation {
 
     private void replyTo(UUID target, UUID message) {
         if (channel == null || submission != null && !submission.timedOut() || !channel.target().equals(target)) return;
-        var original=channel.messages().stream().filter(m -> m.id().equals(message)).findFirst().orElse(null);
+        com.november.mcphone.feature.chat.ChatMessage original=channel.messages().stream().filter(m -> m.id().equals(message)).findFirst().orElse(null);
         if (original == null) return;
         cancelSubmission();
         reply.select(com.november.mcphone.feature.chat.ChatQuote.from(original,messageSenderName(original)));
@@ -254,7 +255,7 @@ public final class ChatConversation {
     public void tick() { if (channel != null) tick(selfId()); }
     void tick(UUID self) {
         if (channel == null) return;
-        var receipt = channel.receipt();
+        ChatConversationChannel.Receipt receipt = channel.receipt();
         if (receipt != null) actions.result(receipt.request(), receipt.result());
         pollSubmission(self);
         actions.tick(System.currentTimeMillis());
@@ -262,8 +263,8 @@ public final class ChatConversation {
     }
     private void pollSubmission(UUID self) {
         if (submission == null) return;
-        var status = channel.replyStatus(submission.ticket());
-        var result=submission.poll(channel.messages(),self,submissionTime());
+        ChatConversationChannel.ReplyStatus status = channel.replyStatus(submission.ticket());
+        ChatReplySubmission.Result result=submission.poll(channel.messages(),self,submissionTime());
         if (status == ChatConversationChannel.ReplyStatus.ACCEPTED || result == ChatReplySubmission.Result.ACCEPTED) {
             if (submission.complete(reply,composer::clearSubmitted)) cancelReply=null;
             cancelSubmission();
@@ -283,8 +284,8 @@ public final class ChatConversation {
     private boolean canSendReply() {
         if (channel == null || selfId() == null || submission != null && !submission.timedOut()) return false;
         if (submission != null && reply.id().isPresent() && submission.matches(reply.id().get(),composer.draft())) return true;
-        if (reply.id().isEmpty() || channel.messages().stream().anyMatch(m -> m.id().equals(reply.id().get()))) return true;
-        var player=Minecraft.getInstance().player;
+        if (!reply.id().isPresent() || channel.messages().stream().anyMatch(m -> m.id().equals(reply.id().get()))) return true;
+        net.minecraft.client.player.LocalPlayer player=Minecraft.getInstance().player;
         if (player != null) com.november.mcphone.platform.PlayerAccess.message(player,Component.translatable("mcphone.chat.reply.unavailable"),true);
         reply.clear(); cancelReply=null; return false;
     }
@@ -329,27 +330,29 @@ public final class ChatConversation {
 
     private void favorite(UUID target, UUID message) {
         if (channel == null || !channel.target().equals(target)) return;
-        var source = channel.messages().stream().filter(m -> m.id().equals(message)).findFirst().orElse(null);
+        com.november.mcphone.feature.chat.ChatMessage source = channel.messages().stream().filter(m -> m.id().equals(message)).findFirst().orElse(null);
         if (source == null) return;
         try {
             FavoriteStore store=ChatFavorites.current();
             if(store==null) { favoriteNotice("loading");return; }
             FavoriteEntry entry;byte[] data;
-            if(source.body() instanceof TextBody text) {
-                data=text.text().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            Object textMatch_;
+            Object imageMatch;
+            if((textMatch_ = source.body()) instanceof TextBody) {
+                data=((TextBody) textMatch_).text().getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 entry=new FavoriteEntry(message,target,channel.group(),source.sender(),messageSenderName(source),
                         source.time(),System.currentTimeMillis(),FavoriteEntry.Kind.TEXT,data.length,0,0,1,0);
-            } else if(source.body() instanceof ImageBody image) {
-                if(ChatImageCache.status(image.image())!=ChatImageCache.Status.READY || ChatImageCache.bytes(image.image())==null) {
+            } else if((imageMatch = source.body()) instanceof ImageBody) {
+                if(ChatImageCache.status(((ImageBody) imageMatch).image())!=ChatImageCache.Status.READY || ChatImageCache.bytes(((ImageBody) imageMatch).image())==null) {
                     favoriteNotice("image_unavailable");return;
                 }
-                data=ChatImageCache.bytes(image.image()).clone();
+                data=ChatImageCache.bytes(((ImageBody) imageMatch).image()).clone();
                 entry=new FavoriteEntry(message,target,channel.group(),source.sender(),messageSenderName(source),
                         source.time(),System.currentTimeMillis(),FavoriteEntry.Kind.IMAGE,data.length,
-                        image.width(),image.height(),image.frames(),image.frameMs());
+                        ((ImageBody) imageMatch).width(),((ImageBody) imageMatch).height(),((ImageBody) imageMatch).frames(),((ImageBody) imageMatch).frameMs());
             } else return;
             Object connection=Minecraft.getInstance().getConnection();
-            var account=selfId();
+            UUID account=selfId();
             favoriteNotice("saving");
             store.submit(net.minecraft.Util.backgroundExecutor(),()->store.add(entry,data)).whenComplete((result,error)->
                 Minecraft.getInstance().execute(()->{
@@ -359,12 +362,12 @@ public final class ChatConversation {
         } catch (RuntimeException error) { favoriteNotice("storage_error"); }
     }
     private static void favoriteNotice(String result) {
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) com.november.mcphone.platform.PlayerAccess.message(player,Component.translatable("mcphone.chat.favorite."+result),true);
     }
 
     private String messageSenderName(ChatMessage message) {
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         if (player != null && player.getUUID().equals(message.sender())) return player.getName().getString();
         if (channel.group()) return channel.senderName(message);
         return com.november.mcphone.feature.chat.net.ChatClientCache.getConversations().stream()
@@ -372,7 +375,7 @@ public final class ChatConversation {
     }
 
     private static UUID selfId() {
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         return player == null ? null : player.getUUID();
     }
 }

@@ -1,5 +1,10 @@
 package com.november.mcphone.core.script.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.core.client.ClientPaths;
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.MCphone;
@@ -21,7 +26,6 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HexFormat;
 import java.util.stream.Stream;
 
 /**
@@ -40,7 +44,36 @@ public final class ScriptAppFolder {
     public static final String DIR = PhonePaths.APPS.relative();
 
     /** 一个文件读出来的东西，外加它的时间戳。 */
-    private record Loaded(ScriptApp app, String digest) {
+    private static final class Loaded {
+        private final ScriptApp app;
+        private final String digest;
+
+        private Loaded(ScriptApp app, String digest) {
+            this.app = app;
+            this.digest = digest;
+        }
+
+        public ScriptApp app() { return app; }
+
+        public String digest() { return digest; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Loaded)) return false;
+            Loaded that = (Loaded) other;
+            return java.util.Objects.equals(this.app, that.app)
+                    && java.util.Objects.equals(this.digest, that.digest);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(app);
+            hash = 31 * hash + java.util.Objects.hashCode(digest);
+            return hash;
+        }
+
+        @Override public String toString() { return "Loaded[app=" + app + ", digest=" + digest + "]"; }
+
     }
 
     /** 路径 → 上次读出来的东西。读不出来的不进表，下次还会再试（玩家可能正在往里拷文件）。 */
@@ -64,7 +97,7 @@ public final class ScriptAppFolder {
      */
     public static List<ScriptApp> scan() {
         Path dir = dir();
-        if (dir == null) return List.of();
+        if (dir == null) return ImmutableList.of();
         return scan(dir);
     }
 
@@ -75,14 +108,14 @@ public final class ScriptAppFolder {
         try {
             if (!Files.isDirectory(dir)) {
                 Files.createDirectories(dir);
-                return List.of();
+                return ImmutableList.of();
             }
             try (Stream<Path> s = Files.list(dir)) {
                 s.filter(Files::isRegularFile).sorted().forEach(files::add);
             }
         } catch (IOException e) {
             MCphone.LOGGER.warn("[MCphone] 读 {} 失败: {}", dir, e.toString());
-            return List.of();
+            return ImmutableList.of();
         }
 
         CACHE.keySet().retainAll(files);   // 文件删了，缓存跟着走
@@ -98,7 +131,7 @@ public final class ScriptAppFolder {
                         app.id(), old.file(), app.file());
             }
         }
-        return List.copyOf(byId.values());
+        return ImmutableList.copyOf(byId.values());
     }
 
     /** 读取有界字节后比较内容摘要，避免先 readAllBytes 再拒绝超大文件。 */
@@ -116,8 +149,8 @@ public final class ScriptAppFolder {
                 }
                 return null;
             }
-            try (var in = Files.newInputStream(file)) {
-                content = in.readNBytes(PackageReader.MAX_COMPRESSED + 1);
+            try (java.io.InputStream in = Files.newInputStream(file)) {
+                content = Java8.readNBytes(in, PackageReader.MAX_COMPRESSED + 1);
             }
             if (content.length > PackageReader.MAX_COMPRESSED) return null;
         } catch (IOException e) {
@@ -147,7 +180,7 @@ public final class ScriptAppFolder {
 
     private static String digest(byte[] content) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
+            return Java8.formatHex(MessageDigest.getInstance("SHA-256").digest(content));
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("JDK 缺少 SHA-256", e);
         }
@@ -168,7 +201,7 @@ public final class ScriptAppFolder {
         SfcCompiler.App compiled = SfcCompiler.compile(name, src);
         Manifest manifest = compiled.manifest();
         return ScriptApp.of(idOf(manifest), manifest, null,
-                new SfcCompiler.Page(compiled.stylesheet(), compiled.template()), Map.of(),
+                new SfcCompiler.Page(compiled.stylesheet(), compiled.template()), ImmutableMap.of(),
                 inlineIcon(manifest), name);
     }
 
@@ -191,7 +224,7 @@ public final class ScriptAppFolder {
             pages.put(page, SfcCompiler.compilePage(path, text(pkg, path)));
         }
         SfcCompiler.Page entry = SfcCompiler.compilePage(entryPath, text(pkg, entryPath));
-        return ScriptApp.of(idOf(manifest), manifest, pkg, entry, Map.copyOf(pages),
+        return ScriptApp.of(idOf(manifest), manifest, pkg, entry, ImmutableMap.copyOf(pages),
                 pkg.entry(manifest.icon()), name);
     }
 

@@ -507,7 +507,7 @@ public final class GuiUtil {
         if (time <= 0) return "";
 
         ZoneId zone = ZoneId.systemDefault();
-        var dateTime = Instant.ofEpochMilli(time).atZone(zone);
+        java.time.ZonedDateTime dateTime = Instant.ofEpochMilli(time).atZone(zone);
         return dateTime.toLocalDate().equals(LocalDate.now(zone))
                 ? dateTime.format(TIME_FORMAT)
                 : dateTime.format(DATE_FORMAT);

@@ -23,9 +23,9 @@ public final class Values {
     /** §9.5.4：null / false / 0 / "" 为假，空数组与空对象为真。 */
     public static boolean truthy(Object v) {
         if (v == null) return false;
-        if (v instanceof Boolean b) return b;
-        if (v instanceof Integer i) return i != 0;
-        if (v instanceof String s) return !s.isEmpty();
+        if (v instanceof Boolean) return ((Boolean) v);
+        if (v instanceof Integer) return ((Integer) v) != 0;
+        if (v instanceof String) return !((String) v).isEmpty();
         return true;
     }
 

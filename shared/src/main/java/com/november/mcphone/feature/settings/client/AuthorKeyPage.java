@@ -120,7 +120,7 @@ public final class AuthorKeyPage {
 
         if (broken) {
             // 文件在、读不出来：说清怎么办，且不给「生成密钥」（点下去只会撞"已经有一对"）
-            for (var l : font.split(Component.translatable("mcphone.sig.key_broken"), w)) {
+            for (net.minecraft.util.FormattedCharSequence l : font.split(Component.translatable("mcphone.sig.key_broken"), w)) {
                 g.drawString(font, l, x, y, PhoneTheme.FONT_COLOR_CHAT_SEND, false);
                 y += font.lineHeight;
             }
@@ -128,7 +128,7 @@ public final class AuthorKeyPage {
             genY = -1;
             backupY = -1;
         } else if (fingerprint == null) {
-            for (var l : font.split(Component.translatable("mcphone.sig.key_none"), w)) {
+            for (net.minecraft.util.FormattedCharSequence l : font.split(Component.translatable("mcphone.sig.key_none"), w)) {
                 g.drawString(font, l, x, y, PhoneTheme.FONT_COLOR_NAV, false);
                 y += font.lineHeight;
             }
@@ -144,7 +144,7 @@ public final class AuthorKeyPage {
                     x, y, PhoneTheme.FONT_COLOR_NAV, false);
             y += ROW;
             // 长指纹按宽度折行：手机内容区只有 108 px，直接画会顶出去
-            for (var l : font.split(Component.literal(fingerprint), w)) {
+            for (net.minecraft.util.FormattedCharSequence l : font.split(Component.literal(fingerprint), w)) {
                 g.drawString(font, l, x, y, PhoneTheme.FONT_COLOR_STATUS, false);
                 y += font.lineHeight;
             }
@@ -152,7 +152,7 @@ public final class AuthorKeyPage {
 
             // 权限：设不上就明说，不假装设上了
             if (Boolean.FALSE.equals(protectedOnDisk)) {
-                for (var l : font.split(Component.translatable("mcphone.sig.key_unprotected"), w)) {
+                for (net.minecraft.util.FormattedCharSequence l : font.split(Component.translatable("mcphone.sig.key_unprotected"), w)) {
                     g.drawString(font, l, x, y, PhoneTheme.FONT_COLOR_CHAT_SEND, false);
                     y += font.lineHeight;
                 }
@@ -167,14 +167,14 @@ public final class AuthorKeyPage {
         }
 
         // 丢了就是丢了 —— 这句话必须在页面上，不能只写在文档里
-        for (var l : font.split(Component.translatable("mcphone.sig.key_lost"), w)) {
+        for (net.minecraft.util.FormattedCharSequence l : font.split(Component.translatable("mcphone.sig.key_lost"), w)) {
             g.drawString(font, l, x, y, PhoneTheme.FONT_COLOR_NAV, false);
             y += font.lineHeight;
         }
 
         if (notice != null) {
             y += 4;
-            for (var l : font.split(notice, w)) {
+            for (net.minecraft.util.FormattedCharSequence l : font.split(notice, w)) {
                 g.drawString(font, l, x, y, PhoneTheme.FONT_COLOR_CHAT_SEND, false);
                 y += font.lineHeight;
             }

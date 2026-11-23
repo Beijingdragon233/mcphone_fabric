@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.net;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.chat.ChatMessage;
 import com.november.mcphone.feature.chat.ChatData;
 import com.november.mcphone.feature.chat.ChatDeletionResult;
@@ -18,13 +20,42 @@ public final class ChatClientCache {
 
     private ChatClientCache() {}
 
-    private static List<ConversationSummary> conversations = List.of();
+    private static List<ConversationSummary> conversations = ImmutableList.of();
 
     /** 当前打开的会话对端；null 表示没有打开任何会话 */
     private static UUID openPeer;
     private static UUID deletingPeer, deletingMessage, deletingRequest;
     private static DeleteReceipt deleteReceipt;
-    public record DeleteReceipt(UUID request, ChatDeletionResult result) {}
+    public static final class DeleteReceipt {
+        private final UUID request;
+        private final ChatDeletionResult result;
+
+        public DeleteReceipt(UUID request, ChatDeletionResult result) {
+            this.request = request;
+            this.result = result;
+        }
+
+        public UUID request() { return request; }
+
+        public ChatDeletionResult result() { return result; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof DeleteReceipt)) return false;
+            DeleteReceipt that = (DeleteReceipt) other;
+            return java.util.Objects.equals(this.request, that.request)
+                    && java.util.Objects.equals(this.result, that.result);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(request);
+            hash = 31 * hash + java.util.Objects.hashCode(result);
+            return hash;
+        }
+
+        @Override public String toString() { return "DeleteReceipt[request=" + request + ", result=" + result + "]"; }
+}
     public static void beginDeletion(UUID peer, UUID message, UUID request) {
         deletingPeer = peer; deletingMessage = message; deletingRequest = request; deleteReceipt = null;
     }
@@ -41,20 +72,20 @@ public final class ChatClientCache {
         deleteReceipt = new DeleteReceipt(request, result);
     }
     public static DeleteReceipt consumeDeleteResult() {
-        var receipt = deleteReceipt;
+        ChatClientCache.DeleteReceipt receipt = deleteReceipt;
         if (receipt != null) clearDeletion();
         return receipt;
     }
 
     /** 当前打开会话的消息，按时间升序 */
-    private static List<ChatMessage> messages = List.of();
+    private static List<ChatMessage> messages = ImmutableList.of();
 
     public static List<ConversationSummary> getConversations() {
         return conversations;
     }
 
     static void setConversations(List<ConversationSummary> list) {
-        conversations = List.copyOf(list);
+        conversations = ImmutableList.copyOf(list);
     }
 
     /** 必须在发请求之前调用：新消息推送可能先于历史消息到达，不先记下对端会被 appendMessage 丢掉 */
@@ -62,7 +93,7 @@ public final class ChatClientCache {
         if (!java.util.Objects.equals(openPeer, peer)) {
             clearDeletion();
             openPeer = peer;
-            messages = List.of();   // 换会话先清空，免得闪出上一个会话的内容
+            messages = ImmutableList.of();   // 换会话先清空，免得闪出上一个会话的内容
         }
     }
 
@@ -70,7 +101,7 @@ public final class ChatClientCache {
     public static void closeConversation() {
         clearDeletion();
         openPeer = null;
-        messages = List.of();
+        messages = ImmutableList.of();
     }
 
     public static List<ChatMessage> getMessages() {
@@ -80,7 +111,7 @@ public final class ChatClientCache {
     static void setMessages(UUID peer, List<ChatMessage> list) {
         // 玩家可能在数据回来之前已退出或切换会话，过期数据直接丢弃
         if (!java.util.Objects.equals(openPeer, peer)) return;
-        messages = List.copyOf(list);
+        messages = ImmutableList.copyOf(list);
     }
 
     /** 客户端启动时装上真正的实现（见 MCphoneClient）；只认纯数据类型，专用服务器上永远是空实现 */
@@ -120,10 +151,10 @@ public final class ChatClientCache {
         next.add(message);
         int excess = next.size() - ChatData.MAX_MESSAGES_PER_CONVERSATION;
         if (excess > 0) next.subList(0, excess).clear();
-        messages = List.copyOf(next);
+        messages = ImmutableList.copyOf(next);
     }
 
-    private static List<OnlinePlayer> onlinePlayers = List.of();
+    private static List<OnlinePlayer> onlinePlayers = ImmutableList.of();
     private static int totalOnline;
 
     public static List<OnlinePlayer> getOnlinePlayers() {
@@ -141,15 +172,15 @@ public final class ChatClientCache {
     }
 
     static void setOnlinePlayers(List<OnlinePlayer> list, int total) {
-        onlinePlayers = List.copyOf(list);
+        onlinePlayers = ImmutableList.copyOf(list);
         totalOnline = total;
     }
 
     /** 退出世界时清空，免得换服务器时闪出上一个服务器的数据 */
     public static void clear() {
         com.november.mcphone.feature.chat.group.net.GroupClientCache.clear();
-        conversations = List.of();
-        onlinePlayers = List.of();
+        conversations = ImmutableList.of();
+        onlinePlayers = ImmutableList.of();
         totalOnline = 0;
         closeConversation();
     }

@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.GifCodec;
 import com.november.mcphone.core.client.ImageCodec;
@@ -87,7 +89,36 @@ public final class ChatImageSender {
      * 在 4 倍 GUI 缩放下是 448 个真实像素。再往上收益就很薄了，而体积按面积涨。
      * 帧数多的时候一帧会自动更小——雪碧图整张有上限，见 {@link #frameSide}。
      */
-    private record AnimStep(int side, int keepEvery) {}
+    private static final class AnimStep {
+        private final int side;
+        private final int keepEvery;
+
+        private AnimStep(int side, int keepEvery) {
+            this.side = side;
+            this.keepEvery = keepEvery;
+        }
+
+        public int side() { return side; }
+
+        public int keepEvery() { return keepEvery; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof AnimStep)) return false;
+            AnimStep that = (AnimStep) other;
+            return this.side == that.side
+                    && this.keepEvery == that.keepEvery;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(side);
+            hash = 31 * hash + java.util.Objects.hashCode(keepEvery);
+            return hash;
+        }
+
+        @Override public String toString() { return "AnimStep[side=" + side + ", keepEvery=" + keepEvery + "]"; }
+}
 
     private static final AnimStep[] ANIM_STEPS = {
             new AnimStep(224, 1),
@@ -111,7 +142,7 @@ public final class ChatImageSender {
      * 同步包着：读写都在后台线程，而访问序的 LinkedHashMap 连 get 都会改结构。
      */
     private static final Map<String, ImageCodec.Encoded> ENCODED = Collections.synchronizedMap(
-            new LinkedHashMap<>(MAX_CACHED + 1, 0.75f, true) {
+            new LinkedHashMap<String, ImageCodec.Encoded>(MAX_CACHED + 1, 0.75f, true) {
                 @Override
                 protected boolean removeEldestEntry(Map.Entry<String, ImageCodec.Encoded> eldest) {
                     return size() > MAX_CACHED;
@@ -122,7 +153,42 @@ public final class ChatImageSender {
     private static final int MAX_QUEUED = 4;
 
     /** 排着等发的一张 */
-    private record Queued(UUID peer, Path photo, boolean group) {}
+    private static final class Queued {
+        private final UUID peer;
+        private final Path photo;
+        private final boolean group;
+
+        private Queued(UUID peer, Path photo, boolean group) {
+            this.peer = peer;
+            this.photo = photo;
+            this.group = group;
+        }
+
+        public UUID peer() { return peer; }
+
+        public Path photo() { return photo; }
+
+        public boolean group() { return group; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Queued)) return false;
+            Queued that = (Queued) other;
+            return java.util.Objects.equals(this.peer, that.peer)
+                    && java.util.Objects.equals(this.photo, that.photo)
+                    && this.group == that.group;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(peer);
+            hash = 31 * hash + java.util.Objects.hashCode(photo);
+            hash = 31 * hash + java.util.Objects.hashCode(group);
+            return hash;
+        }
+
+        @Override public String toString() { return "Queued[peer=" + peer + ", photo=" + photo + ", group=" + group + "]"; }
+}
 
     /** 只有主线程碰它：点击、拖放、客户端 tick 都在主线程 */
     private static final Deque<Queued> QUEUE = new ArrayDeque<>();
@@ -209,9 +275,9 @@ public final class ChatImageSender {
 
     /** 真的开始发这一张：压缩在后台，发包回渲染线程 */
     private static void start(UUID peer, Path photo, boolean group) {
-        var connection = Minecraft.getInstance().getConnection();
+        net.minecraft.client.multiplayer.ClientPacketListener connection = Minecraft.getInstance().getConnection();
         if (connection == null) return;
-        var ticket = SESSION.start(connection);
+        ChatUploadSession.Ticket ticket = SESSION.start(connection);
         sendingSince = System.currentTimeMillis();
         pendingPng = null;
         pendingGroup = group ? peer : null;
@@ -243,7 +309,36 @@ public final class ChatImageSender {
      * 而实际最常见的失败根本不是大小——是【压根读不出来】：改了扩展名的 WebP、下到一半的
      * 文件。玩家照着那句话去换更小的图，换几张都一样发不出去，因为问题不在那儿。
      */
-    private record Attempt(ImageCodec.Encoded encoded, String failureKey) {
+    private static final class Attempt {
+        private final ImageCodec.Encoded encoded;
+        private final String failureKey;
+
+        private Attempt(ImageCodec.Encoded encoded, String failureKey) {
+            this.encoded = encoded;
+            this.failureKey = failureKey;
+        }
+
+        public ImageCodec.Encoded encoded() { return encoded; }
+
+        public String failureKey() { return failureKey; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Attempt)) return false;
+            Attempt that = (Attempt) other;
+            return java.util.Objects.equals(this.encoded, that.encoded)
+                    && java.util.Objects.equals(this.failureKey, that.failureKey);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(encoded);
+            hash = 31 * hash + java.util.Objects.hashCode(failureKey);
+            return hash;
+        }
+
+        @Override public String toString() { return "Attempt[encoded=" + encoded + ", failureKey=" + failureKey + "]"; }
+
 
         static Attempt of(ImageCodec.Encoded encoded) { return new Attempt(encoded, null); }
 
@@ -301,7 +396,7 @@ public final class ChatImageSender {
     /** RIFF....WEBP。只认文件头：扩展名是拖进来的那个人说了算的 */
     private static boolean looksLikeWebp(Path photo) {
         try (InputStream in = Files.newInputStream(photo)) {
-            byte[] head = in.readNBytes(12);
+            byte[] head = Java8.readNBytes(in, 12);
             return head.length == 12
                     && head[0] == 'R' && head[1] == 'I' && head[2] == 'F' && head[3] == 'F'
                     && head[8] == 'W' && head[9] == 'E' && head[10] == 'B' && head[11] == 'P';
@@ -441,21 +536,23 @@ public final class ChatImageSender {
     public static void onNewMessage(ChatMessage message) {
         if (pendingGroup != null) return;
         if (pendingPng == null) return;
-        if (!(message.body() instanceof ImageBody image)) return;
+        Object imageMatch;
+        if (!((imageMatch = message.body()) instanceof ImageBody)) return;
 
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         if (player == null || !message.sender().equals(player.getUUID())) return;
 
-        ChatImageCache.seed(image.image(), pendingPng);
+        ChatImageCache.seed(((ImageBody) imageMatch).image(), pendingPng);
         finish();
     }
     public static void onGroupMessage(com.november.mcphone.feature.chat.group.net.GroupReply.Message reply) {
         if (pendingPng == null || !java.util.Objects.equals(pendingGroup, reply.summary().id())
                 || !java.util.Objects.equals(pendingRequest, reply.request())) return;
-        var message = reply.summary().last().orElseThrow().message();
-        var player = Minecraft.getInstance().player;
-        if (player == null || !message.sender().equals(player.getUUID()) || !(message.body() instanceof ImageBody image)) return;
-        ChatImageCache.seed(image.image(), pendingPng); finish();
+        com.november.mcphone.feature.chat.ChatMessage message = reply.summary().last().orElseThrow(java.util.NoSuchElementException::new).message();
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
+        Object imageMatch_;
+        if (player == null || !message.sender().equals(player.getUUID()) || !((imageMatch_ = message.body()) instanceof ImageBody)) return;
+        ChatImageCache.seed(((ImageBody) imageMatch_).image(), pendingPng); finish();
     }
     public static void onGroupResult(com.november.mcphone.feature.chat.group.net.GroupReply.Result reply) {
         if (pendingRequest != null && pendingRequest.equals(reply.request())
@@ -487,7 +584,7 @@ public final class ChatImageSender {
     }
 
     private static void tell(String translationKey) {
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         // 与服务端拒收时同一个位置：动作栏。玩家的眼睛正看着手机屏幕，聊天框那一行他看不见
         if (player != null) com.november.mcphone.platform.PlayerAccess.message(player, Component.translatable(translationKey), true);
     }

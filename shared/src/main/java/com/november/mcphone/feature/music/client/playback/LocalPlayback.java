@@ -77,15 +77,15 @@ public final class LocalPlayback {
 
         // 预填就会读取音频，必须先包好；内部通道不经过其他模组注入的原版 Channel。
         TrackedStream tracked = new TrackedStream(stream);
-        try (var scope = device.enter()) {
+        try (LocalAudioDevice<?>.Scope scope = device.enter()) {
             LocalStreamChannel ch = LocalStreamChannel.open(tracked);
             channel = ch;
             LocalPlayback.stream = tracked;
             currentId = id;
 
             // 问原始的那一条：TrackedStream 不转发时长
-            durationMs = stream instanceof KnownDuration known
-                    ? known.durationMs() : KnownDuration.UNKNOWN;
+            durationMs = stream instanceof KnownDuration
+                    ? ((KnownDuration) stream).durationMs() : KnownDuration.UNKNOWN;
 
             applyVolume();
             ch.play();
@@ -105,7 +105,7 @@ public final class LocalPlayback {
     public static void pause() {
         if (state != State.PLAYING || channel == null) return;
 
-        try (var scope = device.enter()) {
+        try (LocalAudioDevice<?>.Scope scope = device.enter()) {
             channel.pause();
         } catch (RuntimeException failure) {
             playbackFailed(failure);
@@ -118,7 +118,7 @@ public final class LocalPlayback {
     public static void resume() {
         if (state != State.PAUSED || channel == null) return;
 
-        try (var scope = device.enter()) {
+        try (LocalAudioDevice<?>.Scope scope = device.enter()) {
             channel.unpause();
         } catch (RuntimeException failure) {
             playbackFailed(failure);
@@ -133,8 +133,8 @@ public final class LocalPlayback {
      * 内部通道回收声源和全部缓冲，TrackedStream 的关闭幂等，失败兜底也不会重复关闭原始流。
      */
     public static void stop() {
-        var previousChannel = channel;
-        var previousStream = stream;
+        LocalStreamChannel previousChannel = channel;
+        LocalPlayback.TrackedStream previousStream = stream;
         String previousId = currentId;
         // 先摘掉运行状态，关闭/上下文恢复失败也不能保留假 PLAYING 状态。
         channel = null;
@@ -145,7 +145,7 @@ public final class LocalPlayback {
         durationMs = KnownDuration.UNKNOWN;
         try {
             if (previousChannel != null && device != null) {
-                try (var scope = device.enter()) { previousChannel.close(); }
+                try (LocalAudioDevice<?>.Scope scope = device.enter()) { previousChannel.close(); }
             }
         } catch (RuntimeException failure) {
             MCphone.LOGGER.warn("[MCphone] 回收本地音频通道失败: {}", previousId, failure);
@@ -201,7 +201,7 @@ public final class LocalPlayback {
         if (state != State.PLAYING || channel == null) return;
 
         Ending ending;
-        try (var scope = device.enter()) {
+        try (LocalAudioDevice<?>.Scope scope = device.enter()) {
             channel.updateStream();
             applyVolume();
 
@@ -237,7 +237,7 @@ public final class LocalPlayback {
     public static void shutdown() {
         try { stop(); }
         finally {
-            var previous = device;
+            LocalAudioDevice<?> previous = device;
             device = null;
             try { if (previous != null) previous.close(); }
             catch (RuntimeException failure) { MCphone.LOGGER.warn("[MCphone] 关闭本地音频设备失败",failure); }

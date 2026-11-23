@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.gallery.client;
 
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.core.client.ClientPaths;
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.core.client.ImageCodec;
@@ -29,7 +31,7 @@ public final class PhotoLibrary {
     /** 只认 .png：截图目录里的东西都是原版写出来的 PNG，别的后缀多半是玩家自己放的别的东西 */
     private static final ImageFolder FOLDER = new ImageFolder(
             () -> ClientPaths.resolve(PhonePaths.SCREENSHOTS),
-            Set.of(".png"), THUMB_MAX_SIDE, MIN_CACHED, "photo_thumb_");
+            ImmutableSet.of(".png"), THUMB_MAX_SIDE, MIN_CACHED, "photo_thumb_");
 
     private PhotoLibrary() {}
 

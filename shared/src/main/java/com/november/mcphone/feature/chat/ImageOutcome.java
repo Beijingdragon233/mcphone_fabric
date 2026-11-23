@@ -32,13 +32,21 @@ public enum ImageOutcome implements ChatOutcome {
 
     @Override
     public Component message() {
-        return switch (this) {
-            case DISABLED     -> Component.translatable("mcphone.chat.image_disabled");
-            case TOO_FAST     -> Component.translatable("mcphone.chat.image_too_fast");
-            case BROKEN       -> Component.translatable("mcphone.chat.image_broken");
-            case STORE_FAILED -> Component.translatable("mcphone.chat.image_store_failed");
-            case TOO_BIG      -> Component.translatable("mcphone.chat.image_too_big");
-            case OK, NOTHING  -> null;
-        };
+        switch (this) {
+            case DISABLED:
+                return Component.translatable("mcphone.chat.image_disabled");
+            case TOO_FAST:
+                return Component.translatable("mcphone.chat.image_too_fast");
+            case BROKEN:
+                return Component.translatable("mcphone.chat.image_broken");
+            case STORE_FAILED:
+                return Component.translatable("mcphone.chat.image_store_failed");
+            case TOO_BIG:
+                return Component.translatable("mcphone.chat.image_too_big");
+            case OK:
+            case NOTHING:
+                return null;
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 }

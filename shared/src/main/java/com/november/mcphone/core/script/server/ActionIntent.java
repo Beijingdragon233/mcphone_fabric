@@ -32,7 +32,29 @@ import java.util.Locale;
  * @param kind    意图种类
  * @param payload 这一条意图的内容
  */
-public record ActionIntent(String kind, byte[] payload) {
+public final class ActionIntent {
+    private final String kind;
+    private final byte[] payload;
+
+    public String kind() { return kind; }
+
+    public byte[] payload() { return payload; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ActionIntent)) return false;
+        ActionIntent that = (ActionIntent) other;
+        return java.util.Objects.equals(this.kind, that.kind)
+                && java.util.Objects.equals(this.payload, that.payload);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(kind);
+        hash = 31 * hash + java.util.Objects.hashCode(payload);
+        return hash;
+    }
+
 
     public static final String ITEM_GIVE = "item.give";
     public static final String LOOT_ROLL = "loot.roll";
@@ -52,21 +74,29 @@ public record ActionIntent(String kind, byte[] payload) {
     /** 效果等级（amplifier）上限：原版网络格式是 8 位。 */
     public static final int MAX_AMPLIFIER = 255;
 
-    public ActionIntent {
+    public ActionIntent(String kind, byte[] payload) {
         if (kind == null || kind.isEmpty()) throw new IllegalArgumentException("ActionIntent.kind 不能为空");
         if (payload == null) payload = new byte[0];
         if (payload.length > 4096) throw new IllegalArgumentException("ActionIntent.payload 超过 4096 字节");
+        this.kind = kind;
+        this.payload = payload;
     }
 
     /** 这条意图需要哪个能力。没登记的种类返回 null（落地时会拒）。 */
     public String capability() {
-        return switch (kind) {
-            case ITEM_GIVE -> "item.give";
-            case LOOT_ROLL -> "loot.roll";
-            case ATTR_GRANT, ATTR_REVOKE -> "attr.grant";
-            case EFFECT_GIVE -> "effect.give";
-            default -> null;
-        };
+        switch (kind) {
+            case ITEM_GIVE:
+                return "item.give";
+            case LOOT_ROLL:
+                return "loot.roll";
+            case ATTR_GRANT:
+            case ATTR_REVOKE:
+                return "attr.grant";
+            case EFFECT_GIVE:
+                return "effect.give";
+            default:
+                return null;
+        }
     }
 
     // ---------------------------------------------------------------- 工厂
@@ -129,16 +159,150 @@ public record ActionIntent(String kind, byte[] payload) {
 
     // ---------------------------------------------------------------- 读
 
-    public record Give(String itemId, int count, String customName) {
+    public static final class Give {
+        private final String itemId;
+        private final int count;
+        private final String customName;
+
+        public Give(String itemId, int count, String customName) {
+            this.itemId = itemId;
+            this.count = count;
+            this.customName = customName;
+        }
+
+        public String itemId() { return itemId; }
+
+        public int count() { return count; }
+
+        public String customName() { return customName; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Give)) return false;
+            Give that = (Give) other;
+            return java.util.Objects.equals(this.itemId, that.itemId)
+                    && this.count == that.count
+                    && java.util.Objects.equals(this.customName, that.customName);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(itemId);
+            hash = 31 * hash + java.util.Objects.hashCode(count);
+            hash = 31 * hash + java.util.Objects.hashCode(customName);
+            return hash;
+        }
+
+        @Override public String toString() { return "Give[itemId=" + itemId + ", count=" + count + ", customName=" + customName + "]"; }
+
     }
 
-    public record Roll(String tableId) {
+    public static final class Roll {
+        private final String tableId;
+
+        public Roll(String tableId) {
+            this.tableId = tableId;
+        }
+
+        public String tableId() { return tableId; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Roll)) return false;
+            Roll that = (Roll) other;
+            return java.util.Objects.equals(this.tableId, that.tableId);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(tableId);
+            return hash;
+        }
+
+        @Override public String toString() { return "Roll[tableId=" + tableId + "]"; }
+
     }
 
-    public record Attr(String attributeId, double amount, int operation, String modifierKey) {
+    public static final class Attr {
+        private final String attributeId;
+        private final double amount;
+        private final int operation;
+        private final String modifierKey;
+
+        public Attr(String attributeId, double amount, int operation, String modifierKey) {
+            this.attributeId = attributeId;
+            this.amount = amount;
+            this.operation = operation;
+            this.modifierKey = modifierKey;
+        }
+
+        public String attributeId() { return attributeId; }
+
+        public double amount() { return amount; }
+
+        public int operation() { return operation; }
+
+        public String modifierKey() { return modifierKey; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Attr)) return false;
+            Attr that = (Attr) other;
+            return java.util.Objects.equals(this.attributeId, that.attributeId)
+                    && Double.compare(this.amount, that.amount) == 0
+                    && this.operation == that.operation
+                    && java.util.Objects.equals(this.modifierKey, that.modifierKey);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(attributeId);
+            hash = 31 * hash + java.util.Objects.hashCode(amount);
+            hash = 31 * hash + java.util.Objects.hashCode(operation);
+            hash = 31 * hash + java.util.Objects.hashCode(modifierKey);
+            return hash;
+        }
+
+        @Override public String toString() { return "Attr[attributeId=" + attributeId + ", amount=" + amount + ", operation=" + operation + ", modifierKey=" + modifierKey + "]"; }
+
     }
 
-    public record Effect(String effectId, int durationTicks, int amplifier) {
+    public static final class Effect {
+        private final String effectId;
+        private final int durationTicks;
+        private final int amplifier;
+
+        public Effect(String effectId, int durationTicks, int amplifier) {
+            this.effectId = effectId;
+            this.durationTicks = durationTicks;
+            this.amplifier = amplifier;
+        }
+
+        public String effectId() { return effectId; }
+
+        public int durationTicks() { return durationTicks; }
+
+        public int amplifier() { return amplifier; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Effect)) return false;
+            Effect that = (Effect) other;
+            return java.util.Objects.equals(this.effectId, that.effectId)
+                    && this.durationTicks == that.durationTicks
+                    && this.amplifier == that.amplifier;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(effectId);
+            hash = 31 * hash + java.util.Objects.hashCode(durationTicks);
+            hash = 31 * hash + java.util.Objects.hashCode(amplifier);
+            return hash;
+        }
+
+        @Override public String toString() { return "Effect[effectId=" + effectId + ", durationTicks=" + durationTicks + ", amplifier=" + amplifier + "]"; }
+
     }
 
     public Give asGive() {

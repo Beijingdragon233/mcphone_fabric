@@ -48,16 +48,16 @@ public final class SizeGate {
 
     /** 一个值过不过得了闸。过不了就中断本次调用。 */
     public static void check(Object value, String where) {
-        if (value instanceof CharSequence cs) {
+        if (value instanceof CharSequence) {
             // length() 对 ConsString 是 O(1)，不会因为量尺寸把它物化
-            if (cs.length() > MAX_STRING) {
+            if (((CharSequence) value).length() > MAX_STRING) {
                 throw HostError.invalid(
-                        where + ": 字符串 " + cs.length() + " 字符，上限 " + MAX_STRING);
+                        where + ": 字符串 " + ((CharSequence) value).length() + " 字符，上限 " + MAX_STRING);
             }
             return;
         }
-        if (value instanceof NativeArray arr) {
-            long n = arr.getLength();
+        if (value instanceof NativeArray) {
+            long n = ((NativeArray) value).getLength();
             if (n > MAX_ARRAY) {
                 throw HostError.invalid(
                         where + ": 数组 " + n + " 个元素，上限 " + MAX_ARRAY);
@@ -105,12 +105,12 @@ public final class SizeGate {
         }
 
         if ("Array.prototype".equals(holder)) {
-            if (!(thisObj instanceof NativeArray array)) {
+            if (!(thisObj instanceof NativeArray)) {
                 throw HostError.invalid(holder + "." + method + ": 只接受原生数组接收者");
             }
-            check(array, holder + "." + method);
+            check(((NativeArray) thisObj), holder + "." + method);
             checkAll(args, holder + "." + method + " 的参数");
-            checkArrayAmplification(method, array, args);
+            checkArrayAmplification(method, ((NativeArray) thisObj), args);
             return;
         }
 
@@ -141,53 +141,53 @@ public final class SizeGate {
         }
 
         Object source = args[0];
-        if (source instanceof CharSequence chars) {
-            if (chars.length() > MAX_ARRAY) tooLarge("Array.from", chars.length(), MAX_ARRAY);
+        if (source instanceof CharSequence) {
+            if (((CharSequence) source).length() > MAX_ARRAY) tooLarge("Array.from", ((CharSequence) source).length(), MAX_ARRAY);
             return;
         }
-        if (source instanceof NativeArray array) {
-            if (array.getPrototype() != ScriptableObject.getArrayPrototype(array)
-                    || array.has(SymbolKey.ITERATOR, array)) {
+        if (source instanceof NativeArray) {
+            if (((NativeArray) source).getPrototype() != ScriptableObject.getArrayPrototype(((NativeArray) source))
+                    || ((NativeArray) source).has(SymbolKey.ITERATOR, ((NativeArray) source))) {
                 throw HostError.invalid("Array.from: 不允许改写数组迭代器或原型");
             }
-            check(array, "Array.from 输入");
-            rejectIndexedAccessors(array, array.getLength(), "Array.from");
+            check(((NativeArray) source), "Array.from 输入");
+            rejectIndexedAccessors(((NativeArray) source), ((NativeArray) source).getLength(), "Array.from");
             return;
         }
-        if (!(source instanceof ScriptableObject object)) {
+        if (!(source instanceof ScriptableObject)) {
             // Number/boolean have no length and produce an empty array. Other host values are never
             // intentionally exposed to scripts, so fail closed rather than coercing them.
             if (source instanceof Number || source instanceof Boolean
                     || source instanceof java.math.BigInteger) return;
             throw HostError.invalid("Array.from: 只接受有界数组、字符串或普通类数组对象");
         }
-        if ("String".equals(object.getClassName())) {
-            if (object.getPrototype() != ScriptableObject.getClassPrototype(object, "String")
-                    || object.has(SymbolKey.ITERATOR, object)) {
+        if ("String".equals(((ScriptableObject) source).getClassName())) {
+            if (((ScriptableObject) source).getPrototype() != ScriptableObject.getClassPrototype(((ScriptableObject) source), "String")
+                    || ((ScriptableObject) source).has(SymbolKey.ITERATOR, ((ScriptableObject) source))) {
                 throw HostError.invalid("Array.from: 不允许改写字符串迭代器或原型");
             }
-            long length = stringReceiverLength(object, "Array.from 输入");
+            long length = stringReceiverLength(((ScriptableObject) source), "Array.from 输入");
             if (length > MAX_ARRAY) tooLarge("Array.from", length, MAX_ARRAY);
             return;
         }
 
         // hasProperty only inspects property presence; it does not execute a Symbol.iterator getter.
-        if (ScriptableObject.hasProperty(object, SymbolKey.ITERATOR)) {
+        if (ScriptableObject.hasProperty(((ScriptableObject) source), SymbolKey.ITERATOR)) {
             throw HostError.invalid("Array.from: 受限沙箱不接受 iterable/生成器输入");
         }
-        if (!"Object".equals(object.getClassName())
-                || (object.getPrototype() != null
-                && object.getPrototype() != ScriptableObject.getObjectPrototype(object))) {
+        if (!"Object".equals(((ScriptableObject) source).getClassName())
+                || (((ScriptableObject) source).getPrototype() != null
+                && ((ScriptableObject) source).getPrototype() != ScriptableObject.getObjectPrototype(((ScriptableObject) source)))) {
             throw HostError.invalid("Array.from: 类数组输入必须是普通对象");
         }
-        if (!object.has("length", object)) return;
-        Object getter = object.getGetterOrSetter("length", 0, false);
+        if (!((ScriptableObject) source).has("length", ((ScriptableObject) source))) return;
+        Object getter = ((ScriptableObject) source).getGetterOrSetter("length", 0, false);
         if (getter instanceof com.november.mcphone.internal.rhino.javascript.Callable) {
             throw HostError.invalid("Array.from: length 访问器不可用于放大型原生操作");
         }
-        long length = safeArrayLikeLength(object.get("length", object), "Array.from");
+        long length = safeArrayLikeLength(((ScriptableObject) source).get("length", ((ScriptableObject) source)), "Array.from");
         if (length > MAX_ARRAY) tooLarge("Array.from", length, MAX_ARRAY);
-        rejectIndexedAccessors(object, length, "Array.from");
+        rejectIndexedAccessors(((ScriptableObject) source), length, "Array.from");
     }
 
     /**
@@ -208,48 +208,48 @@ public final class SizeGate {
         Object list = args[1];
         if (list == null || list == com.november.mcphone.internal.rhino.javascript.Undefined.instance) return;
 
-        if (list instanceof NativeArray array) {
-            check(array, "Function.prototype.apply 的参数表");
-            rejectIndexedAccessors(array, array.getLength(), "Function.prototype.apply");
+        if (list instanceof NativeArray) {
+            check(((NativeArray) list), "Function.prototype.apply 的参数表");
+            rejectIndexedAccessors(((NativeArray) list), ((NativeArray) list).getLength(), "Function.prototype.apply");
             return;
         }
-        if (list instanceof CharSequence chars) {
-            if (chars.length() > MAX_ARRAY) tooLarge("Function.prototype.apply", chars.length(), MAX_ARRAY);
+        if (list instanceof CharSequence) {
+            if (((CharSequence) list).length() > MAX_ARRAY) tooLarge("Function.prototype.apply", ((CharSequence) list).length(), MAX_ARRAY);
             return;
         }
-        if (!(list instanceof ScriptableObject object)) {
+        if (!(list instanceof ScriptableObject)) {
             // 数字与布尔没有 length，apply 会当成零长度；其余宿主值一律不放行。
             if (list instanceof Number || list instanceof Boolean
                     || list instanceof java.math.BigInteger) return;
             throw HostError.invalid("Function.prototype.apply: 参数表只能是数组、字符串或普通类数组对象");
         }
-        if ("String".equals(object.getClassName())) {
-            long length = stringReceiverLength(object, "Function.prototype.apply 的参数表");
+        if ("String".equals(((ScriptableObject) list).getClassName())) {
+            long length = stringReceiverLength(((ScriptableObject) list), "Function.prototype.apply 的参数表");
             if (length > MAX_ARRAY) tooLarge("Function.prototype.apply", length, MAX_ARRAY);
             return;
         }
-        if (!"Object".equals(object.getClassName())
-                || (object.getPrototype() != null
-                && object.getPrototype() != ScriptableObject.getObjectPrototype(object))) {
+        if (!"Object".equals(((ScriptableObject) list).getClassName())
+                || (((ScriptableObject) list).getPrototype() != null
+                && ((ScriptableObject) list).getPrototype() != ScriptableObject.getObjectPrototype(((ScriptableObject) list)))) {
             throw HostError.invalid("Function.prototype.apply: 类数组参数表必须是普通对象");
         }
-        if (!object.has("length", object)) return; // 没有 length -> apply 当作零参数，不必拦
-        Object getter = object.getGetterOrSetter("length", 0, false);
+        if (!((ScriptableObject) list).has("length", ((ScriptableObject) list))) return; // 没有 length -> apply 当作零参数，不必拦
+        Object getter = ((ScriptableObject) list).getGetterOrSetter("length", 0, false);
         if (getter instanceof com.november.mcphone.internal.rhino.javascript.Callable) {
             throw HostError.invalid("Function.prototype.apply: length 访问器不可用于放大型原生操作");
         }
-        long length = safeArrayLikeLength(object.get("length", object), "Function.prototype.apply");
+        long length = safeArrayLikeLength(((ScriptableObject) list).get("length", ((ScriptableObject) list)), "Function.prototype.apply");
         if (length > MAX_ARRAY) tooLarge("Function.prototype.apply", length, MAX_ARRAY);
-        rejectIndexedAccessors(object, length, "Function.prototype.apply");
+        rejectIndexedAccessors(((ScriptableObject) list), length, "Function.prototype.apply");
     }
 
     private static long safeArrayLikeLength(Object value, String where) {
         if (value == null || value == Scriptable.NOT_FOUND
                 || value == com.november.mcphone.internal.rhino.javascript.Undefined.instance) return 0;
-        if (!(value instanceof Number number)) {
+        if (!(value instanceof Number)) {
             throw HostError.invalid(where + ": length 必须是数字数据属性");
         }
-        double raw = number.doubleValue();
+        double raw = ((Number) value).doubleValue();
         if (Double.isNaN(raw) || raw <= 0) return 0;
         if (!Double.isFinite(raw) || raw >= Long.MAX_VALUE) return Long.MAX_VALUE;
         return (long) Math.floor(raw);
@@ -265,16 +265,16 @@ public final class SizeGate {
     }
 
     private static long stringReceiverLength(Object value, String where) {
-        if (value instanceof CharSequence cs) {
-            check(cs, where);
-            return cs.length();
+        if (value instanceof CharSequence) {
+            check(((CharSequence) value), where);
+            return ((CharSequence) value).length();
         }
         // Rhino's NativeString is package-private. Its unforgeable Java-side class name is
         // exposed as getClassName(); its built-in length is fixed and non-configurable.
-        if (value instanceof Scriptable s && "String".equals(s.getClassName())) {
-            Object length = ScriptableObject.getProperty(s, "length");
-            if (length instanceof Number n) {
-                long result = n.longValue();
+        if (value instanceof Scriptable && "String".equals(((Scriptable) value).getClassName())) {
+            Object length = ScriptableObject.getProperty(((Scriptable) value), "length");
+            if (length instanceof Number) {
+                long result = ((Number) length).longValue();
                 if (result > MAX_STRING) tooLarge(where, result, MAX_STRING);
                 return result;
             }
@@ -322,7 +322,7 @@ public final class SizeGate {
             long total = length;
             if (args != null) {
                 for (Object arg : args) {
-                    total += arg instanceof NativeArray nested ? nested.getLength() : 1;
+                    total += arg instanceof NativeArray ? ((NativeArray) arg).getLength() : 1;
                     if (total > MAX_ARRAY) tooLarge("Array.concat", total, MAX_ARRAY);
                 }
             }
@@ -359,11 +359,11 @@ public final class SizeGate {
             Object value = array.get(i, array);
             if (value == Scriptable.NOT_FOUND) continue; // flat 会跳过空洞
 
-            if (depth > 0 && value instanceof NativeArray nested) {
+            if (depth > 0 && value instanceof NativeArray) {
                 if (nesting >= MAX_FLAT_DEPTH) {
                     throw HostError.invalid("Array.flat: 嵌套超过 " + MAX_FLAT_DEPTH + " 层");
                 }
-                total += flattenedLength(nested, depth - 1, path, nesting + 1);
+                total += flattenedLength(((NativeArray) value), depth - 1, path, nesting + 1);
             } else {
                 total++;
             }
@@ -380,12 +380,12 @@ public final class SizeGate {
         double value;
         if (raw == null) {
             value = 0;
-        } else if (raw instanceof Number number) {
-            value = number.doubleValue();
-        } else if (raw instanceof Boolean bool) {
-            value = bool ? 1 : 0;
-        } else if (raw instanceof CharSequence chars) {
-            String text = chars.toString().trim();
+        } else if (raw instanceof Number) {
+            value = ((Number) raw).doubleValue();
+        } else if (raw instanceof Boolean) {
+            value = ((Boolean) raw) ? 1 : 0;
+        } else if (raw instanceof CharSequence) {
+            String text = ((CharSequence) raw).toString().trim();
             if (text.isEmpty()) return 0;
             try {
                 value = Double.parseDouble(text);
@@ -409,8 +409,8 @@ public final class SizeGate {
                 throw HostError.invalid("Array.join: 数组访问器不可用于放大型原生操作");
             }
             Object value = array.get(i, array);
-            if (value instanceof NativeArray nested) {
-                total = addBounded(total, arrayStringCost(nested, seen, depth + 1), "Array.join");
+            if (value instanceof NativeArray) {
+                total = addBounded(total, arrayStringCost(((NativeArray) value), seen, depth + 1), "Array.join");
             } else {
                 total = addBounded(total, primitiveStringLength(value), "Array.join");
             }
@@ -422,46 +422,47 @@ public final class SizeGate {
     /** Conservative JSON output estimate without invoking script getters or toJSON hooks. */
     private static long jsonCost(Object value, Set<Object> seen, int depth) {
         if (value == null || value == com.november.mcphone.internal.rhino.javascript.Undefined.instance) return 4;
-        if (value instanceof CharSequence cs) return 2L + 6L * cs.length();
+        if (value instanceof CharSequence) return 2L + 6L * ((CharSequence) value).length();
         if (value instanceof Number || value instanceof Boolean || value instanceof java.math.BigInteger) return 32;
-        if (!(value instanceof ScriptableObject object)) return 32;
-        if (depth > 32 || !seen.add(object)) {
+        if (!(value instanceof ScriptableObject)) return 32;
+        if (depth > 32 || !seen.add(((ScriptableObject) value))) {
             throw HostError.invalid("JSON.stringify: 对象过深或存在循环");
         }
-        if (object.has("toJSON", object)) {
+        if (((ScriptableObject) value).has("toJSON", ((ScriptableObject) value))) {
             throw HostError.invalid("JSON.stringify: 不允许脚本 toJSON 回调");
         }
         long total = 2;
         int count = 0;
-        for (Object id : object.getIds()) {
+        for (Object id : ((ScriptableObject) value).getIds()) {
             if (++count > MAX_ARRAY) tooLarge("JSON.stringify 属性数", count, MAX_ARRAY);
-            Object getter = id instanceof Number n
-                    ? object.getGetterOrSetter(null, n.intValue(), false)
-                    : object.getGetterOrSetter(String.valueOf(id), 0, false);
+            Object getter = id instanceof Number
+                    ? ((ScriptableObject) value).getGetterOrSetter(null, ((Number) id).intValue(), false)
+                    : ((ScriptableObject) value).getGetterOrSetter(String.valueOf(id), 0, false);
             if (getter instanceof com.november.mcphone.internal.rhino.javascript.Callable) {
                 throw HostError.invalid("JSON.stringify: 不允许属性访问器");
             }
-            Object child = id instanceof Number n
-                    ? object.get(n.intValue(), object) : object.get(String.valueOf(id), object);
+            Object child = id instanceof Number
+                    ? ((ScriptableObject) value).get(((Number) id).intValue(), ((ScriptableObject) value)) : ((ScriptableObject) value).get(String.valueOf(id), ((ScriptableObject) value));
             total = addBounded(total, 8L + 6L * String.valueOf(id).length(), "JSON.stringify");
             total = addBounded(total, jsonCost(child, seen, depth + 1), "JSON.stringify");
         }
-        seen.remove(object);
+        seen.remove(((ScriptableObject) value));
         return total;
     }
 
     private static long primitiveStringLength(Object value) {
         if (value == null || value == com.november.mcphone.internal.rhino.javascript.Undefined.instance
                 || value == Scriptable.NOT_FOUND) return 0;
-        if (value instanceof CharSequence cs) return cs.length();
+        if (value instanceof CharSequence) return ((CharSequence) value).length();
         if (value instanceof Number || value instanceof Boolean || value instanceof java.math.BigInteger) return 32;
         throw HostError.invalid("放大型原生操作的参数只能是原语");
     }
 
     private static long nonNegativeInteger(Object[] args, int index, String where) {
         if (args == null || index >= args.length || args[index] == com.november.mcphone.internal.rhino.javascript.Undefined.instance) return 0;
-        if (!(args[index] instanceof Number number)) throw HostError.invalid(where + ": 长度必须是数字");
-        double value = number.doubleValue();
+        Object numberMatch;
+        if (!((numberMatch = args[index]) instanceof Number)) throw HostError.invalid(where + ": 长度必须是数字");
+        double value = ((Number) numberMatch).doubleValue();
         if (!Double.isFinite(value) || value < 0 || value != Math.rint(value)) {
             throw HostError.invalid(where + ": 长度必须是非负整数");
         }

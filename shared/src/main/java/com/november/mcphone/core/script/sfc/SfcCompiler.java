@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.core.script.engine.ClientScript;
 import com.november.mcphone.core.script.layout.MssError;
 import com.november.mcphone.core.script.layout.MssParser;
@@ -25,11 +27,75 @@ import java.util.regex.Pattern;
 public final class SfcCompiler {
 
     /** 编译产物。页面打开时用 {@code UiState.page(template.initialState())} 建状态，用 {@link TemplateInstance} 出树。 */
-    public record App(Manifest manifest, Stylesheet stylesheet, CompiledTemplate template) {
+    public static final class App {
+        private final Manifest manifest;
+        private final Stylesheet stylesheet;
+        private final CompiledTemplate template;
+
+        public App(Manifest manifest, Stylesheet stylesheet, CompiledTemplate template) {
+            this.manifest = manifest;
+            this.stylesheet = stylesheet;
+            this.template = template;
+        }
+
+        public Manifest manifest() { return manifest; }
+
+        public Stylesheet stylesheet() { return stylesheet; }
+
+        public CompiledTemplate template() { return template; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof App)) return false;
+            App that = (App) other;
+            return java.util.Objects.equals(this.manifest, that.manifest)
+                    && java.util.Objects.equals(this.stylesheet, that.stylesheet)
+                    && java.util.Objects.equals(this.template, that.template);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(manifest);
+            hash = 31 * hash + java.util.Objects.hashCode(stylesheet);
+            hash = 31 * hash + java.util.Objects.hashCode(template);
+            return hash;
+        }
+
+        @Override public String toString() { return "App[manifest=" + manifest + ", stylesheet=" + stylesheet + ", template=" + template + "]"; }
+
     }
 
     /** 一页的编译产物，没有清单。zip 形态（§11.2 形态二）的 app.vue 与 pages/*.vue 走这条。 */
-    public record Page(Stylesheet stylesheet, CompiledTemplate template) {
+    public static final class Page {
+        private final Stylesheet stylesheet;
+        private final CompiledTemplate template;
+
+        public Page(Stylesheet stylesheet, CompiledTemplate template) {
+            this.stylesheet = stylesheet;
+            this.template = template;
+        }
+
+        public Stylesheet stylesheet() { return stylesheet; }
+
+        public CompiledTemplate template() { return template; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Page)) return false;
+            Page that = (Page) other;
+            return java.util.Objects.equals(this.stylesheet, that.stylesheet)
+                    && java.util.Objects.equals(this.template, that.template);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(stylesheet);
+            hash = 31 * hash + java.util.Objects.hashCode(template);
+            return hash;
+        }
+
+        @Override public String toString() { return "Page[stylesheet=" + stylesheet + ", template=" + template + "]"; }
+
     }
 
     private static final Pattern GSON_POSITION = Pattern.compile("line (\\d+) column (\\d+)");
@@ -105,10 +171,9 @@ public final class SfcCompiler {
 
     /** 去掉 Gson 文案里的块内行列（前面已经换算成原文件行号，留着会自相矛盾）和写给开发者的提示。 */
     static String forAuthor(String message) {
-        String out = message.replaceAll("\\s*at line \\d+ column \\d+ path \\S*", "")
+        String out = Java8.strip(message.replaceAll("\\s*at line \\d+ column \\d+ path \\S*", "")
                 .replaceAll("\\s*Use JsonReader\\.set\\w+\\([^)]*\\) to accept malformed JSON", "")
-                .replaceAll("\\s*See https?://\\S+", "")
-                .strip();
+                .replaceAll("\\s*See https?://\\S+", ""));
         // Gson 的原因有时整句都是上面那几段，删完只剩冒号
         return out.endsWith("：") ? out + "JSON 写法不对，检查这一行的引号、逗号、冒号与括号" : out;
     }
@@ -120,15 +185,32 @@ public final class SfcCompiler {
     static int manifestLine(String json, PackageError e) {
         int open = firstNonBlankLine(json);
         List<Object> args = e.args();
-        String field = switch (e.code()) {
-            case E_PKG_BAD_FORMAT -> "format";
-            case E_PKG_BAD_ID, E_PKG_ID_TOO_LONG, E_PKG_RESERVED_NAMESPACE -> "id";
-            case E_PKG_BAD_VERSION -> "version";
-            case E_PKG_BAD_ICON -> "icon";
-            case E_PKG_BAD_TYPE, E_PKG_TEXT_TOO_LONG, E_PKG_TEXT_CONTROL_CHAR, E_PKG_MANIFEST_DUP_KEY ->
-                    args.isEmpty() ? null : String.valueOf(args.get(0));
-            default -> null;
-        };
+        String field;
+        switch (e.code()) {
+            case E_PKG_BAD_FORMAT:
+                field = "format";
+                break;
+            case E_PKG_BAD_ID:
+            case E_PKG_ID_TOO_LONG:
+            case E_PKG_RESERVED_NAMESPACE:
+                field = "id";
+                break;
+            case E_PKG_BAD_VERSION:
+                field = "version";
+                break;
+            case E_PKG_BAD_ICON:
+                field = "icon";
+                break;
+            case E_PKG_BAD_TYPE:
+            case E_PKG_TEXT_TOO_LONG:
+            case E_PKG_TEXT_CONTROL_CHAR:
+            case E_PKG_MANIFEST_DUP_KEY:
+                field = args.isEmpty() ? null : String.valueOf(args.get(0));
+                break;
+            default:
+                field = null;
+                break;
+        }
         if (e.code() == PackageError.Code.E_PKG_MANIFEST_SYNTAX) {
             Matcher m = GSON_POSITION.matcher(e.getMessage());
             if (m.find()) return Integer.parseInt(m.group(1));
@@ -178,7 +260,7 @@ public final class SfcCompiler {
     private static int firstNonBlankLine(String s) {
         String[] lines = s.split("\n", -1);
         for (int i = 0; i < lines.length; i++) {
-            if (!lines[i].isBlank()) return i + 1;
+            if (!Java8.isBlank(lines[i])) return i + 1;
         }
         return 1;
     }
@@ -186,7 +268,7 @@ public final class SfcCompiler {
     private static int lastNonBlankLine(String s) {
         String[] lines = s.split("\n", -1);
         for (int i = lines.length - 1; i >= 0; i--) {
-            if (!lines[i].isBlank()) return i + 1;
+            if (!Java8.isBlank(lines[i])) return i + 1;
         }
         return 1;
     }

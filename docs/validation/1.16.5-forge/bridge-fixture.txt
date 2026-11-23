@@ -1,0 +1,96 @@
+# MCphone 1.16.5 / Forge 36 phone-slot fixture, TEST ONLY
+# 2026-11-23 22:35:07
+
+==== MCphone 1.16.5 / Forge 36 phone-slot bridge fixture, TEST ONLY ====
+INFO  env.java | 1.8.0_514
+INFO  env.cwd | Y:\mod-ÊÖ»ú\.build-tools\forge1165-addons
+INFO  note | RS assertions go red on a jar without mcphone.refinedstorage.mixins.json; that is the missing bridge under test, not a fixture fault.
+
+-- class presence
+PASS  class.mcphone.PhoneItem | com.november.mcphone.core.PhoneItem
+PASS  class.mcphone.TerminalSlot | com.november.mcphone.feature.terminal.TerminalSlot
+PASS  class.mcphone.ModCapabilities | com.november.mcphone.core.ModCapabilities
+PASS  class.mcphone.PhoneWaystoneSelection | com.november.mcphone.compat.PhoneWaystoneSelection
+PASS  class.rs.PlayerSlot | com.refinedmods.refinedstorage.inventory.player.PlayerSlot
+PASS  class.waystones.PlayerWaystoneManager | net.blay09.mods.waystones.core.PlayerWaystoneManager
+PASS  class.mcphone.RefinedStorageIntegration | com.november.mcphone.feature.terminal.integration.refinedstorage.RefinedStorageIntegration
+PASS  class.mcphone.Ae2Integration | com.november.mcphone.feature.terminal.integration.ae2.Ae2Integration
+PASS  env.fakePlayer | uuid=41c82c87-7afb-4024-ba57-13d2c99cae77 world=minecraft:overworld
+
+-- phone provisioning
+PASS  phone.item | mcphone:phone
+PASS  phone.carried.positive | isCarriedBy=true with the phone in slot 0
+PASS  phone.carried.negative | isCarriedBy=false with an empty inventory
+
+-- TerminalSlot live-object semantics
+PASS  terminal.capability | PhonePlayerData capability token resolved on the server
+PASS  terminal.empty | TerminalSlot.get() is EMPTY before any set
+PASS  terminal.live | set/get round-trips the same ItemStack instance (writes stay on the real object)
+PASS  terminal.markChanged.identity | markChanged() keeps the live instance
+PASS  terminal.copy.control | control: ItemStack#copy() really produces a different instance
+
+-- Refined Storage sentinel bridge
+PASS  rs.sentinelConstant | RefinedStorageIntegration.PHONE_SLOT=2147483647 matches 2147483647
+PASS  rs.identity.realTerminal | refinedstorage:creative_wireless_crafting_monitor: getStackFromSlot(sentinel) returned the identical live ItemStack
+PASS  rs.noInventoryLock.refinedstorage.creative_wireless_crafting_monitor | refinedstorage:creative_wireless_crafting_monitor: getSlotIdInPlayerInventory()=-1
+PASS  rs.identity.vanillaStick | minecraft:stick: getStackFromSlot(sentinel) returned the identical live ItemStack
+PASS  rs.noInventoryLock.minecraft.stick | minecraft:stick: getSlotIdInPlayerInventory()=-1
+PASS  rs.identity.emptyTerminal | sentinel with the phone but no terminal returns EMPTY
+PASS  rs.gate.noPhone | sentinel without the phone returns EMPTY
+PASS  rs.noInventoryLock.noPhone | no inventory lock still reports -1 without the phone
+PASS  rs.regression.slot5.stack | PlayerSlot(5) returns the live slot-5 stack
+PASS  rs.regression.slot5.noLock | PlayerSlot(5).getSlotIdInPlayerInventory()=5
+PASS  rs.wire.slot | wire round-trip keeps slot=2147483647
+PASS  rs.wire.curio | wire round-trip keeps curioSlot=null
+PASS  rs.wire.noLock | decoded sentinel still reports no inventory lock
+PASS  rs.wire.identity | decoded sentinel returns the same live terminal
+PASS  rs.wire.exhausted | wire payload fully consumed
+
+-- Waystones findWarpItem gated on the phone menu
+PASS  waystones.warpStone | waystones:warp_stone
+PASS  waystones.menus | constructed com.november.mcphone.compat.PhoneWaystoneSelection and net.blay09.mods.waystones.container.WaystoneSelectionContainer
+PASS  waystones.phoneMenu.withPhone | findWarpItem returned a warp stone for the phone menu
+PASS  waystones.phoneMenu.withoutPhone | phone menu without the phone returns EMPTY
+PASS  waystones.ordinaryMenu.withPhone | ordinary Waystones menu does not get the phone shortcut
+PASS  waystones.ordinaryMenu.withoutPhone | ordinary menu control returns EMPTY
+INFO  waystones.warpModeOverload | findWarpItem(Entity, WarpMode) -> <empty>
+
+-- AE2 wireless host and terminal container (optional)
+PASS  ae2.host | com.november.mcphone.feature.terminal.integration.ae2.PhoneWirelessHost
+PASS  ae2.claims | appliedenergistics2:wireless_terminal is claimed by Ae2Integration
+PASS  ae2.host.construct | PhoneWirelessHost built around appliedenergistics2:wireless_terminal x1
+PASS  ae2.host.live | PhoneWirelessHost.getItemStack() is the live terminal instance
+PASS  ae2.host.stillInstalled | stillInstalled()=true with phone and terminal installed
+PASS  ae2.container.construct | WirelessTermContainer constructed with slot sentinel 2147483647 without throwing
+PASS  ae2.container.ensure | ensureGuiItemIsInSlot(host, 2147483647) accepts the live phone terminal
+INFO  ae2.container.valid | isValidContainer=false
+PASS  ae2.host.detached | stillInstalled()=false once the phone leaves the inventory
+PASS  ae2.container.detached | container rejects the terminal once the phone is gone
+
+-- AE2WTLib REDUX 4.0.2 wireless crafting terminal (optional)
+PASS  wtlib.item | ae2wtlib:wireless_crafting_terminal
+PASS  wtlib.claims | ae2wtlib:wireless_crafting_terminal is claimed by Ae2Integration
+PASS  wtlib.host.construct | WCTGuiObject(handler, stack, player, -1)
+PASS  wtlib.host.live | WCTGuiObject.getItemStack() is the live phone terminal
+INFO  wtlib.host.slot | getInventorySlot=-1
+PASS  wtlib.facade | empty IStorageGrid installed on the unlinked WCTGuiObject
+PASS  wtlib.container.construct | WirelessCraftingTerminalContainer built for slot -1 without throwing
+PASS  wtlib.container.identity | container.getTerminalStack() is the live phone terminal
+PASS  wtlib.stillValid.withPhone | stillValid=true with the phone and terminal installed
+PASS  wtlib.stillValid.withoutPhone | stillValid=false once the phone leaves the inventory
+PASS  wtlib.stillValid.replacement | stillValid=false when the phone slot holds a different stack
+PASS  wtlib.stillValid.restored | stillValid=true again once the original terminal is back
+
+-- AE2WTLib ordinary inventory slot control
+PASS  wtlib.facade | empty IStorageGrid installed on the unlinked WCTGuiObject
+PASS  wtlib.ordinary.present | ordinary inventory slot 9 keeps stillValid=true
+PASS  wtlib.ordinary.removed | ordinary inventory slot 9 returns false once the stack is gone
+INFO  wtlib.openFromStack | not driven through NetworkHooks: a FakePlayer has no real connection; direct container identity and stillValid cover the bridge
+
+-- AE2WTLib WUT without a stored terminal
+INFO  wtlib.wut.current | getCurrentTerminal="noTerminal"
+PASS  wtlib.wut.empty.open | Ae2Integration.open returns false for a WUT with no stored terminal
+PASS  wtlib.wut.empty.noChange | the fake player's menu is unchanged when an empty WUT opens nothing
+
+FIXTURE_SUMMARY pass=63 fail=0 skip=0
+FIXTURE_RESULT PASS

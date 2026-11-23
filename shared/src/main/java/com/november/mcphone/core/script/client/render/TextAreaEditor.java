@@ -10,7 +10,36 @@ import java.util.function.Supplier;
 
 /** Bounded multiline editing shared by every target. Positions and limits use UTF-16 boundaries. */
 final class TextAreaEditor {
-    record Line(int start, int end) {}
+    static final class Line {
+        private final int start;
+        private final int end;
+
+        Line(int start, int end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        public int start() { return start; }
+
+        public int end() { return end; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Line)) return false;
+            Line that = (Line) other;
+            return this.start == that.start
+                    && this.end == that.end;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(start);
+            hash = 31 * hash + java.util.Objects.hashCode(end);
+            return hash;
+        }
+
+        @Override public String toString() { return "Line[start=" + start + ", end=" + end + "]"; }
+}
 
     private final TextMeasure measure;
     private final Predicate<String> commit;
@@ -98,16 +127,21 @@ final class TextAreaEditor {
     void key(int key, boolean control, boolean shift, Supplier<String> clipboard, Consumer<String> copy) {
         if (control) {
             switch (key) {
-                case 65 -> { anchor = 0; cursor = value.length(); reveal(); return; }
-                case 67 -> { if (cursor != anchor) copy.accept(selected()); return; }
-                case 88 -> { if (cursor != anchor) { copy.accept(selected()); insert(""); } return; }
-                case 86 -> { insert(clipboard.get()); return; }
-                default -> { }
+                case 65: { anchor = 0; cursor = value.length(); reveal(); return; }
+                case 67: { if (cursor != anchor) copy.accept(selected()); return; }
+                case 88: { if (cursor != anchor) { copy.accept(selected()); insert(""); } return; }
+                case 86: { insert(clipboard.get()); return; }
+                default: { }
+                    break;
             }
         }
         switch (key) {
-            case 257, 335 -> insert("\n");
-            case 259, 261 -> {
+            case 257:
+            case 335:
+                insert("\n");
+                break;
+            case 259:
+            case 261: {
                 int direction = key == 259 ? -1 : 1;
                 int start = Math.min(cursor, anchor), end = Math.max(cursor, anchor);
                 if (start == end) {
@@ -116,20 +150,28 @@ final class TextAreaEditor {
                 }
                 replace(start, end, "");
             }
-            case 262, 263 -> {
+                break;
+            case 262:
+            case 263: {
                 int direction = key == 263 ? -1 : 1;
                 int next = !shift && cursor != anchor ? (direction < 0 ? Math.min(cursor, anchor) : Math.max(cursor, anchor))
                         : control ? word(direction) : step(cursor, direction);
                 move(next, shift);
                 preferredX = -1;
             }
-            case 268, 269 -> {
+                break;
+            case 268:
+            case 269: {
                 Line line = lines.get(cursorLine());
                 move(control ? (key == 268 ? 0 : value.length()) : (key == 268 ? line.start : line.end), shift,
                         !control && key == 269);
                 preferredX = -1;
             }
-            case 264, 265, 266, 267 -> {
+                break;
+            case 264:
+            case 265:
+            case 266:
+            case 267: {
                 int row = cursorLine();
                 if (preferredX < 0) preferredX = measure.width(value.substring(lines.get(row).start, cursor));
                 int distance = key == 266 || key == 267 ? Math.max(1, height / lineHeight()) : 1;
@@ -137,7 +179,9 @@ final class TextAreaEditor {
                 int position = atX(lines.get(next), preferredX);
                 move(position, shift, position == lines.get(next).end);
             }
-            default -> { }
+                break;
+            default: { }
+                break;
         }
     }
 

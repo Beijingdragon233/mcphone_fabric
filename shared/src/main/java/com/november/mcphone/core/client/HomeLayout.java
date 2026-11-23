@@ -114,7 +114,42 @@ public final class HomeLayout {
     }
 
     /** 主屏插入线。index 是移除被拖桌面项后的下标。文件夹拖出用 from = -1，桌面项仍在原位。 */
-    public record Insertion(int index, double x, double y) {}
+    public static final class Insertion {
+        private final int index;
+        private final double x;
+        private final double y;
+
+        public Insertion(int index, double x, double y) {
+            this.index = index;
+            this.x = x;
+            this.y = y;
+        }
+
+        public int index() { return index; }
+
+        public double x() { return x; }
+
+        public double y() { return y; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Insertion)) return false;
+            Insertion that = (Insertion) other;
+            return this.index == that.index
+                    && Double.compare(this.x, that.x) == 0
+                    && Double.compare(this.y, that.y) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(index);
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            return hash;
+        }
+
+        @Override public String toString() { return "Insertion[index=" + index + ", x=" + x + ", y=" + y + "]"; }
+}
 
     /**
      * 找到最靠近拖动图标中心的插入线。每行有左边、图标之间和右边的落点。
@@ -209,9 +244,102 @@ public final class HomeLayout {
         return slot;
     }
 
-    public record FolderGrid(int left, int titleY, int top, int footerY, int columns, int rows,
-                             int pitch, int rowHeight, int iconSize, int panelWidth, int panelHeight,
-                             int titleInset, float labelScale) {
+    public static final class FolderGrid {
+        private final int left;
+        private final int titleY;
+        private final int top;
+        private final int footerY;
+        private final int columns;
+        private final int rows;
+        private final int pitch;
+        private final int rowHeight;
+        private final int iconSize;
+        private final int panelWidth;
+        private final int panelHeight;
+        private final int titleInset;
+        private final float labelScale;
+
+        public FolderGrid(int left, int titleY, int top, int footerY, int columns, int rows, int pitch, int rowHeight, int iconSize, int panelWidth, int panelHeight, int titleInset, float labelScale) {
+            this.left = left;
+            this.titleY = titleY;
+            this.top = top;
+            this.footerY = footerY;
+            this.columns = columns;
+            this.rows = rows;
+            this.pitch = pitch;
+            this.rowHeight = rowHeight;
+            this.iconSize = iconSize;
+            this.panelWidth = panelWidth;
+            this.panelHeight = panelHeight;
+            this.titleInset = titleInset;
+            this.labelScale = labelScale;
+        }
+
+        public int left() { return left; }
+
+        public int titleY() { return titleY; }
+
+        public int top() { return top; }
+
+        public int footerY() { return footerY; }
+
+        public int columns() { return columns; }
+
+        public int rows() { return rows; }
+
+        public int pitch() { return pitch; }
+
+        public int rowHeight() { return rowHeight; }
+
+        public int iconSize() { return iconSize; }
+
+        public int panelWidth() { return panelWidth; }
+
+        public int panelHeight() { return panelHeight; }
+
+        public int titleInset() { return titleInset; }
+
+        public float labelScale() { return labelScale; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof FolderGrid)) return false;
+            FolderGrid that = (FolderGrid) other;
+            return this.left == that.left
+                    && this.titleY == that.titleY
+                    && this.top == that.top
+                    && this.footerY == that.footerY
+                    && this.columns == that.columns
+                    && this.rows == that.rows
+                    && this.pitch == that.pitch
+                    && this.rowHeight == that.rowHeight
+                    && this.iconSize == that.iconSize
+                    && this.panelWidth == that.panelWidth
+                    && this.panelHeight == that.panelHeight
+                    && this.titleInset == that.titleInset
+                    && Float.compare(this.labelScale, that.labelScale) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(left);
+            hash = 31 * hash + java.util.Objects.hashCode(titleY);
+            hash = 31 * hash + java.util.Objects.hashCode(top);
+            hash = 31 * hash + java.util.Objects.hashCode(footerY);
+            hash = 31 * hash + java.util.Objects.hashCode(columns);
+            hash = 31 * hash + java.util.Objects.hashCode(rows);
+            hash = 31 * hash + java.util.Objects.hashCode(pitch);
+            hash = 31 * hash + java.util.Objects.hashCode(rowHeight);
+            hash = 31 * hash + java.util.Objects.hashCode(iconSize);
+            hash = 31 * hash + java.util.Objects.hashCode(panelWidth);
+            hash = 31 * hash + java.util.Objects.hashCode(panelHeight);
+            hash = 31 * hash + java.util.Objects.hashCode(titleInset);
+            hash = 31 * hash + java.util.Objects.hashCode(labelScale);
+            return hash;
+        }
+
+        @Override public String toString() { return "FolderGrid[left=" + left + ", titleY=" + titleY + ", top=" + top + ", footerY=" + footerY + ", columns=" + columns + ", rows=" + rows + ", pitch=" + pitch + ", rowHeight=" + rowHeight + ", iconSize=" + iconSize + ", panelWidth=" + panelWidth + ", panelHeight=" + panelHeight + ", titleInset=" + titleInset + ", labelScale=" + labelScale + "]"; }
+
         public static final int PANEL_RADIUS = 10;
         private static final int TITLE_GAP = 14;
 

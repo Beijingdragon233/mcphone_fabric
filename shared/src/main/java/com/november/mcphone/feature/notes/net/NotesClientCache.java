@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.notes.net;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.notes.Note;
 import com.november.mcphone.feature.notes.NoteSummary;
 
@@ -13,7 +15,7 @@ public final class NotesClientCache {
 
     private NotesClientCache() {}
 
-    private static List<NoteSummary> summaries = List.of();
+    private static List<NoteSummary> summaries = ImmutableList.of();
 
     /** 当前打开的那条笔记；null 表示没有打开任何一条 */
     private static Note openNote;
@@ -26,7 +28,7 @@ public final class NotesClientCache {
     }
 
     static void setSummaries(List<NoteSummary> list) {
-        summaries = List.copyOf(list);
+        summaries = ImmutableList.copyOf(list);
     }
 
     public static Note getOpenNote() {
@@ -57,7 +59,7 @@ public final class NotesClientCache {
 
     /** 退出世界时清空，否则换服会先闪出上一个服务器的笔记 */
     public static void clear() {
-        summaries = List.of();
+        summaries = ImmutableList.of();
         closeNote();
     }
 }

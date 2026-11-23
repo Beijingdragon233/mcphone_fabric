@@ -1,5 +1,10 @@
 package com.november.mcphone.core.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.core.client.home.HomeArrangement;
@@ -424,12 +429,20 @@ public final class PhoneScreen extends PhoneScreenBase {
             return;
         }
 
-        UUID target = switch (mode) {
-            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> chatConversation.peer();
-            // 选照片那一页也收：人已经在"挑一张"的语境里了，拖进来是同一个意思
-            case CHAT_PHOTO_PICKER -> pendingConversationPeer;
-            default -> null;
-        };
+        UUID target;
+        switch (mode) {
+            case CHAT_CONVERSATION:
+            case CHAT_GROUP_CONVERSATION:
+                target = chatConversation.peer();
+                break;
+                // 选照片那一页也收：人已经在"挑一张"的语境里了，拖进来是同一个意思
+            case CHAT_PHOTO_PICKER:
+                target = pendingConversationPeer;
+                break;
+            default:
+                target = null;
+                break;
+        }
         if (target == null) return;
 
         if (!ServerConfig.clientAllowChatImages()) {
@@ -483,7 +496,7 @@ public final class PhoneScreen extends PhoneScreenBase {
      * 复制文件在后台线程做，完了回主线程重扫目录——玩家看到的是它们一张张出现在格子里。
      */
     private void importStickers(List<Path> files) {
-        List<Path> pictures = files.stream().filter(PhoneScreen::looksLikeImage).toList();
+        List<Path> pictures = files.stream().filter(PhoneScreen::looksLikeImage).collect(Java8Collections.toList());
         if (pictures.isEmpty()) {
             tellPlayer("mcphone.chat.drop_not_image");
             return;
@@ -614,11 +627,11 @@ public final class PhoneScreen extends PhoneScreenBase {
         updateAddonContext();
         IPhonePage page = addonHost.page();
         if (page == null) { leaveFailedAddon(); return; }
-        var viewport = addonViewport();
+        com.november.mcphone.api.client.ui.PhoneViewport viewport = addonViewport();
         PhoneCanvas canvas = new PhoneCanvas(g, font,
                 viewport.x(), viewport.y(), viewport.width(), viewport.height(),
                 mouseX, mouseY, partialTick, ThemeStyle.INSTANCE);
-        try (var scope = new PhonePoseScope(g.pose())) {
+        try (PhonePoseScope scope = new PhonePoseScope(g.pose())) {
             canvas.clipped(viewport.x(), viewport.y(), viewport.width(), viewport.height(),
                     () -> callPage(p -> { p.render(canvas); return true; }));
         } finally {
@@ -924,7 +937,7 @@ public final class PhoneScreen extends PhoneScreenBase {
             changelogChecked = true;
             changelogRecord = ChangelogClient.pendingRecord();
             if (changelogRecord != null) {
-                changelogDialog.open(List.of(Changelog.current(ChangelogClient.releases(), MCphone.getVersion())));
+                changelogDialog.open(ImmutableList.of(Changelog.current(ChangelogClient.releases(), MCphone.getVersion())));
                 changelogPopup = true;
             }
         }
@@ -975,116 +988,183 @@ public final class PhoneScreen extends PhoneScreenBase {
         PhoneChassis.drawStatusBar(g, font, phoneLeft, phoneTop, metrics, !folderOpen);
 
         switch (mode) {
-            case CHANGELOG -> changelogPage.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, font, false, mouseX, mouseY);
-            case MAIN -> {
+            case CHANGELOG:
+                changelogPage.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, font, false, mouseX, mouseY);
+                break;
+            case MAIN: {
                 if (folderOpen) {
                     homeFolder.render(g, phoneLeft, phoneTop, metrics, font, mouseX, mouseY, partialTick, folderBackdrop);
                 } else {
                     homeGrid.render(g, phoneLeft, phoneTop, metrics, font, nowMs, mouseX, mouseY, partialTick);
                     if (!changelogPopup) {
-                        var window = Minecraft.getInstance().getWindow();
+                        com.mojang.blaze3d.platform.Window window = Minecraft.getInstance().getWindow();
                         folderBackdrop.rememberDesktop(phoneLeft, phoneTop, metrics, scale,
                                 window.getGuiScaledWidth(), window.getGuiScaledHeight());
                     }
                 }
             }
-            case SETTINGS          -> {
+                break;
+            case SETTINGS: {
                 buildSettingItems();
                 settingsList.render(g, phoneLeft, phoneTop,
                         sw, sh, statusH, navH,
                         mouseX, mouseY, font);
             }
-            case WALLPAPER_PICKER  -> wallpaperPicker.render(g, phoneLeft, phoneTop,
+                break;
+            case WALLPAPER_PICKER:
+                wallpaperPicker.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case FONT_COLOR_PICKER -> fontColorPicker.render(g, phoneLeft, phoneTop,
+                break;
+            case FONT_COLOR_PICKER:
+                fontColorPicker.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case UI_SCALE          -> uiScalePage.render(g, phoneLeft, phoneTop,
+                break;
+            case UI_SCALE:
+                uiScalePage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font, metrics, this.width, this.height);
-            case HUD               -> hudPage.render(g, phoneLeft, phoneTop,
+                break;
+            case HUD:
+                hudPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case APP_MANAGER       -> appManagerPage.render(g, phoneLeft, phoneTop,
+                break;
+            case APP_MANAGER:
+                appManagerPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, partialTick, font);
-            case APP_MANAGER_DETAIL -> appManagerDetail.render(g, phoneLeft, phoneTop,
+                break;
+            case APP_MANAGER_DETAIL:
+                appManagerDetail.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, partialTick, font);
-            case MUSIC_PLAYER      -> musicPage.render(g, phoneLeft, phoneTop,
+                break;
+            case MUSIC_PLAYER:
+                musicPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case APP_STORE         -> appStore.render(g, phoneLeft, phoneTop,
+                break;
+            case APP_STORE:
+                appStore.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case APP_DETAIL        -> appDetail.render(g, phoneLeft, phoneTop,
+                break;
+            case APP_DETAIL:
+                appDetail.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case ADDON_PAGE        -> renderAddonPage(g, mouseX, mouseY, partialTick);
-            case COMPANION_APPS    -> companionApps.render(g, phoneLeft, phoneTop,
+                break;
+            case ADDON_PAGE:
+                renderAddonPage(g, mouseX, mouseY, partialTick);
+                break;
+            case COMPANION_APPS:
+                companionApps.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case ABOUT             -> aboutPage.render(g, phoneLeft, phoneTop,
+                break;
+            case ABOUT:
+                aboutPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH, font);
-            case GALLERY           -> gallery.render(g, phoneLeft, phoneTop,
+                break;
+            case GALLERY:
+                gallery.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case DEVICE_NAME       -> deviceNameEditor.render(g, phoneLeft, phoneTop,
+                break;
+            case DEVICE_NAME:
+                deviceNameEditor.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, partialTick, font);
-            case VAULT             -> vaultPage.render(g, phoneLeft, phoneTop,
+                break;
+            case VAULT:
+                vaultPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case AUTHOR_KEY        -> authorKeyPage.render(g, phoneLeft, phoneTop,
+                break;
+            case AUTHOR_KEY:
+                authorKeyPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case CHAT              -> chatList.render(g, phoneLeft, phoneTop,
+                break;
+            case CHAT:
+                chatList.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case CHAT_GROUP_CREATE -> {
+                break;
+            case CHAT_GROUP_CREATE: {
                 chatGroupCreate.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, font, partialTick);
                 UUID created = chatGroupCreate.consumeCreated();
                 if (created != null) { pendingConversationPeer = created; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
             }
-            case CHAT_GROUP_DETAILS -> {
+                break;
+            case CHAT_GROUP_DETAILS: {
                 chatGroupDetails.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, font);
                 if (chatGroupDetails.consumeFinished()) navigateTo(chatReturnMode);
             }
-            case CHAT_PROFILE, CHAT_PLAYER_PROFILE -> chatProfile.render(g,phoneLeft,phoneTop,sw,sh,statusH,navH,mouseX,mouseY,font,partialTick);
-            case CHAT_CONTACTS     -> chatContacts.render(g, phoneLeft, phoneTop,
+                break;
+            case CHAT_PROFILE:
+            case CHAT_PLAYER_PROFILE:
+                chatProfile.render(g,phoneLeft,phoneTop,sw,sh,statusH,navH,mouseX,mouseY,font,partialTick);
+                break;
+            case CHAT_CONTACTS:
+                chatContacts.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH, mouseX, mouseY, font, partialTick);
-            case CHAT_NEW_FRIENDS  -> chatNewFriends.render(g, phoneLeft, phoneTop,
+                break;
+            case CHAT_NEW_FRIENDS:
+                chatNewFriends.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH, mouseX, mouseY, font);
-            case CHAT_ADD_CONTACT  -> chatAddContact.render(g, phoneLeft, phoneTop,
+                break;
+            case CHAT_ADD_CONTACT:
+                chatAddContact.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> {
+                break;
+            case CHAT_CONVERSATION:
+            case CHAT_GROUP_CONVERSATION: {
                 if (mode == Mode.CHAT_GROUP_CONVERSATION && com.november.mcphone.feature.chat.group.net.GroupClientCache.removed(pendingConversationPeer)) {
                     tellPlayer("mcphone.chat.group.removed"); navigateTo(chatReturnMode);
                 } else chatConversation.render(g, phoneLeft, phoneTop, sw, sh, statusH, navH, mouseX, mouseY, partialTick, font);
             }
-            case CHAT_PHOTO_PICKER -> chatPhotoPicker.render(g, phoneLeft, phoneTop,
+                break;
+            case CHAT_PHOTO_PICKER:
+                chatPhotoPicker.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case CHAT_STICKER_PICKER -> chatStickerPicker.render(g, phoneLeft, phoneTop,
+                break;
+            case CHAT_STICKER_PICKER:
+                chatStickerPicker.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case NOTES             -> notesList.render(g, phoneLeft, phoneTop,
+                break;
+            case NOTES:
+                notesList.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH, mouseX, mouseY, font);
-            case CLOCK             -> ClockPage.render(g, phoneLeft, phoneTop,
+                break;
+            case CLOCK:
+                ClockPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH, font);
-            case WEATHER           -> WeatherPage.render(g, phoneLeft, phoneTop,
+                break;
+            case WEATHER:
+                WeatherPage.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH, font);
-            case READER            -> bookList.render(g, phoneLeft, phoneTop,
+                break;
+            case READER:
+                bookList.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, partialTick, font);
-            case TXT_BOOK          -> txtReader.render(g, phoneLeft, phoneTop,
+                break;
+            case TXT_BOOK:
+                txtReader.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, font);
-            case NOTE_EDIT         -> noteEditor.render(g, phoneLeft, phoneTop,
+                break;
+            case NOTE_EDIT:
+                noteEditor.render(g, phoneLeft, phoneTop,
                     sw, sh, statusH, navH,
                     mouseX, mouseY, partialTick, font);
+                break;
         }
 
         PhoneChassis.drawNavBar(g, font, phoneLeft, phoneTop, metrics, mouseX, mouseY, !folderOpen);
@@ -1151,7 +1231,7 @@ public final class PhoneScreen extends PhoneScreenBase {
     private String currentDeviceNameLabel() {
         if (minecraft == null || minecraft.player == null) return "";
         String name = PhoneItemData.getDeviceName(location.resolve(minecraft.player));
-        return (name == null || name.isBlank())
+        return (name == null || Java8.isBlank(name))
                 ? Component.translatable("mcphone.settings.device_name_unset").getString()
                 : name;
     }
@@ -1333,86 +1413,87 @@ public final class PhoneScreen extends PhoneScreenBase {
         }
 
         switch (PhoneChassis.hitTestNavBar(mx, my, phoneLeft, phoneTop, metrics)) {
-            case BACK -> {
+            case BACK: {
                 // 主屏上按返回不关机
                 goBackOneLevel();
                 return true;
             }
-            case HOME -> {
+            case HOME: {
                 homeFolder.close();
                 navigateTo(Mode.MAIN);
                 return true;
             }
-            case TASKS -> {
+            case TASKS: {
                 if (hudMode) PhoneHud.showFullscreen(this);
                 else PhoneHud.showAsHud(this);
                 return true;
             }
-            case NONE -> { }
+            case NONE: { }
+                break;
         }
 
-        return switch (mode) {
-            case CHANGELOG -> { changelogPage.mouseClicked(mx, my, button); yield true; }
-            case MAIN -> {
+        switch (mode) {
+            case CHANGELOG: { changelogPage.mouseClicked(mx, my, button); return true; }
+            case MAIN: {
                 if (inHomeFolder()) {
                     homeFolder.click(mx, my, button);
-                    yield true;
+                    return true;
                 }
-                if (homeGrid.mousePressed(mx, my)) yield true;
+                if (homeGrid.mousePressed(mx, my)) return true;
 
                 // 机身外的已经在上面收走了，到这儿必是机身内的空白处：横着拖是翻页
                 homeGrid.pressBlank(mx, my);
-                yield true;
+                return true;
             }
-            case SETTINGS -> {
+            case SETTINGS: {
                 settingsList.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case WALLPAPER_PICKER -> {
+            case WALLPAPER_PICKER: {
                 if (wallpaperPicker.mouseClicked(button)) {
                     navigateTo(Mode.SETTINGS);
                 }
-                yield true;
+                return true;
             }
-            case UI_SCALE -> {
+            case UI_SCALE: {
                 uiScalePage.mouseClicked(mx, my);
-                yield true;
+                return true;
             }
-            case HUD -> {
+            case HUD: {
                 hudPage.mouseClicked(mx, my);
                 // 摆位置要占整个窗口，开不进这块屏幕里，见 PhoneHudEditor。
                 // 把尺寸带过去：拖的那个框画的就是手上这一台，平板比手机大一圈
                 if (hudPage.consumeEditRequest() && minecraft != null) {
                     minecraft.setScreen(new PhoneHudEditor(metrics));
                 }
-                yield true;
+                return true;
             }
-            case FONT_COLOR_PICKER -> {
+            case FONT_COLOR_PICKER: {
                 if (fontColorPicker.mouseClicked(button)) {
                     navigateTo(Mode.SETTINGS);
                 }
-                yield true;
+                return true;
             }
-            case APP_MANAGER -> {
+            case APP_MANAGER: {
                 appManagerPage.mouseClicked(mx, my, button);
                 IPhoneApp picked = appManagerPage.consumeSelection();
                 if (picked != null) {
                     pendingManagedApp = picked;
                     navigateTo(Mode.APP_MANAGER_DETAIL);
                 }
-                yield true;
+                return true;
             }
-            case APP_MANAGER_DETAIL -> {
+            case APP_MANAGER_DETAIL: {
                 appManagerDetail.mouseClicked(mx, my, button);
                 // 卸载完了那个 App 已经不在列表里，留在它的详情页上没有意义
                 if (appManagerDetail.consumeBackRequest()) navigateTo(Mode.APP_MANAGER);
-                yield true;
+                return true;
             }
-            case MUSIC_PLAYER -> {
+            case MUSIC_PLAYER: {
                 musicPage.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case APP_STORE -> {
+            case APP_STORE: {
                 appStore.mouseClicked(mx, my, button);
                 AppInfo open = appStore.consumeOpenRequest();
                 if (open != null) {
@@ -1420,60 +1501,62 @@ public final class PhoneScreen extends PhoneScreenBase {
                     navigateTo(Mode.APP_DETAIL);
                 }
                 if (appStore.consumeCompanionRequest()) navigateTo(Mode.COMPANION_APPS);
-                yield true;
+                return true;
             }
-            case COMPANION_APPS -> {
+            case COMPANION_APPS: {
                 companionApps.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case ADDON_PAGE -> {
+            case ADDON_PAGE: {
                 // 是否消费决定捕获；空点击仍由手机屏蔽，不穿透。
                 addonHost.click(mx, my, button);
                 leaveFailedAddon();
-                yield true;
+                return true;
             }
-            case ABOUT, CLOCK, WEATHER -> {
-                yield true;
+            case ABOUT:
+            case CLOCK:
+            case WEATHER: {
+                return true;
             }
-            case READER -> {
+            case READER: {
                 // 按下只是按下：书架页上这一下可能是"打开这本"，也可能是"拖着排"，
                 // 由 mouseReleased 定性，见 BookList.mouseReleased
                 bookList.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case TXT_BOOK -> {
+            case TXT_BOOK: {
                 txtReader.mouseClicked(mx, my, font);
-                yield true;
+                return true;
             }
-            case APP_DETAIL -> {
+            case APP_DETAIL: {
                 appDetail.mouseClicked(mx, my, button);
                 // 顺序不能反：先 navigateTo 的话 reset 会把刷新请求清掉
                 if (appDetail.consumeInstalledRequest()) appStore.onInstalled();
                 if (appDetail.consumeBackRequest()) navigateTo(Mode.APP_STORE);
-                yield true;
+                return true;
             }
-            case GALLERY -> {
+            case GALLERY: {
                 gallery.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case DEVICE_NAME -> {
+            case DEVICE_NAME: {
                 if (deviceNameEditor.mouseClicked(mx, my, button)) navigateTo(Mode.SETTINGS);
-                yield true;
+                return true;
             }
-            case VAULT -> {
+            case VAULT: {
                 vaultPage.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case AUTHOR_KEY -> {
+            case AUTHOR_KEY: {
                 authorKeyPage.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case CHAT -> {
+            case CHAT: {
                 chatList.mouseClicked(mx, my, button);
                 // 点了传送就关机，包由列表自己发
                 if (chatList.consumeCloseRequest()) {
                     onClose();
-                    yield true;
+                    return true;
                 }
                 UUID open = chatList.consumeOpenRequest();
                 if (open != null) {
@@ -1484,18 +1567,20 @@ public final class PhoneScreen extends PhoneScreenBase {
                 if (chatList.consumeProfileRequest()) navigateTo(Mode.CHAT_PROFILE);
                 UUID group = chatList.consumeGroupOpenRequest();
                 if (group != null) { pendingConversationPeer = group; navigateTo(Mode.CHAT_GROUP_CONVERSATION); }
-                yield true;
+                return true;
             }
-            case CHAT_PROFILE, CHAT_PLAYER_PROFILE -> {
+            case CHAT_PROFILE:
+            case CHAT_PLAYER_PROFILE: {
                 chatProfile.mouseClicked(mx,my,button);
-                var action=chatProfile.consumeAction();
-                if (action!=null) navigateTo(switch(action) {
-                    case CHATS -> Mode.CHAT;case CONTACTS -> Mode.CHAT_CONTACTS;
-                    case BACK -> mode==Mode.CHAT_PLAYER_PROFILE?profileReturnMode:Mode.CHAT;
-                });
-                yield true;
+                com.november.mcphone.feature.chat.client.ChatProfile.Action action=chatProfile.consumeAction();
+                if (action != null) switch (action) {
+                    case CHATS: navigateTo(Mode.CHAT); break;
+                    case CONTACTS: navigateTo(Mode.CHAT_CONTACTS); break;
+                    case BACK: navigateTo(mode == Mode.CHAT_PLAYER_PROFILE ? profileReturnMode : Mode.CHAT); break;
+                }
+                return true;
             }
-            case CHAT_CONTACTS -> {
+            case CHAT_CONTACTS: {
                 chatContacts.mouseClicked(mx, my, button);
                 UUID peer = chatContacts.consumeOpenRequest();
                 if (peer != null) { pendingConversationPeer = peer; navigateTo(Mode.CHAT_CONVERSATION); }
@@ -1504,61 +1589,66 @@ public final class PhoneScreen extends PhoneScreenBase {
                 UUID profile=chatContacts.consumeProfileRequest();
                 if (profile!=null) openPlayerProfile(profile);
                 ChatContacts.Action action = chatContacts.consumeAction();
-                if (action != null) navigateTo(switch (action) {
-                    case CHATS -> Mode.CHAT;
-                    case ADD_CONTACT -> Mode.CHAT_ADD_CONTACT;
-                    case NEW_FRIENDS -> Mode.CHAT_NEW_FRIENDS;
-                    case PROFILE -> Mode.CHAT_PROFILE;
-                });
-                yield true;
+                if (action != null) switch (action) {
+                    case CHATS: navigateTo(Mode.CHAT); break;
+                    case ADD_CONTACT: navigateTo(Mode.CHAT_ADD_CONTACT); break;
+                    case NEW_FRIENDS: navigateTo(Mode.CHAT_NEW_FRIENDS); break;
+                    case PROFILE: navigateTo(Mode.CHAT_PROFILE); break;
+                }
+                return true;
             }
-            case CHAT_NEW_FRIENDS -> { chatNewFriends.mouseClicked(mx, my, button); yield true; }
-            case CHAT_GROUP_CREATE -> { chatGroupCreate.mouseClicked(mx, my, button); yield true; }
-            case CHAT_GROUP_DETAILS -> {
+            case CHAT_NEW_FRIENDS: { chatNewFriends.mouseClicked(mx, my, button); return true; }
+            case CHAT_GROUP_CREATE: { chatGroupCreate.mouseClicked(mx, my, button); return true; }
+            case CHAT_GROUP_DETAILS: {
                 chatGroupDetails.mouseClicked(mx,my,button);
                 UUID profile=chatGroupDetails.consumeProfileRequest();if (profile!=null) openPlayerProfile(profile);
-                yield true;
+                return true;
             }
-            case CHAT_ADD_CONTACT -> {
+            case CHAT_ADD_CONTACT: {
                 chatAddContact.mouseClicked(mx, my, button);
-                yield true;
+                return true;
             }
-            case CHAT_CONVERSATION, CHAT_GROUP_CONVERSATION -> {
+            case CHAT_CONVERSATION:
+            case CHAT_GROUP_CONVERSATION: {
                 chatConversation.mouseClicked(mx, my, button);
                 if (chatConversation.consumeBackRequest()) {
                     navigateTo(chatReturnMode);
-                    yield true;
+                    return true;
                 }
                 if (chatConversation.consumeDetailsRequest()) {
                     if (chatConversation.isGroup()) navigateTo(Mode.CHAT_GROUP_DETAILS);
                     else openPlayerProfile(chatConversation.peer(),chatConversation.title());
-                    yield true;
+                    return true;
                 }
 
                 ChatAttachment attach = chatConversation.consumeAttachRequest();
                 if (attach != null) {
                     switch (attach) {
-                        case LOCATION -> chatConversation.sendLocation();
-                        case IMAGE, STICKER -> {
+                        case LOCATION:
+                            chatConversation.sendLocation();
+                            break;
+                        case IMAGE:
+                        case STICKER: {
                             // 先记下是谁：进挑东西那一页会 close 掉会话，对端就没了
                             pendingConversationPeer = chatConversation.peer();
                             navigateTo(attach == ChatAttachment.IMAGE ? Mode.CHAT_PHOTO_PICKER : Mode.CHAT_STICKER_PICKER);
                         }
+                            break;
                     }
                 }
-                yield true;
+                return true;
             }
-            case CHAT_PHOTO_PICKER -> {
+            case CHAT_PHOTO_PICKER: {
                 chatPhotoPicker.mouseClicked(mx, my, button);
                 sendPicked(chatPhotoPicker.consumeSelection());
-                yield true;
+                return true;
             }
-            case CHAT_STICKER_PICKER -> {
+            case CHAT_STICKER_PICKER: {
                 chatStickerPicker.mouseClicked(mx, my, button);
                 sendPicked(chatStickerPicker.consumeSelection());
-                yield true;
+                return true;
             }
-            case NOTES -> {
+            case NOTES: {
                 notesList.mouseClicked(mx, my, button);
                 Integer open = notesList.consumeOpenRequest();
                 if (open != null) {
@@ -1568,14 +1658,15 @@ public final class PhoneScreen extends PhoneScreenBase {
                     noteEditor.openNew();
                     navigateTo(Mode.NOTE_EDIT);
                 }
-                yield true;
+                return true;
             }
-            case NOTE_EDIT -> {
+            case NOTE_EDIT: {
                 noteEditor.mouseClicked(mx, my, button);
                 if (noteEditor.consumeBackRequest()) navigateTo(Mode.NOTES);
-                yield true;
+                return true;
             }
-        };
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     /** 菜单点击与导航在同一事件内完成，不能把某个请求留给下一次普通点击。 */
@@ -1690,11 +1781,11 @@ public final class PhoneScreen extends PhoneScreenBase {
         if (mode == Mode.MAIN && button == 0
                 && homeGrid.mouseReleased(unscaledX(rawX), unscaledY(rawY))) {
             HomeArrangement.Entry entry = homeGrid.consumeOpenRequest();
-            if (entry instanceof HomeArrangement.Folder folder) {
-                homeFolder.open(folder.id());
+            if (entry instanceof HomeArrangement.Folder) {
+                homeFolder.open(((HomeArrangement.Folder) entry).id());
                 folderBackdrop.captureDesktop();
-            } else if (entry instanceof HomeArrangement.App app) {
-                IPhoneApp launch = PhoneScreenRegistry.homeApp(app.id());
+            } else if (entry instanceof HomeArrangement.App) {
+                IPhoneApp launch = PhoneScreenRegistry.homeApp(((HomeArrangement.App) entry).id());
                 if (launch != null) launchApp(launch);
             }
             return true;

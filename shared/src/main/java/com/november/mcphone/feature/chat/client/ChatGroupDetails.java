@@ -1,5 +1,6 @@
 package com.november.mcphone.feature.chat.client;
 
+import java.util.List;
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.feature.chat.net.RequestConversationsPacket;
@@ -32,7 +33,7 @@ public final class ChatGroupDetails {
     private Operation operation;
     public ChatGroupDetails() {
         this(GroupTransport::send, () -> {
-            var current = Minecraft.getInstance().player; return current == null ? null : current.getUUID();
+            net.minecraft.client.player.LocalPlayer current = Minecraft.getInstance().player; return current == null ? null : current.getUUID();
         }, () -> MCphoneNetwork.sendToServer(new RequestConversationsPacket()));
     }
     ChatGroupDetails(Consumer<GroupCommand> send, Supplier<UUID> player) { this(send, player, () -> {}); }
@@ -54,7 +55,7 @@ public final class ChatGroupDetails {
         group = request = details = pendingProfile = null; action = nameRow = more = null; operation = null;
         grid.close(); invite.close(); rename.close();
     }
-    public UUID consumeProfileRequest() { var out=pendingProfile;pendingProfile=null;return out; }
+    public UUID consumeProfileRequest() { UUID out=pendingProfile;pendingProfile=null;return out; }
     public boolean consumeFinished() { boolean out = finished; finished = false; return out; }
     public boolean back() {
         if (request != null) return true;
@@ -72,7 +73,7 @@ public final class ChatGroupDetails {
     }
     private void pollResult() {
         if (request == null) return;
-        var result = GroupClientCache.consume(request);
+        com.november.mcphone.feature.chat.group.net.GroupReply.Result result = GroupClientCache.consume(request);
         if (result != null && group.equals(result.group())) {
             if (result.status() == GroupStatus.OK) {
                 if (operation == Operation.EXIT) finished = true;
@@ -90,24 +91,34 @@ public final class ChatGroupDetails {
                        int mx, int my, Font font) {
         pollResult(); GroupTransport.directory();
         if (known && GroupClientCache.summary(group) == null && request == null) { finished = true; return; }
-        var info = GroupClientCache.info(); long now = System.currentTimeMillis();
+        com.november.mcphone.feature.chat.group.GroupInfo info = GroupClientCache.info(); long now = System.currentTimeMillis();
         int x = left + 4, w = width - 8, y = top + statusH + ChatLayout.TOP_GAP, bottom = top + height - navH - 3;
-        String title = switch (page) {
-            case DETAILS -> "mcphone.chat.group.details_count";
-            case MEMBERS -> "mcphone.chat.group.members";
-            case INVITE -> "mcphone.chat.group.invite_title";
-            case RENAME -> "mcphone.chat.group.rename";
-        };
+        String title;
+        switch (page) {
+            case DETAILS:
+                title = "mcphone.chat.group.details_count";
+                break;
+            case MEMBERS:
+                title = "mcphone.chat.group.members";
+                break;
+            case INVITE:
+                title = "mcphone.chat.group.invite_title";
+                break;
+            case RENAME:
+                title = "mcphone.chat.group.rename";
+                break;
+            default: throw new IncompatibleClassChangeError();
+        }
         ChatUi.buttonText(g, font, Component.translatable(title, info == null ? 0 : info.members().size()).getString(),
                 x + w / 2f, y + 6, ChatLayout.TEXT_SCALE, FontPalette.title()); y += 16;
         if (info == null || !info.id().equals(group)) {
-            var error = GroupClientCache.detailsError();
+            com.november.mcphone.feature.chat.group.GroupStatus error = GroupClientCache.detailsError();
             if (error == GroupStatus.NOT_MEMBER) { finished = true; return; }
             if (now - lastDetails >= GroupClientPolicy.REFRESH_INTERVAL_MS) refreshDetails();
             ChatUi.text(g, font, ChatUi.truncate(font, Component.translatable(error == null ? now - started > GroupClientPolicy.OPERATION_TIMEOUT_MS ? "mcphone.chat.group.timeout" : "mcphone.chat.group.loading" : error.key()).getString(),
                     w, ChatLayout.TEXT_SCALE), x, y, ChatLayout.TEXT_SCALE, FontPalette.subtle()); return;
         }
-        var area = new ChatLayout.Rect(x, y, w, Math.max(0, bottom - y));
+        ChatLayout.Rect area = new ChatLayout.Rect(x, y, w, Math.max(0, bottom - y));
         if (page == Page.INVITE) { invite.render(g, font, info, area, mx, my, status, request != null); return; }
         if (page == Page.RENAME) { rename.render(g, font, area, mx, my, status, request != null); return; }
         if (page == Page.MEMBERS) { grid.render(g, font, info.members(), area, true, mx, my); return; }
@@ -133,7 +144,7 @@ public final class ChatGroupDetails {
         String hint = !status.isEmpty() ? status : confirming ? (owner(info) ? "mcphone.chat.group.confirm_dissolve" : "mcphone.chat.group.confirm_leave")
                 : "mcphone.chat.group.leave_hint";
         int hintY = Math.max(y + 23, action.y() - 22);
-        for (var line : font.split(Component.translatable(hint), ChatLayout.unscaledWidth(w, ChatLayout.META_SCALE))) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable(hint), ChatLayout.unscaledWidth(w, ChatLayout.META_SCALE))) {
             if (hintY + ChatUi.lineHeight(font, ChatLayout.META_SCALE) > action.y() - 1) break;
             ChatUi.text(g, font, line, x, hintY, ChatLayout.META_SCALE, FontPalette.subtle());
             hintY += ChatUi.lineHeight(font, ChatLayout.META_SCALE) + 1;
@@ -144,17 +155,17 @@ public final class ChatGroupDetails {
                 x + w / 2f, action.y() + 7, ChatLayout.TEXT_SCALE, request == null ? FontPalette.danger() : FontPalette.dim());
     }
     public boolean mouseClicked(double mx, double my, int button) {
-        var info = GroupClientCache.info(); if (button != 0 || request != null || info == null || !info.id().equals(group)) return true;
+        com.november.mcphone.feature.chat.group.GroupInfo info = GroupClientCache.info(); if (button != 0 || request != null || info == null || !info.id().equals(group)) return true;
         if (page == Page.INVITE) {
             status = "";
-            var members = invite.click(mx, my, button);
+            List<UUID> members = invite.click(mx, my, button);
             if (members != null) {
                 if (members.isEmpty()) status = "mcphone.chat.group.select_members";
                 else submit(Operation.INVITE, new GroupCommand.Invite(UUID.randomUUID(), group, members));
             }
         } else if (page == Page.RENAME) {
             status = "";
-            var value = rename.click(mx, my, button);
+            String value = rename.click(mx, my, button);
             if (value != null) {
                 if (!owner(info)) status = GroupStatus.OWNER_REQUIRED.key();
                 else if (value.isEmpty()) status = GroupStatus.INVALID.key();

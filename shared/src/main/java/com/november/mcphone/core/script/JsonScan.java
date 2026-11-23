@@ -32,7 +32,36 @@ public final class JsonScan {
     }
 
     /** 扫描发现的问题；{@link #detail()} 是给人看的一句。 */
-    public record Problem(Kind kind, String detail) {
+    public static final class Problem {
+        private final Kind kind;
+        private final String detail;
+
+        public Problem(Kind kind, String detail) {
+            this.kind = kind;
+            this.detail = detail;
+        }
+
+        public Kind kind() { return kind; }
+
+        public String detail() { return detail; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Problem)) return false;
+            Problem that = (Problem) other;
+            return java.util.Objects.equals(this.kind, that.kind)
+                    && java.util.Objects.equals(this.detail, that.detail);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(kind);
+            hash = 31 * hash + java.util.Objects.hashCode(detail);
+            return hash;
+        }
+
+        @Override public String toString() { return "Problem[kind=" + kind + ", detail=" + detail + "]"; }
+
     }
 
     private JsonScan() {
@@ -64,7 +93,7 @@ public final class JsonScan {
     private static void scan(JsonReader reader, int depth, int maxDepth) throws IOException {
         if (depth > maxDepth) throw new Deep();
         switch (reader.peek()) {
-            case BEGIN_OBJECT -> {
+            case BEGIN_OBJECT: {
                 reader.beginObject();
                 Set<String> keys = new HashSet<>();
                 while (reader.hasNext()) {
@@ -74,16 +103,26 @@ public final class JsonScan {
                 }
                 reader.endObject();
             }
-            case BEGIN_ARRAY -> {
+                break;
+            case BEGIN_ARRAY: {
                 reader.beginArray();
                 while (reader.hasNext()) scan(reader, depth + 1, maxDepth);
                 reader.endArray();
             }
-            // 数字按字符串吃掉：这里只管形状，值的范围留给调用方按自己的类型规则判
-            case STRING, NUMBER -> reader.nextString();
-            case BOOLEAN -> reader.nextBoolean();
-            case NULL -> reader.nextNull();
-            default -> throw new IOException("不该出现的记号 " + reader.peek());
+                break;
+                // 数字按字符串吃掉：这里只管形状，值的范围留给调用方按自己的类型规则判
+            case STRING:
+            case NUMBER:
+                reader.nextString();
+                break;
+            case BOOLEAN:
+                reader.nextBoolean();
+                break;
+            case NULL:
+                reader.nextNull();
+                break;
+            default:
+                throw new IOException("不该出现的记号 " + reader.peek());
         }
     }
 

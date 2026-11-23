@@ -21,7 +21,54 @@ public final class EconomyAudit {
      * @param minted     历史 mint 之和
      * @param burned     历史 burn 之和
      */
-    public record Result(String currencyId, long balanceSum, long heldSum, long minted, long burned) {
+    public static final class Result {
+        private final String currencyId;
+        private final long balanceSum;
+        private final long heldSum;
+        private final long minted;
+        private final long burned;
+
+        public Result(String currencyId, long balanceSum, long heldSum, long minted, long burned) {
+            this.currencyId = currencyId;
+            this.balanceSum = balanceSum;
+            this.heldSum = heldSum;
+            this.minted = minted;
+            this.burned = burned;
+        }
+
+        public String currencyId() { return currencyId; }
+
+        public long balanceSum() { return balanceSum; }
+
+        public long heldSum() { return heldSum; }
+
+        public long minted() { return minted; }
+
+        public long burned() { return burned; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Result)) return false;
+            Result that = (Result) other;
+            return java.util.Objects.equals(this.currencyId, that.currencyId)
+                    && this.balanceSum == that.balanceSum
+                    && this.heldSum == that.heldSum
+                    && this.minted == that.minted
+                    && this.burned == that.burned;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(currencyId);
+            hash = 31 * hash + java.util.Objects.hashCode(balanceSum);
+            hash = 31 * hash + java.util.Objects.hashCode(heldSum);
+            hash = 31 * hash + java.util.Objects.hashCode(minted);
+            hash = 31 * hash + java.util.Objects.hashCode(burned);
+            return hash;
+        }
+
+        @Override public String toString() { return "Result[currencyId=" + currencyId + ", balanceSum=" + balanceSum + ", heldSum=" + heldSum + ", minted=" + minted + ", burned=" + burned + "]"; }
+
 
         /** 账上有多少钱。 */
         public long actual() {

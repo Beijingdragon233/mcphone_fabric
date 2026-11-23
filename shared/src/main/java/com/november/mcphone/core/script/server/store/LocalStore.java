@@ -1,7 +1,13 @@
 package com.november.mcphone.core.script.server.store;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableSet;
+
+import java.util.Map.Entry;
 import com.november.mcphone.core.PhonePaths;
 import com.google.gson.JsonObject;
+import com.november.mcphone.util.GsonCompat;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.stream.JsonReader;
@@ -25,7 +31,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.HexFormat;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -53,7 +58,7 @@ import java.util.function.Supplier;
  */
 public final class LocalStore {
 
-    private static final Set<String> WINDOWS_DEVICES = Set.of(
+    private static final Set<String> WINDOWS_DEVICES = ImmutableSet.of(
             "CON", "PRN", "AUX", "NUL",
             "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
             "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9");
@@ -75,7 +80,7 @@ public final class LocalStore {
         JsonObject obj = new JsonObject();
         if (Files.isRegularFile(p)) {
             try (Reader r = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
-                var parsed = JsonParser.parseReader(r);
+                com.google.gson.JsonElement parsed = JsonParser.parseReader(r);
                 if (parsed.isJsonObject()) obj = parsed.getAsJsonObject();
             } catch (IOException | RuntimeException e) {
                 // 坏文件不该让 App 打不开。原样留着，下次写入时覆盖
@@ -87,9 +92,9 @@ public final class LocalStore {
 
     /** Frontend-only scope: launcher account and canonical App id, independent of any server handshake. */
     public static Path clientPath(Path gameDir, UUID account, String appId) {
-        if (account == null || appId == null || appId.isBlank()) throw new IllegalArgumentException("本地存储身份不可用");
+        if (account == null || appId == null || Java8.isBlank(appId)) throw new IllegalArgumentException("本地存储身份不可用");
         try {
-            String app = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+            String app = Java8.formatHex(MessageDigest.getInstance("SHA-256")
                     .digest(appId.getBytes(StandardCharsets.UTF_8)));
             return PhonePaths.APP_DATA.in(gameDir).resolve("client").resolve(account.toString()).resolve(app + ".json");
         } catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
@@ -105,14 +110,14 @@ public final class LocalStore {
                     throw new IllegalStateException("本地存储文件不合法或超出读取上限");
                 }
                 byte[] content;
-                try (var input = Files.newInputStream(file)) { content = input.readNBytes(StoreQuota.LOCAL_PER_APP * 4 + 1); }
+                try (java.io.InputStream input = Files.newInputStream(file)) { content = Java8.readNBytes(input, StoreQuota.LOCAL_PER_APP * 4 + 1); }
                 if (content.length > StoreQuota.LOCAL_PER_APP * 4) throw new IllegalStateException("本地存储文件超出读取上限");
                 String text = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
                         .decode(ByteBuffer.wrap(content)).toString();
                 values = readClientValues(text);
             }
             LocalStore store = new LocalStore(file, new JsonObject());
-            for (var entry : values.entrySet()) {
+            for (Entry<String,com.google.gson.JsonElement> entry : values.entrySet()) {
                 checkClientKey(entry.getKey());
                 if (!entry.getValue().isJsonPrimitive() || !entry.getValue().getAsJsonPrimitive().isString()) {
                     throw new IllegalStateException("本地存储文件包含非字符串值");
@@ -174,7 +179,7 @@ public final class LocalStore {
             if (staged == null) {
                 if (provider == null) throw new IllegalStateException("本地存储尚未连接");
                 LocalStore source = provider.get();
-                staged = new LocalStore(source.file, source.values.deepCopy());
+                staged = new LocalStore(source.file, GsonCompat.copy(source.values));
             }
             return staged;
         }
@@ -189,7 +194,7 @@ public final class LocalStore {
         public void setString(String key, String value) {
             checkClientKey(key);
             LocalStore store = current();
-            var before = store.values.get(key);
+            com.google.gson.JsonElement before = store.values.get(key);
             store.setString(key, value);
             dirty |= !store.values.get(key).equals(before);
         }
@@ -221,7 +226,7 @@ public final class LocalStore {
                     || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.';
             sb.append(ok ? c : '_');
         }
-        String result = sb.isEmpty() ? "_" : sb.toString();
+        String result = sb.length() == 0 ? "_" : sb.toString();
         if (result.equals(".") || result.equals("..") || result.chars().allMatch(c -> c == '.')) {
             return "_";
         }
@@ -233,12 +238,12 @@ public final class LocalStore {
     }
 
     public String getString(String key, String fallback) {
-        var v = values.get(key);
+        com.google.gson.JsonElement v = values.get(key);
         return v != null && v.isJsonPrimitive() ? v.getAsString() : fallback;
     }
 
     public long getLong(String key, long fallback) {
-        var v = values.get(key);
+        com.google.gson.JsonElement v = values.get(key);
         try {
             return v != null && v.isJsonPrimitive() ? Long.parseLong(v.getAsString()) : fallback;
         } catch (NumberFormatException e) {
@@ -247,7 +252,7 @@ public final class LocalStore {
     }
 
     public boolean getBool(String key, boolean fallback) {
-        var v = values.get(key);
+        com.google.gson.JsonElement v = values.get(key);
         return v != null && v.isJsonPrimitive() ? v.getAsBoolean() : fallback;
     }
 
@@ -295,13 +300,13 @@ public final class LocalStore {
     }
 
     public List<String> keys() {
-        return new ArrayList<>(values.keySet());
+        return new ArrayList<>(GsonCompat.keys(values));
     }
 
     /** 现在占多少字节。 */
     public long bytes() {
         long n = 0;
-        for (var e : values.entrySet()) {
+        for (Entry<String,com.google.gson.JsonElement> e : values.entrySet()) {
             n += entryBytes(e.getKey(), e.getValue());
         }
         return n;
@@ -334,6 +339,6 @@ public final class LocalStore {
 
     /** 给测试用：不落盘，直接看内容。 */
     public JsonObject snapshot() {
-        return values.deepCopy();
+        return GsonCompat.copy(values);
     }
 }
