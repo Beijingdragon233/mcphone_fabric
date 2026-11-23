@@ -13,7 +13,7 @@ import org.objectweb.asm.commons.Remapper;
 
 /** Produces the Java 8 engine without a module descriptor or build-time dependencies. */
 public final class Java8RhinoProducer {
-    static final String VERSION = "1.7.15.1-mcphone.1";
+    static final String VERSION = "1.7.15.1-mcphone.2";
     static final String INPUT_SHA = "f3520a0e2e22d550f1216a456be233eb5385bf08e3219407dece7a16369eb38f";
     static final String SOURCES_SHA = "bb6c4b860ea690199b5da29789244eba2f82c4ced9e11ffa4f1b23e386161e94";
     private static final String ORIGINAL = "org/mozilla/";
@@ -61,16 +61,22 @@ public final class Java8RhinoProducer {
             if (!entry.getKey().startsWith(ORIGINAL)) continue;
             byte[] data = entry.getValue();
             if (entry.getKey().endsWith(".java")) {
-                data = bytes(QUALIFIED.matcher(new String(data, StandardCharsets.UTF_8))
-                        .replaceAll("com.november.mcphone.internal.rhino"));
+                String text = QUALIFIED.matcher(new String(data, StandardCharsets.UTF_8))
+                        .replaceAll("com.november.mcphone.internal.rhino");
+                // A qualified name stops the pattern above; relocate the Packages example literally.
+                text = text.replace("Packages.org.mozilla.", "Packages.com.november.mcphone.internal.rhino.");
+                data = bytes(text);
             }
             add(sources, path(entry.getKey()), data);
         }
         byte[] license = original.get("META-INF/LICENSE.txt");
         require(license != null, "Rhino license absent");
+        byte[] noticeTools = original.get("META-INF/NOTICE-tools.txt");
+        require(noticeTools != null, "Rhino tools notice absent");
         for (var entries : java.util.List.of(binary, sources)) {
             add(entries, "META-INF/LICENSE-MCPhone-Rhino.txt", license);
             if (original.containsKey("META-INF/NOTICE.txt")) add(entries, "META-INF/NOTICE-MCPhone-Rhino.txt", original.get("META-INF/NOTICE.txt"));
+            add(entries, "META-INF/NOTICE-tools-MCPhone-Rhino.txt", noticeTools);
             add(entries, "META-INF/MCPhone-Rhino-Changes.txt", bytes("Rhino 1.7.15.1 (MPL 2.0). MCPhone relocated Java types and resources.\n"
                     + "Upstream: https://github.com/mozilla/rhino/tree/Rhino1_7_15_1_Release\n"
                     + "Conversion: tools/private-rhino. Matching sources are distributed alongside this library.\n"));
@@ -85,7 +91,7 @@ public final class Java8RhinoProducer {
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
                   <groupId>com.november.mcphone.internal</groupId><artifactId>rhino</artifactId>
-                  <version>1.7.15.1-mcphone.1</version><name>MCPhone private Java 8 Rhino</name>
+                  <version>1.7.15.1-mcphone.2</version><name>MCPhone private Java 8 Rhino</name>
                   <licenses><license><name>Mozilla Public License 2.0</name>
                     <url>https://www.mozilla.org/MPL/2.0/</url></license></licenses>
                 </project>

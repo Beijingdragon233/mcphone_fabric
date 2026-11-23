@@ -98,7 +98,8 @@ def verifyEngine = tasks.register('verifyJava8Engine') {
         }
         new ZipFile(engine).withCloseable { zip ->
             def context = zip.getEntry('com/november/mcphone/internal/rhino/javascript/Context.class')
-            if (context == null || zip.getEntry('META-INF/LICENSE-MCPhone-Rhino.txt') == null) {
+            if (context == null || zip.getEntry('META-INF/LICENSE-MCPhone-Rhino.txt') == null
+                    || zip.getEntry('META-INF/NOTICE-tools-MCPhone-Rhino.txt') == null) {
                 throw new GradleException('Incomplete Java 8 Rhino artifact')
             }
         }
@@ -132,8 +133,8 @@ def verifyDistribution = tasks.register('verifyJava8Distribution') {
         new ZipFile(distribution.get().archiveFile.get().asFile).withCloseable { zip ->
             def entries = Collections.list(zip.entries())
             ['META-INF/LICENSE-JavaMP3.txt', 'META-INF/LICENSE-BouncyCastle.html',
-             'META-INF/LICENSE-MCPhone-Rhino.txt'].each { name ->
-                if (zip.getEntry(name) == null) throw new GradleException('Missing embedded license: ' + name)
+             'META-INF/LICENSE-MCPhone-Rhino.txt', 'META-INF/NOTICE-tools-MCPhone-Rhino.txt'].each { name ->
+                if (zip.getEntry(name) == null) throw new GradleException('Missing embedded legal file: ' + name)
             }
             if (entries.find { it.name.startsWith('org/mozilla/') || it.name.startsWith('org/bouncycastle/') || it.name.endsWith('.jar') }) {
                 throw new GradleException('Legacy Forge archive contains a nested jar or unrelocated runtime library')

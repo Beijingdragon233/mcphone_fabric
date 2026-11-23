@@ -53,8 +53,9 @@ final class ScriptHttpTransport {
                     response.statusCode() >= 200 && response.statusCode() < 300 ? "" : "HTTP_STATUS"));
         });
         // The total deadline also covers a peer that sends headers and then stalls the response body.
-        result.orTimeout(request.timeoutMs(), TimeUnit.MILLISECONDS).whenComplete((value, failure) -> {
-            if (failure != null) wire.cancel(true);
+        result.completeOnTimeout(new HttpRequests.Result(0, "", "TIMEOUT"),
+                request.timeoutMs(), TimeUnit.MILLISECONDS).whenComplete((value, failure) -> {
+            if (failure != null || "TIMEOUT".equals(value.error())) wire.cancel(true);
         });
         return result;
     }

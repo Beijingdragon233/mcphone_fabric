@@ -18,7 +18,6 @@ import com.november.mcphone.internal.rhino.javascript.LambdaFunction;
 import com.november.mcphone.internal.rhino.javascript.NativeArray;
 import com.november.mcphone.internal.rhino.javascript.NativeObject;
 import com.november.mcphone.internal.rhino.javascript.Node;
-import com.november.mcphone.internal.rhino.javascript.Parser;
 import com.november.mcphone.internal.rhino.javascript.RhinoException;
 import com.november.mcphone.internal.rhino.javascript.Script;
 import com.november.mcphone.internal.rhino.javascript.Scriptable;
@@ -73,11 +72,7 @@ public final class ClientScript {
         env.setLanguageVersion(Context.VERSION_ES6);
         AstRoot root;
         try {
-            // The 1.7 String lexer counts code points, while AST ranges index UTF-16.
-            // Its Reader lexer uses UTF-16, as do modern Rhino and String.substring.
-            root = new Parser(env).parse(new java.io.StringReader(source), "<script>", 1);
-        } catch (java.io.IOException e) {
-            throw new IllegalStateException("StringReader failed", e);
+            root = ScriptParser.parse(env, source);
         } catch (RuntimeException | StackOverflowError e) {
             throw bad(e instanceof RhinoException ? ((RhinoException) e).lineNumber() : 1, "JavaScript 语法错误或解析深度超限");
         }

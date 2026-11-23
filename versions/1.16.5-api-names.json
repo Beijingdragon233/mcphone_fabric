@@ -352,7 +352,8 @@
     "com/november/mcphone/feature/terminal/client/TerminalSlotScreen.java",
     "com/november/mcphone/feature/browser/client/McefBackend.java",
     "com/november/mcphone/feature/quests/client/FtbQuestsBook.java",
-    "com/november/mcphone/core/script/http/ScriptHttpTransport.java"
+    "com/november/mcphone/core/script/http/ScriptHttpTransport.java",
+    "com/november/mcphone/core/script/engine/ScriptParser.java"
   ],
   "nativeSources": ["com.november.mcphone.platform.client.LegacyEditBox.java"]
 }

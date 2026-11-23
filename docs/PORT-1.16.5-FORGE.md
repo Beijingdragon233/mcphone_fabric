@@ -25,7 +25,7 @@ Linux CI 使用相同的工具链和 `./gradlew build`。PR 矩阵构建所有�
 
 ## Java 8 与内嵌库
 
-- Java 8 Rhino 为 `1.7.15.1-mcphone.1`，锁文件为 `versions/private-rhino-java8.json`；现代目标继续使用原有引擎。
+- Java 8 Rhino 为 `1.7.15.1-mcphone.2`，锁文件为 `versions/private-rhino-java8.json`；现代目标继续使用原有引擎。
 - 私有 Rhino、JavaMP3 1.0.1 和私有化的 Bouncy Castle 1.87 合入重混淆 JAR。Forge 36 无需嵌套 JAR 加载器。
 - Rhino 和加密库包名分别为 `com.november.mcphone.internal.rhino` 和 `com.november.mcphone.internal.crypto`；不向全局 Security 注册提供者。
 - JavaMP3、Rhino 和 Bouncy Castle 许可证随成品分发。Rhino 对应源码随 Maven vendor artifact 保存。
@@ -86,7 +86,7 @@ AE2 / RS 通过保留的整型槽位标记解析玩家手机能力中的同一�
 
 现代目标编译回归全部通过：1.20.1 Fabric（`1.20.1-fabric-java8-shared-regress2.log`）、1.21.1 Fabric（`1.21.1-fabric-java8-shared-regress.log`）、1.21.1 NeoForge 和 26.1.2 NeoForge（各自 `*-java8-shared-regress2.log`）。发现并修复本轮引入的一处 NeoForge import 拼写问题后重跑通过。未处理 1.21.11。
 
-最终成品：`platforms/1.16.5-forge/build/libs/mcphone-1.12.1.jar`。SHA-256：
+第 8 轮完整构建成品：`platforms/1.16.5-forge/build/libs/mcphone-1.12.1.jar`。该轮 SHA-256（后续修订不能沿用此摘要）：
 
 ```text
 16c0597db2ab19c063546d04b9d9070149802e85856d281ae6f96f8a5aa72a4d
@@ -98,4 +98,8 @@ AE2 / RS 通过保留的整型槽位标记解析玩家手机能力中的同一�
 
 `1165-evidence/final-addons-*.log` 记录全部四个 Mixin 的实际应用及该轮运行。上游联动有已知启动告警：RS 更新地址 404、NetMusic 可选外部物品配方缺失、Tom’s 的 netherite 进度物品名、ID 手册连接器配方；它们没有阻止启动，但仍应在真实 App 操作时检查。
 
-PR CI 链接在远端创建后补充。保持 `buildable: false`，不因构建或测试夹具通过而提前宣布完整验收。
+PR：[#4](https://github.com/Beijingdragon233/mcphone_fabric/pull/4)，保持草稿。首轮 [CI #74](https://github.com/Beijingdragon233/mcphone_fabric/actions/runs/45182169593) 的 1.16.5 Forge 完整构建通过并上传未验证试玩包；现代目标回归发现共享解析入口影响新 Rhino，现已将 String / Reader 入口分别置于共享层与 Java 8 覆盖层。
+
+本地 `1165-parser-regress.log` 的 Java 8 脚本与四组客户端回归、重混淆和成品检查通过；`121-modern-parser-http-regress2.log` 的现代引擎四组回归通过。HTTP 传输拆分引入的响应体超时分类也已修复：总期限到期返回 `TIMEOUT` 并取消底层请求。Rhino `.2` 补齐上游 `NOTICE-tools.txt`，旧构件 `.1` 保持原摘要；完整重建及新 CI 记录随后更新。
+
+保持 `buildable: false`，不因构建或测试夹具通过而提前宣布完整验收。
