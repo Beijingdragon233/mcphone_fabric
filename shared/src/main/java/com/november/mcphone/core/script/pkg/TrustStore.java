@@ -1,7 +1,10 @@
 package com.november.mcphone.core.script.pkg;
 
+import com.google.common.collect.ImmutableList;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.november.mcphone.util.GsonCompat;
 import com.google.gson.JsonParser;
 
 import java.io.IOException;
@@ -42,8 +45,66 @@ public final class TrustStore {
     public static final int MAX_APPS_PER_AUTHOR = 64;
 
     /** 一条记录。 */
-    public record Author(String fingerprint, String displayName, long firstSeen,
-                         List<String> apps, boolean trusted, boolean blocked, String pubkeyBase64) {
+    public static final class Author {
+        private final String fingerprint;
+        private final String displayName;
+        private final long firstSeen;
+        private final List<String> apps;
+        private final boolean trusted;
+        private final boolean blocked;
+        private final String pubkeyBase64;
+
+        public Author(String fingerprint, String displayName, long firstSeen, List<String> apps, boolean trusted, boolean blocked, String pubkeyBase64) {
+            this.fingerprint = fingerprint;
+            this.displayName = displayName;
+            this.firstSeen = firstSeen;
+            this.apps = apps;
+            this.trusted = trusted;
+            this.blocked = blocked;
+            this.pubkeyBase64 = pubkeyBase64;
+        }
+
+        public String fingerprint() { return fingerprint; }
+
+        public String displayName() { return displayName; }
+
+        public long firstSeen() { return firstSeen; }
+
+        public List<String> apps() { return apps; }
+
+        public boolean trusted() { return trusted; }
+
+        public boolean blocked() { return blocked; }
+
+        public String pubkeyBase64() { return pubkeyBase64; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Author)) return false;
+            Author that = (Author) other;
+            return java.util.Objects.equals(this.fingerprint, that.fingerprint)
+                    && java.util.Objects.equals(this.displayName, that.displayName)
+                    && this.firstSeen == that.firstSeen
+                    && java.util.Objects.equals(this.apps, that.apps)
+                    && this.trusted == that.trusted
+                    && this.blocked == that.blocked
+                    && java.util.Objects.equals(this.pubkeyBase64, that.pubkeyBase64);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(fingerprint);
+            hash = 31 * hash + java.util.Objects.hashCode(displayName);
+            hash = 31 * hash + java.util.Objects.hashCode(firstSeen);
+            hash = 31 * hash + java.util.Objects.hashCode(apps);
+            hash = 31 * hash + java.util.Objects.hashCode(trusted);
+            hash = 31 * hash + java.util.Objects.hashCode(blocked);
+            hash = 31 * hash + java.util.Objects.hashCode(pubkeyBase64);
+            return hash;
+        }
+
+        @Override public String toString() { return "Author[fingerprint=" + fingerprint + ", displayName=" + displayName + ", firstSeen=" + firstSeen + ", apps=" + apps + ", trusted=" + trusted + ", blocked=" + blocked + ", pubkeyBase64=" + pubkeyBase64 + "]"; }
+
     }
 
     private final Map<String, Author> byFingerprint = new LinkedHashMap<>();
@@ -80,7 +141,7 @@ public final class TrustStore {
         Author old = byFingerprint.get(fingerprint);
         if (old == null) {
             byFingerprint.put(fingerprint, new Author(fingerprint, displayName, now,
-                    List.of(), false, false, java.util.Base64.getEncoder().encodeToString(pubkeyX509)));
+                    ImmutableList.of(), false, false, java.util.Base64.getEncoder().encodeToString(pubkeyX509)));
         } else {
             byFingerprint.put(fingerprint, new Author(fingerprint, displayName, old.firstSeen(),
                     old.apps(), old.trusted(), old.blocked(), old.pubkeyBase64()));
@@ -97,7 +158,7 @@ public final class TrustStore {
             while (apps.size() > MAX_APPS_PER_AUTHOR) apps.remove(0);
         }
         byFingerprint.put(fingerprint, new Author(a.fingerprint(), a.displayName(), a.firstSeen(),
-                List.copyOf(apps), true, a.blocked(), a.pubkeyBase64()));
+                ImmutableList.copyOf(apps), true, a.blocked(), a.pubkeyBase64()));
         appAuthor.put(appId, fingerprint);
     }
 
@@ -142,18 +203,18 @@ public final class TrustStore {
         TrustStore store = new TrustStore();
         if (!Files.isRegularFile(file)) return store;
         try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            var parsed = JsonParser.parseReader(r);
+            com.google.gson.JsonElement parsed = JsonParser.parseReader(r);
             if (!parsed.isJsonObject()) return store;
             JsonObject root = parsed.getAsJsonObject();
             JsonObject authors = root.has("authors") ? root.getAsJsonObject("authors") : new JsonObject();
-            for (String fp : authors.keySet()) {
+            for (String fp : GsonCompat.keys(authors)) {
                 JsonObject a = authors.getAsJsonObject(fp);
                 List<String> apps = new ArrayList<>();
-                if (a.has("apps")) for (var e : a.getAsJsonArray("apps")) apps.add(e.getAsString());
+                if (a.has("apps")) for (com.google.gson.JsonElement e : a.getAsJsonArray("apps")) apps.add(e.getAsString());
                 store.byFingerprint.put(fp, new Author(fp,
                         a.has("name") ? a.get("name").getAsString() : "",
                         a.has("firstSeen") ? a.get("firstSeen").getAsLong() : 0,
-                        List.copyOf(apps),
+                        ImmutableList.copyOf(apps),
                         a.has("trusted") && a.get("trusted").getAsBoolean(),
                         a.has("blocked") && a.get("blocked").getAsBoolean(),
                         a.has("pubkey") ? a.get("pubkey").getAsString() : ""));
@@ -161,9 +222,9 @@ public final class TrustStore {
             // 钉扎单独读。旧版的文件没有这一段，退回按 apps 列表重建
             if (root.has("pins")) {
                 JsonObject pins = root.getAsJsonObject("pins");
-                for (String appId : pins.keySet()) store.appAuthor.put(appId, pins.get(appId).getAsString());
+                for (String appId : GsonCompat.keys(pins)) store.appAuthor.put(appId, pins.get(appId).getAsString());
             } else {
-                for (String fp : authors.keySet()) {
+                for (String fp : GsonCompat.keys(authors)) {
                     Author a = store.byFingerprint.get(fp);
                     if (a != null) for (String appId : a.apps()) store.appAuthor.put(appId, fp);
                 }

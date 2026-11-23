@@ -119,7 +119,7 @@ public final class PhoneCanvas {
 
     /** 在临时 GUI 矩阵作用域内绘制，结束或异常时恢复整个矩阵栈；裁剪请另用 clipped。 */
     public void transformed(Runnable body) {
-        try (var scope = new com.november.mcphone.core.client.PhonePoseScope(graphics.pose())) {
+        try (com.november.mcphone.core.client.PhonePoseScope scope = new com.november.mcphone.core.client.PhonePoseScope(graphics.pose())) {
             body.run();
         }
     }

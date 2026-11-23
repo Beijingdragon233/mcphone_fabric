@@ -90,7 +90,8 @@ public class SignCopyTest {
         // 只扫那几条的话，confirm_prompt 与那一串 key_* 都在铁律之外 ——
         // 往里面写「安全」测试照样绿，而那正是这条铁律要拦的事
         int scanned = 0;
-        for (String k : zh.keySet()) {
+        for (var entry : zh.entrySet()) {
+            String k = entry.getKey();
             if (!k.startsWith("mcphone.sig.")) continue;
             scanned++;
             if (k.equals(SigCopy.INSTALL_NOTE)) continue;        // 它就是用来说「不是内容安不安全」的
@@ -100,7 +101,8 @@ public class SignCopyTest {
         check(scanned >= 19, "签名文案至少 19 条，实际扫到 " + scanned + " —— 少了说明键名前缀变了，铁律就空转了");
 
         int scannedEn = 0;
-        for (String k : en.keySet()) {
+        for (var entry : en.entrySet()) {
+            String k = entry.getKey();
             if (!k.startsWith("mcphone.sig.")) continue;
             scannedEn++;
             if (k.equals(SigCopy.INSTALL_NOTE)) continue;

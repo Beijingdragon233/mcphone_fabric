@@ -103,3 +103,24 @@ if (providers.gradleProperty('worldEditJar').isPresent()) {
              providers.gradleProperty('worldEditJar').get()
     }
 }
+
+// Independent Java 8 artifact; the modern engine production path stays unchanged.
+configurations {
+    upstreamJava8Engine { canBeConsumed = false; transitive = false }
+    upstreamJava8Sources { canBeConsumed = false; transitive = false }
+}
+dependencies {
+    upstreamJava8Engine 'org.mozilla:rhino:1.7.15.1'
+    upstreamJava8Sources 'org.mozilla:rhino:1.7.15.1:sources'
+}
+tasks.register('produceJava8Engine', JavaExec) {
+    group = 'engine production'
+    dependsOn tasks.named('classes')
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.november.mcphone.tools.rhino.Java8RhinoProducer'
+    def output = layout.buildDirectory.dir('staging-java8')
+    inputs.files(configurations.upstreamJava8Engine, configurations.upstreamJava8Sources)
+    outputs.dir(output)
+    args configurations.upstreamJava8Engine.singleFile.absolutePath,
+         configurations.upstreamJava8Sources.singleFile.absolutePath, output.get().asFile.absolutePath
+}

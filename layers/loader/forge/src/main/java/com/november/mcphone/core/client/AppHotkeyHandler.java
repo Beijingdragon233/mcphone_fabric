@@ -156,7 +156,7 @@ public final class AppHotkeyHandler {
      * 这一下漏回原版去挥手、开背包。
      */
     private static boolean launchOutside(Minecraft mc, IPhoneApp app) {
-        if (mc.player == null || PhoneLocation.find(mc.player).isEmpty()) return false;
+        if (mc.player == null || !PhoneLocation.find(mc.player).isPresent()) return false;
 
         try {
             app.onPress();

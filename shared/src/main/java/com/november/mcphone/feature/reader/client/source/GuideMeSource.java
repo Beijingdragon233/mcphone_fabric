@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.reader.client.source;
 
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.feature.reader.BookRef;
@@ -70,7 +73,7 @@ public final class GuideMeSource implements BookSource {
     private static final String GUIDES = "guideme.Guides";
 
     /** 扫出来的书。类型必须是中性的，理由见类注释 */
-    private List<BookRef> books = List.of();
+    private List<BookRef> books = ImmutableList.of();
 
     /** 上一次记进日志的本数，-1 表示还没记过 */
     private int loggedCount = -1;
@@ -142,8 +145,8 @@ public final class GuideMeSource implements BookSource {
 
         try {
             Object stack = createGuideItem.invoke(null, book.bookId());
-            if (!(stack instanceof ItemStack itemStack)) return false;
-            return GuiUtil.drawItemIcon(g, itemStack, x, y, size);
+            if (!(stack instanceof ItemStack)) return false;
+            return GuiUtil.drawItemIcon(g, ((ItemStack) stack), x, y, size);
         } catch (Throwable t) {
             // 每帧每行都会走到，不记日志：画不出来只是退回兜底图
             return false;
@@ -153,24 +156,24 @@ public final class GuideMeSource implements BookSource {
     /** 问 GuideME 现在有哪些手册。任何一步不成就当一本都没有 */
     private List<BookRef> scan() {
         Object proxy = proxy();
-        if (proxy == null) return List.of();
+        if (proxy == null) return ImmutableList.of();
 
         List<BookRef> out = new ArrayList<>();
         try {
             Object result = availableGuides.invoke(proxy);
-            if (!(result instanceof Stream<?> stream)) return List.of();
+            if (!(result instanceof Stream<?>)) return ImmutableList.of();
 
-            for (Object id : stream.toList()) {
-                if (!(id instanceof ResourceLocation guideId)) continue;
-                out.add(new BookRef(SOURCE_ID, guideId, titleOf(proxy, guideId), null,
-                        BookSource.modName(guideId.getNamespace())));
+            for (Object id : ((Stream<?>) result).collect(Java8Collections.toList())) {
+                if (!(id instanceof ResourceLocation)) continue;
+                out.add(new BookRef(SOURCE_ID, ((ResourceLocation) id), titleOf(proxy, ((ResourceLocation) id)), null,
+                        BookSource.modName(((ResourceLocation) id).getNamespace())));
             }
         } catch (Throwable t) {
             MCphone.LOGGER.error("[MCphone] 列 GuideME 手册失败，这一类书这次不显示", t);
-            return List.of();
+            return ImmutableList.of();
         }
 
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /**
@@ -183,7 +186,7 @@ public final class GuideMeSource implements BookSource {
     private Component titleOf(Object proxy, ResourceLocation guideId) {
         try {
             Object name = displayName.invoke(proxy, guideId);
-            if (name instanceof Component component) return component;
+            if (name instanceof Component) return ((Component) name);
         } catch (Throwable t) {
             MCphone.LOGGER.warn("[MCphone] 取 GuideME 手册 {} 的名字失败，改用 id", guideId, t);
         }

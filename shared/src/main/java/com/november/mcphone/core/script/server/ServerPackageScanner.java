@@ -1,5 +1,10 @@
 package com.november.mcphone.core.script.server;
 
+import java.nio.file.Paths;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.core.PhonePaths;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -67,7 +72,7 @@ public final class ServerPackageScanner {
             Files.createDirectories(dir);
         } catch (IOException e) {
             MCphone.LOGGER.warn("[MCphone] 建不了待审目录 {}：{}", dir, e.toString());
-            return new Scan(0, Map.of());
+            return new Scan(0, ImmutableMap.of());
         }
         TrustStore trust = TrustStore.load(configPath(server));
         List<Path> files = new ArrayList<>();
@@ -84,7 +89,7 @@ public final class ServerPackageScanner {
             }
         } catch (IOException e) {
             MCphone.LOGGER.warn("[MCphone] 读不了待审目录 {}：{}", dir, e.toString());
-            return new Scan(0, Map.of());
+            return new Scan(0, ImmutableMap.of());
         }
         Map<String, AppPackage> packages = new LinkedHashMap<>();
         int changed = 0;
@@ -170,7 +175,7 @@ public final class ServerPackageScanner {
 
     /** manifest 里的字符串数组；有非字符串元素就抛（调用方按拒处理）。 */
     static List<String> stringList(JsonObject root, String key) {
-        if (!root.has(key)) return List.of();
+        if (!root.has(key)) return ImmutableList.of();
         JsonElement el = root.get(key);
         if (!el.isJsonArray()) throw new IllegalArgumentException(key + " 必须是数组");
         JsonArray arr = el.getAsJsonArray();
@@ -188,13 +193,39 @@ public final class ServerPackageScanner {
     static Path configPath(MinecraftServer server) {
         // getFile 两版都在，但返回类型不同（1.20.1 是 File、1.21.1 是 Path）：用 toString 收敛，
         // 避免在共用层里出现版本专有的转换。getServerDirectory 在 1.20.1 上不存在，不能用。
-        return Path.of(server.getFile(PhonePaths.AUTHORS.relative()).toString());
+        return Paths.get(server.getFile(PhonePaths.AUTHORS.relative()).toString());
     }
 
     /** 一趟扫描的结果：新进队几条 + 这一趟读到的包（按摘要，供装配复用）。 */
-    public record Scan(int changed, Map<String, AppPackage> packages) {
-        public Scan {
-            packages = Map.copyOf(packages);
+    public static final class Scan {
+        private final int changed;
+        private final Map<String, AppPackage> packages;
+
+        public int changed() { return changed; }
+
+        public Map<String, AppPackage> packages() { return packages; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Scan)) return false;
+            Scan that = (Scan) other;
+            return this.changed == that.changed
+                    && java.util.Objects.equals(this.packages, that.packages);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(changed);
+            hash = 31 * hash + java.util.Objects.hashCode(packages);
+            return hash;
+        }
+
+        @Override public String toString() { return "Scan[changed=" + changed + ", packages=" + packages + "]"; }
+
+        public Scan(int changed, Map<String, AppPackage> packages) {
+            packages = ImmutableMap.copyOf(packages);
+            this.changed = changed;
+            this.packages = packages;
         }
     }
 }

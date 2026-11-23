@@ -263,7 +263,7 @@ public final class ClientHttpCancelTest {
             check(entered.await(5, TimeUnit.SECONDS), "real HTTP reached loopback server");
             try (HttpRequests batch = new HttpRequests(session, ignored -> {})) {batch.cancel(id); batch.commit();}
             // Inspect only resource accounting; the server deliberately keeps processing until finally releases it.
-            var slots = Class.forName(HttpSession.class.getName() + "$Network").getDeclaredField("SLOTS"); slots.setAccessible(true);
+            var slots = Class.forName(HttpSession.class.getPackageName() + ".ScriptHttpTransport$Network").getDeclaredField("SLOTS"); slots.setAccessible(true);
             Semaphore semaphore = (Semaphore) slots.get(null); long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
             while (semaphore.availablePermits() != 16 && System.nanoTime() < deadline) Thread.sleep(5);
             check(semaphore.availablePermits() == 16 && session.available() == 4, "real cancellation frees local transport permit before server finishes");

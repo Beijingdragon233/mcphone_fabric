@@ -1,7 +1,10 @@
 package com.november.mcphone.core.script.pkg;
 
+import com.google.common.collect.ImmutableMap;
+
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.november.mcphone.util.GsonCompat;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
@@ -25,20 +28,81 @@ import java.util.regex.Pattern;
  * <p>{@link #uiTree} 是前端入口，两种写法在这里收敛成一个字段：写了 {@code ui} 就是它指的那个文件
  * （§4.2 的 ui.json），没写就是 {@link #DEFAULT_ENTRY}（§11.2 的 app.vue）。{@code uiStyle} 只有前一种才有。
  */
-public record Manifest(
-        int format,
-        String namespace,
-        String path,
-        String version,
-        String name,
-        String author,
-        String description,
-        String icon,
-        String uiTree,
-        String uiStyle,
-        String engine,
-        /** 这个 App 要用哪些 SDK、各自要几版（§23.4）。没写就是空表，<b>不是 null</b>。 */
-        Map<String, Integer> sdk) {
+public final class Manifest {
+    private final int format;
+    private final String namespace;
+    private final String path;
+    private final String version;
+    private final String name;
+    private final String author;
+    private final String description;
+    private final String icon;
+    private final String uiTree;
+    private final String uiStyle;
+    private final String engine;
+    private final Map<String, Integer> sdk;
+
+    public int format() { return format; }
+
+    public String namespace() { return namespace; }
+
+    public String path() { return path; }
+
+    public String version() { return version; }
+
+    public String name() { return name; }
+
+    public String author() { return author; }
+
+    public String description() { return description; }
+
+    public String icon() { return icon; }
+
+    public String uiTree() { return uiTree; }
+
+    public String uiStyle() { return uiStyle; }
+
+    public String engine() { return engine; }
+
+    public Map<String, Integer> sdk() { return sdk; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof Manifest)) return false;
+        Manifest that = (Manifest) other;
+        return this.format == that.format
+                && java.util.Objects.equals(this.namespace, that.namespace)
+                && java.util.Objects.equals(this.path, that.path)
+                && java.util.Objects.equals(this.version, that.version)
+                && java.util.Objects.equals(this.name, that.name)
+                && java.util.Objects.equals(this.author, that.author)
+                && java.util.Objects.equals(this.description, that.description)
+                && java.util.Objects.equals(this.icon, that.icon)
+                && java.util.Objects.equals(this.uiTree, that.uiTree)
+                && java.util.Objects.equals(this.uiStyle, that.uiStyle)
+                && java.util.Objects.equals(this.engine, that.engine)
+                && java.util.Objects.equals(this.sdk, that.sdk);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(format);
+        hash = 31 * hash + java.util.Objects.hashCode(namespace);
+        hash = 31 * hash + java.util.Objects.hashCode(path);
+        hash = 31 * hash + java.util.Objects.hashCode(version);
+        hash = 31 * hash + java.util.Objects.hashCode(name);
+        hash = 31 * hash + java.util.Objects.hashCode(author);
+        hash = 31 * hash + java.util.Objects.hashCode(description);
+        hash = 31 * hash + java.util.Objects.hashCode(icon);
+        hash = 31 * hash + java.util.Objects.hashCode(uiTree);
+        hash = 31 * hash + java.util.Objects.hashCode(uiStyle);
+        hash = 31 * hash + java.util.Objects.hashCode(engine);
+        hash = 31 * hash + java.util.Objects.hashCode(sdk);
+        return hash;
+    }
+
+    @Override public String toString() { return "Manifest[format=" + format + ", namespace=" + namespace + ", path=" + path + ", version=" + version + ", name=" + name + ", author=" + author + ", description=" + description + ", icon=" + icon + ", uiTree=" + uiTree + ", uiStyle=" + uiStyle + ", engine=" + engine + ", sdk=" + sdk + "]"; }
+
 
     /** 本轮只认这一个包格式版本。 */
     public static final int FORMAT = 1;
@@ -77,9 +141,21 @@ public record Manifest(
     private static final int MAX_AUTHOR = 32;
     private static final int MAX_DESCRIPTION = 256;
 
-    public Manifest {
+    public Manifest(int format, String namespace, String path, String version, String name, String author, String description, String icon, String uiTree, String uiStyle, String engine, Map<String, Integer> sdk) {
         // 没写 sdk 的包占大多数，让它们与写了的走同一条读法：调用方不必每次判 null
-        sdk = sdk == null ? Map.of() : Map.copyOf(sdk);
+        sdk = sdk == null ? ImmutableMap.of() : ImmutableMap.copyOf(sdk);
+        this.format = format;
+        this.namespace = namespace;
+        this.path = path;
+        this.version = version;
+        this.name = name;
+        this.author = author;
+        this.description = description;
+        this.icon = icon;
+        this.uiTree = uiTree;
+        this.uiStyle = uiStyle;
+        this.engine = engine;
+        this.sdk = sdk;
     }
 
     /** {@code namespace:path}，拼回去的那一个。 */
@@ -141,7 +217,60 @@ public record Manifest(
                 icon, null, null, null, sdk(root));
     }
 
-    private record Head(int format, String namespace, String path, String version, String name, String author) {
+    private static final class Head {
+        private final int format;
+        private final String namespace;
+        private final String path;
+        private final String version;
+        private final String name;
+        private final String author;
+
+        private Head(int format, String namespace, String path, String version, String name, String author) {
+            this.format = format;
+            this.namespace = namespace;
+            this.path = path;
+            this.version = version;
+            this.name = name;
+            this.author = author;
+        }
+
+        public int format() { return format; }
+
+        public String namespace() { return namespace; }
+
+        public String path() { return path; }
+
+        public String version() { return version; }
+
+        public String name() { return name; }
+
+        public String author() { return author; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Head)) return false;
+            Head that = (Head) other;
+            return this.format == that.format
+                    && java.util.Objects.equals(this.namespace, that.namespace)
+                    && java.util.Objects.equals(this.path, that.path)
+                    && java.util.Objects.equals(this.version, that.version)
+                    && java.util.Objects.equals(this.name, that.name)
+                    && java.util.Objects.equals(this.author, that.author);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(format);
+            hash = 31 * hash + java.util.Objects.hashCode(namespace);
+            hash = 31 * hash + java.util.Objects.hashCode(path);
+            hash = 31 * hash + java.util.Objects.hashCode(version);
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(author);
+            return hash;
+        }
+
+        @Override public String toString() { return "Head[format=" + format + ", namespace=" + namespace + ", path=" + path + ", version=" + version + ", name=" + name + ", author=" + author + "]"; }
+
     }
 
     private static JsonObject strictObject(String json) {
@@ -292,14 +421,14 @@ public record Manifest(
      * 旧版 MCphone 就把新包报成"清单坏了"，而它没坏。
      */
     private static Map<String, Integer> sdk(JsonObject root) {
-        if (!root.has("sdk")) return Map.of();
+        if (!root.has("sdk")) return ImmutableMap.of();
         JsonObject obj = requireObject(root, "sdk");
         if (obj.size() > MAX_SDK_ENTRIES) {
             throw PackageError.of(PackageError.Code.E_PKG_BAD_SDK,
                     "最多 " + MAX_SDK_ENTRIES + " 项，收到 " + obj.size());
         }
         Map<String, Integer> out = new LinkedHashMap<>();
-        for (String key : obj.keySet()) {
+        for (String key : GsonCompat.keys(obj)) {
             if (!SDK_KEY.matcher(key).matches()) {
                 throw PackageError.of(PackageError.Code.E_PKG_BAD_SDK,
                         "键 '" + key + "' 要匹配 " + SDK_KEY.pattern());
@@ -312,7 +441,7 @@ public record Manifest(
             }
             out.put(key, v);
         }
-        return Map.copyOf(out);
+        return ImmutableMap.copyOf(out);
     }
 
     private static JsonObject requireObject(JsonObject obj, String field) {

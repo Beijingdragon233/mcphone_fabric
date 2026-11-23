@@ -18,7 +18,7 @@ on:
   push:
     branches: [master, main, "26.x-"]
   pull_request:
-    branches: [master, main]
+    branches: [master, main, "26.x-"]
 
 jobs:
   # 先把要编哪些读出来，下面按矩阵一个 runner 编一个。
@@ -74,6 +74,7 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: |
+            8
             17
             21
             25

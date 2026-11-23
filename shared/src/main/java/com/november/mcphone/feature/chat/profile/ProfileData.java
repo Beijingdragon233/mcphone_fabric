@@ -25,14 +25,14 @@ public final class ProfileData extends PhoneSavedData {
     @Override protected CompoundTag write(CompoundTag tag) {
         if (unreadable != null) return tag.merge(unreadable.copy());
         tag.putInt("format", 1);
-        tag.put("introductions", CODEC.encodeStart(NbtOps.INSTANCE, book.snapshot()).result().orElseThrow());
+        tag.put("introductions", CODEC.encodeStart(NbtOps.INSTANCE, book.snapshot()).result().orElseThrow(java.util.NoSuchElementException::new));
         return tag;
     }
     public static ProfileData load(CompoundTag tag) {
         try {
             if (Codec.INT.parse(NbtOps.INSTANCE, tag.get("format")).result().orElse(-1) != 1)
                 throw new IllegalArgumentException("未知资料格式");
-            return new ProfileData(ProfileBook.restore(CODEC.parse(NbtOps.INSTANCE, tag.get("introductions")).result().orElseThrow()), null);
+            return new ProfileData(ProfileBook.restore(CODEC.parse(NbtOps.INSTANCE, tag.get("introductions")).result().orElseThrow(java.util.NoSuchElementException::new)), null);
         } catch (RuntimeException error) {
             MCphone.LOGGER.error("个人资料存档损坏，保留原文并锁定；请恢复 mcphone_profiles.dat 备份", error);
             return new ProfileData(new ProfileBook(), tag.copy());

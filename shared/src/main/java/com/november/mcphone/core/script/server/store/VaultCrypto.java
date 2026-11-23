@@ -65,7 +65,36 @@ public final class VaultCrypto {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     /** 一条密文记录：nonce 与密文一起存，salt 与版本在外层（{@link SealedRecord}）。 */
-    public record Sealed(byte[] nonce, byte[] cipher) {
+    public static final class Sealed {
+        private final byte[] nonce;
+        private final byte[] cipher;
+
+        public Sealed(byte[] nonce, byte[] cipher) {
+            this.nonce = nonce;
+            this.cipher = cipher;
+        }
+
+        public byte[] nonce() { return nonce; }
+
+        public byte[] cipher() { return cipher; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Sealed)) return false;
+            Sealed that = (Sealed) other;
+            return java.util.Objects.equals(this.nonce, that.nonce)
+                    && java.util.Objects.equals(this.cipher, that.cipher);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(nonce);
+            hash = 31 * hash + java.util.Objects.hashCode(cipher);
+            return hash;
+        }
+
+        @Override public String toString() { return "Sealed[nonce=" + nonce + ", cipher=" + cipher + "]"; }
+
     }
 
     // ---------------------------------------------------------------- 随机

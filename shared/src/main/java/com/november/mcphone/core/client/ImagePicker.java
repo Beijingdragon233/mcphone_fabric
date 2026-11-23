@@ -221,8 +221,9 @@ public final class ImagePicker {
         preview.setBackground(new Color(0xFFF2F3F5));
 
         chooser.addPropertyChangeListener(JFileChooser.SELECTED_FILE_CHANGED_PROPERTY, event -> {
-            if (event.getNewValue() instanceof File file) {
-                showPreview(preview, file);
+            Object fileMatch;
+            if ((fileMatch = event.getNewValue()) instanceof File) {
+                showPreview(preview, ((File) fileMatch));
             }
         });
 
@@ -326,7 +327,7 @@ public final class ImagePicker {
                 int step = Math.max(1, Math.min(
                         sourceWidth / Math.max(1, maxWidth),
                         sourceHeight / Math.max(1, maxHeight)));
-                var params = reader.getDefaultReadParam();
+                javax.imageio.ImageReadParam params = reader.getDefaultReadParam();
                 params.setSourceSubsampling(step, step, 0, 0);
                 return fit(reader.read(0, params), maxWidth, maxHeight);
             } finally {

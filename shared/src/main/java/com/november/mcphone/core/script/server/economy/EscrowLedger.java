@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.google.common.collect.ImmutableMap;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.api.economy.EscrowId;
 
 import java.util.HashMap;
@@ -35,8 +38,66 @@ public final class EscrowLedger {
     public static final long SETTLED_KEEP_MS = 30L * 24 * 3600 * 1000;
 
     /** 一笔托管。{@code settledAt} 是结清时刻，没结清是 0。 */
-    public record Entry(UUID owner, UUID beneficiary, String currencyId, long amount,
-                        long createdAt, boolean settled, long settledAt) {
+    public static final class Entry {
+        private final UUID owner;
+        private final UUID beneficiary;
+        private final String currencyId;
+        private final long amount;
+        private final long createdAt;
+        private final boolean settled;
+        private final long settledAt;
+
+        public Entry(UUID owner, UUID beneficiary, String currencyId, long amount, long createdAt, boolean settled, long settledAt) {
+            this.owner = owner;
+            this.beneficiary = beneficiary;
+            this.currencyId = currencyId;
+            this.amount = amount;
+            this.createdAt = createdAt;
+            this.settled = settled;
+            this.settledAt = settledAt;
+        }
+
+        public UUID owner() { return owner; }
+
+        public UUID beneficiary() { return beneficiary; }
+
+        public String currencyId() { return currencyId; }
+
+        public long amount() { return amount; }
+
+        public long createdAt() { return createdAt; }
+
+        public boolean settled() { return settled; }
+
+        public long settledAt() { return settledAt; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Entry)) return false;
+            Entry that = (Entry) other;
+            return java.util.Objects.equals(this.owner, that.owner)
+                    && java.util.Objects.equals(this.beneficiary, that.beneficiary)
+                    && java.util.Objects.equals(this.currencyId, that.currencyId)
+                    && this.amount == that.amount
+                    && this.createdAt == that.createdAt
+                    && this.settled == that.settled
+                    && this.settledAt == that.settledAt;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(owner);
+            hash = 31 * hash + java.util.Objects.hashCode(beneficiary);
+            hash = 31 * hash + java.util.Objects.hashCode(currencyId);
+            hash = 31 * hash + java.util.Objects.hashCode(amount);
+            hash = 31 * hash + java.util.Objects.hashCode(createdAt);
+            hash = 31 * hash + java.util.Objects.hashCode(settled);
+            hash = 31 * hash + java.util.Objects.hashCode(settledAt);
+            return hash;
+        }
+
+        @Override public String toString() { return "Entry[owner=" + owner + ", beneficiary=" + beneficiary + ", currencyId=" + currencyId + ", amount=" + amount + ", createdAt=" + createdAt + ", settled=" + settled + ", settledAt=" + settledAt + "]"; }
+
     }
 
     private final Map<UUID, Entry> entries = new HashMap<>();
@@ -109,7 +170,7 @@ public final class EscrowLedger {
         for (Map.Entry<UUID, Entry> e : entries.entrySet()) {
             Entry v = e.getValue();
             if (!v.settled() && now - v.createdAt() >= timeoutMs) {
-                out.add(Map.entry(new EscrowId(e.getKey()), v));
+                out.add(Java8Collections.entry(new EscrowId(e.getKey()), v));
             }
         }
         return out;
@@ -134,7 +195,7 @@ public final class EscrowLedger {
 
     /** 落盘用：全部条目。 */
     public Map<UUID, Entry> snapshot() {
-        return Map.copyOf(entries);
+        return ImmutableMap.copyOf(entries);
     }
 
     /** 从盘上读回来。 */

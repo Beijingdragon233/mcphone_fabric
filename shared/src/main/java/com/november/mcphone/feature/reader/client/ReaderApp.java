@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.client.app.RequiredMod;
 import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.core.client.PhoneScreen;
@@ -54,7 +56,7 @@ public final class ReaderApp extends PhoneApp {
      */
     @Override
     public List<RequiredMod> companionMods() {
-        return List.of(
+        return ImmutableList.of(
                 new RequiredMod(PatchouliSource.PATCHOULI_MODID,
                         Component.translatable("mcphone.compat.patchouli").getString()),
                 new RequiredMod(GuideMeSource.GUIDEME_MODID,
@@ -84,8 +86,9 @@ public final class ReaderApp extends PhoneApp {
     /** 与时钟、记事本一致：书架是手机内的一个模式，不另开 Screen */
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
-            ps.navigateTo(PhoneScreen.Mode.READER);
+        Object psMatch;
+        if ((psMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) {
+            ((PhoneScreen) psMatch).navigateTo(PhoneScreen.Mode.READER);
         }
     }
 }

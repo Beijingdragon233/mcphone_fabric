@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.chat.client.contextmenu.ChatContextMenuView;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -37,6 +39,6 @@ final class ChatInputMenu {
     void render(GuiGraphics g,Font font,int x,int y,int width,int height,int mx,int my) {
         if (!isOpen()) return;
         view.render(g,font,x,y,width,height,mx,my,
-                List.of(new ChatContextMenuView.Entry("mcphone.chat.message_action.paste",ChatContextMenuView.Icon.PASTE,pasteEnabled)),painter);
+                ImmutableList.of(new ChatContextMenuView.Entry("mcphone.chat.message_action.paste",ChatContextMenuView.Icon.PASTE,pasteEnabled)),painter);
     }
 }

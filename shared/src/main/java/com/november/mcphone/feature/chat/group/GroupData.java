@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.chat.group;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.List;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.PhoneSavedData;
 import net.minecraft.nbt.CompoundTag;
@@ -33,13 +36,13 @@ public final class GroupData extends PhoneSavedData {
     }
     public static GroupData load(CompoundTag tag) {
         try {
-            var formatTag = tag.get("format");
+            net.minecraft.nbt.Tag formatTag = tag.get("format");
             int format = formatTag == null ? -1 : com.mojang.serialization.Codec.INT.parse(NbtOps.INSTANCE, formatTag).result().orElse(-1);
             if (format != 1 && format != 2 && format != 3) throw new IllegalStateException("未知群聊存档格式 " + format);
-            var roomCodec = format == 1 ? GroupRoom.LEGACY_CODEC : GroupRoom.CODEC;
-            var rooms = roomCodec.listOf().parse(NbtOps.INSTANCE, tag.get("rooms")).result()
+            com.mojang.serialization.Codec<GroupRoom> roomCodec = format == 1 ? GroupRoom.LEGACY_CODEC : GroupRoom.CODEC;
+            List<GroupRoom> rooms = roomCodec.listOf().parse(NbtOps.INSTANCE, tag.get("rooms")).result()
                     .orElseThrow(() -> new IllegalStateException("群聊存档读取失败"));
-            var invitations = format < 3 ? java.util.List.<GroupInvitation>of()
+            List<GroupInvitation> invitations = format < 3 ? ImmutableList.<GroupInvitation>of()
                     : GroupInvitation.CODEC.listOf().parse(NbtOps.INSTANCE, tag.get("invitations")).result()
                     .orElseThrow(() -> new IllegalStateException("群邀请存档读取失败"));
             return new GroupData(GroupBook.restore(rooms, invitations));

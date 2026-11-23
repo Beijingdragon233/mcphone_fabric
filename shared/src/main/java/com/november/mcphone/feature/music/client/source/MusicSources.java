@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.music.client.source;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.music.Track;
 
 import java.util.ArrayList;
@@ -37,7 +39,7 @@ public final class MusicSources {
 
     private MusicSources() {}
 
-    private static final List<MusicSource> SOURCES = List.of(
+    private static final List<MusicSource> SOURCES = ImmutableList.of(
             new LocalFileSource()
     );
 
@@ -79,7 +81,7 @@ public final class MusicSources {
         List<Track> out = new ArrayList<>();
         for (MusicSource s : SOURCES) out.addAll(s.list());
 
-        cached = List.copyOf(out);
+        cached = ImmutableList.copyOf(out);
         return cached;
     }
 

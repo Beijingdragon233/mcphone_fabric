@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.client;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.net.Handshake;
 import com.november.mcphone.core.script.net.ScriptProtocol;
@@ -47,10 +50,59 @@ public final class ClientHandshake {
      * 一个部署在本客户端的可见信息（都是 UX：deployRev 用于版本比对、actions 用于灰按钮，
      * visibility 给商店/详情页用、approvalRevision/approvedAt 给详情页三行用）。
      */
-    public record Entry(String deployRev, String frontendDigest, int visibility,
-                        long approvalRevision, long approvedAt, List<String> actions) {
-        public Entry {
-            actions = List.copyOf(actions);
+    public static final class Entry {
+        private final String deployRev;
+        private final String frontendDigest;
+        private final int visibility;
+        private final long approvalRevision;
+        private final long approvedAt;
+        private final List<String> actions;
+
+        public String deployRev() { return deployRev; }
+
+        public String frontendDigest() { return frontendDigest; }
+
+        public int visibility() { return visibility; }
+
+        public long approvalRevision() { return approvalRevision; }
+
+        public long approvedAt() { return approvedAt; }
+
+        public List<String> actions() { return actions; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Entry)) return false;
+            Entry that = (Entry) other;
+            return java.util.Objects.equals(this.deployRev, that.deployRev)
+                    && java.util.Objects.equals(this.frontendDigest, that.frontendDigest)
+                    && this.visibility == that.visibility
+                    && this.approvalRevision == that.approvalRevision
+                    && this.approvedAt == that.approvedAt
+                    && java.util.Objects.equals(this.actions, that.actions);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(deployRev);
+            hash = 31 * hash + java.util.Objects.hashCode(frontendDigest);
+            hash = 31 * hash + java.util.Objects.hashCode(visibility);
+            hash = 31 * hash + java.util.Objects.hashCode(approvalRevision);
+            hash = 31 * hash + java.util.Objects.hashCode(approvedAt);
+            hash = 31 * hash + java.util.Objects.hashCode(actions);
+            return hash;
+        }
+
+        @Override public String toString() { return "Entry[deployRev=" + deployRev + ", frontendDigest=" + frontendDigest + ", visibility=" + visibility + ", approvalRevision=" + approvalRevision + ", approvedAt=" + approvedAt + ", actions=" + actions + "]"; }
+
+        public Entry(String deployRev, String frontendDigest, int visibility, long approvalRevision, long approvedAt, List<String> actions) {
+            actions = ImmutableList.copyOf(actions);
+            this.deployRev = deployRev;
+            this.frontendDigest = frontendDigest;
+            this.visibility = visibility;
+            this.approvalRevision = approvalRevision;
+            this.approvedAt = approvedAt;
+            this.actions = actions;
         }
     }
 
@@ -81,7 +133,7 @@ public final class ClientHandshake {
         if (push == null || !push.isHost()) return;
         try {
             switch (push.topic()) {
-                case ScriptProtocol.TOPIC_HANDSHAKE_BEGIN -> {
+                case ScriptProtocol.TOPIC_HANDSHAKE_BEGIN: {
                     Handshake.Begin begin = Handshake.decodeBegin(push.data());
                     synchronized (ClientHandshake.class) {
                         if (push.revision() <= lastBeginRevision) {
@@ -116,7 +168,8 @@ public final class ClientHandshake {
                         deployments.clear();      // 新的一批：先清空，等 end 才算齐
                     }
                 }
-                case ScriptProtocol.TOPIC_HANDSHAKE_DEPLOYMENT -> {
+                    break;
+                case ScriptProtocol.TOPIC_HANDSHAKE_DEPLOYMENT: {
                     Handshake.Deployment d = Handshake.decodeDeployment(push.data());
                     synchronized (ClientHandshake.class) {
                         if (!batchOpen) return;             // 没有打开的批次：这条无主，不收
@@ -134,7 +187,8 @@ public final class ClientHandshake {
                         receivedCount++;
                     }
                 }
-                case ScriptProtocol.TOPIC_HANDSHAKE_END -> {
+                    break;
+                case ScriptProtocol.TOPIC_HANDSHAKE_END: {
                     Handshake.End end = Handshake.decodeEnd(push.data());
                     synchronized (ClientHandshake.class) {
                         // epoch 对 + 条数收齐，这一批才可用；否则整批作废（内容清空，别让界面看见半批）
@@ -150,9 +204,11 @@ public final class ClientHandshake {
                         batchOpen = false;
                     }
                 }
-                default -> {
+                    break;
+                default: {
                     // 宿主将来可能用别的 topic；不认识的忽略
                 }
+                    break;
             }
         } catch (Throwable t) {
             MCphone.LOGGER.warn("[MCphone] 握手推送解不开，忽略这一条: topic={}", push.topic(), t);
@@ -189,17 +245,17 @@ public final class ClientHandshake {
     public static Map<String, Object> backendValues(String appId) {
         synchronized (ClientHandshake.class) {
             Entry e = complete ? deployments.get(appId) : null;
-            return Map.of(
+            return ImmutableMap.of(
                     "available", e != null,
                     "serverName", complete ? serverName : "",
-                    "actions", e == null ? List.of() : e.actions());
+                    "actions", e == null ? ImmutableList.of() : e.actions());
         }
     }
 
     /** 宿主注入名字的完整表：{@code {"backend": {...}}}。{@code TemplateInstance.instantiate} 要的就是它。 */
     public static Map<String, Object> backendContext(String appId) {
         // 键名与 sfc 的 ExprParser.Host.BACKEND 是同一个字面量；那边是包私有的，这里只能写字符串
-        return Map.of("backend", backendValues(appId));
+        return ImmutableMap.of("backend", backendValues(appId));
     }
 
     /** 这一次连接要回填进 {@code ScriptRpc} 的 epoch；没握手/不完整时 0（服务端会判过期，这是正确的）。 */
@@ -227,7 +283,7 @@ public final class ClientHandshake {
     /** 这一批的全部部署（只读快照）。给调试命令与将来的商店来源列目录用。 */
     public static Map<String, Entry> deployments() {
         synchronized (ClientHandshake.class) {
-            return complete ? Map.copyOf(deployments) : Map.of();
+            return complete ? ImmutableMap.copyOf(deployments) : ImmutableMap.of();
         }
     }
 

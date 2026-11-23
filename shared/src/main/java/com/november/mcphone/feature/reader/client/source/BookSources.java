@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client.source;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.feature.reader.BookRef;
 import com.november.mcphone.feature.reader.client.compat.BookQuirks;
@@ -44,7 +46,7 @@ public final class BookSources {
     private static final ModonomiconSource MODONOMICON = new ModonomiconSource();
 
     /** 全部书源。加新的就往这里加一行 */
-    private static final List<BookSource> SOURCES = List.of(
+    private static final List<BookSource> SOURCES = ImmutableList.of(
             new PatchouliSource(),
             new GuideMeSource(),
             MODONOMICON,
@@ -131,7 +133,7 @@ public final class BookSources {
             if (fixed != null) shelved.add(fixed);
         }
 
-        cached = List.copyOf(shelved);
+        cached = ImmutableList.copyOf(shelved);
         return cached;
     }
 

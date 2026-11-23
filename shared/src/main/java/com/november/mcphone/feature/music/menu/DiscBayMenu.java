@@ -121,8 +121,8 @@ public class DiscBayMenu extends AbstractContainerMenu {
     @Override
     public void removed(Player player) {
         super.removed(player);
-        if (player instanceof ServerPlayer serverPlayer) {
-            MusicNetworking.sync(serverPlayer);
+        if (player instanceof ServerPlayer) {
+            MusicNetworking.sync(((ServerPlayer) player));
         }
     }
 }

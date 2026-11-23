@@ -44,7 +44,7 @@ final class ChatProfileDetails {
     }
     void poll(long now) {
         if (request==null) return;
-        var reply=ProfileClientCache.consume(request);
+        com.november.mcphone.feature.chat.profile.net.ProfileWire.Reply reply=ProfileClientCache.consume(request);
         if (reply!=null) {
             request=null;
             if (reply.status()==ProfileWire.Status.OK) {
@@ -71,7 +71,7 @@ final class ChatProfileDetails {
             String text=loaded?(introduction.isEmpty()?ChatProfileUi.tr("intro_empty"):introduction):ChatProfileUi.tr(status.isEmpty()?"loading":status);
             com.november.mcphone.core.client.GuiUtil.enableScissor(g,x,y,x+w,Math.max(y,action.y()-16));
             try {
-                for (var line:font.split(Component.literal(text),ChatLayout.unscaledWidth(w-6,ChatLayout.TEXT_SCALE))) {
+                for (net.minecraft.util.FormattedCharSequence line:font.split(Component.literal(text),ChatLayout.unscaledWidth(w-6,ChatLayout.TEXT_SCALE))) {
                     ChatUi.text(g,font,line,x+3,y,ChatLayout.TEXT_SCALE,FontPalette.subtle());y+=ChatUi.lineHeight(font,ChatLayout.TEXT_SCALE)+2;
                 }
             } finally { com.november.mcphone.core.client.GuiUtil.disableScissor(g); }

@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.notes;
 
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
@@ -12,12 +15,31 @@ import java.util.Optional;
  * 记事本里的一整组笔记，跟着玩家走。整体不可变：每次改动产出新实例；
  * Codec 解出来的集合本身也是不可变的，按可变集合用会抛 UnsupportedOperationException。
  */
-public record NoteList(List<Note> notes) {
+public final class NoteList {
+    private final List<Note> notes;
 
-    public static final NoteList EMPTY = new NoteList(List.of());
+    public List<Note> notes() { return notes; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof NoteList)) return false;
+        NoteList that = (NoteList) other;
+        return java.util.Objects.equals(this.notes, that.notes);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(notes);
+        return hash;
+    }
+
+    @Override public String toString() { return "NoteList[notes=" + notes + "]"; }
+
+
+    public static final NoteList EMPTY = new NoteList(ImmutableList.of());
 
     public NoteList(List<Note> notes) {
-        this.notes = List.copyOf(notes);
+        this.notes = ImmutableList.copyOf(notes);
     }
 
     public static final Codec<NoteList> CODEC = RecordCodecBuilder.create(instance ->
@@ -59,8 +81,8 @@ public record NoteList(List<Note> notes) {
 
     /** id 不存在时原样返回 this */
     public NoteList delete(int id) {
-        if (find(id).isEmpty()) return this;
-        return new NoteList(notes.stream().filter(note -> note.id() != id).toList());
+        if (!find(id).isPresent()) return this;
+        return new NoteList(notes.stream().filter(note -> note.id() != id).collect(Java8Collections.toList()));
     }
 
     /** 取最大值加一而不是条数：删掉中间几条后按条数生成会撞号 */
@@ -71,6 +93,6 @@ public record NoteList(List<Note> notes) {
     public List<Note> sortedByRecent() {
         return notes.stream()
                 .sorted(Comparator.comparingLong(Note::modified).reversed())
-                .toList();
+                .collect(Java8Collections.toList());
     }
 }

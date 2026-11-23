@@ -10,7 +10,7 @@ public final class GroupThrottle {
     public boolean allow(Object connection, Kind kind, long now) {
         long interval = kind == Kind.CREATE ? 10_000 : kind == Kind.UPLOAD ? 2000
                 : kind == Kind.TEXT || kind == Kind.DELETE || kind == Kind.MANAGE || kind == Kind.READ ? 250 : 500;
-        var record = times.computeIfAbsent(connection, ignored -> new EnumMap<>(Kind.class));
+        EnumMap<GroupThrottle.Kind,Long> record = times.computeIfAbsent(connection, ignored -> new EnumMap<>(Kind.class));
         Long previous = record.get(kind);
         if (previous != null && now >= previous && now - previous < interval) return false;
         record.put(kind, now); return true;

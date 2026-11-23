@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import java.util.Iterator;
+import java.util.List;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.november.mcphone.core.client.ImageCodec;
 import com.november.mcphone.core.net.MCphoneNetwork;
@@ -197,7 +199,7 @@ public final class ChatImageCache {
         if (peer == null || Minecraft.getInstance().getConnection() == null) return;
 
         long now = System.currentTimeMillis();
-        var wanted = REQUESTS.batch(peer, now, RequestChatImagePacket.MAX_IDS, id -> {
+        List<UUID> wanted = REQUESTS.batch(peer, now, RequestChatImagePacket.MAX_IDS, id -> {
             Entry entry = ENTRIES.get(id);
             return entry == null || entry.status != Status.LOADING ? null : entry.requestedAt;
         });
@@ -313,7 +315,7 @@ public final class ChatImageCache {
      * 字节容量覆盖 PNG 和贴图；条数容量同时覆盖不占像素的加载中、过期和损坏条目。
      */
     private static void trim() {
-        var it = ENTRIES.entrySet().iterator();
+        Iterator<java.util.Map.Entry<UUID, ChatImageCache.Entry>> it = ENTRIES.entrySet().iterator();
         while ((ENTRIES.size() > MAX_ENTRIES || usedBytes > MAX_CACHE_BYTES && ENTRIES.size() > MIN_ENTRIES) && it.hasNext()) {
             Entry eldest = it.next().getValue();
             ImageCodec.release(eldest.texture);

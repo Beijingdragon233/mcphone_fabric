@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client.source;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.reader.BookRef;
 import com.november.mcphone.platform.ModPresence;
 import net.minecraft.client.gui.GuiGraphics;
@@ -67,7 +69,7 @@ public interface BookSource {
 
     /** Alternate titles that also match a search for this book. */
     default List<String> searchAliases(BookRef book) {
-        return List.of();
+        return ImmutableList.of();
     }
 
     /**

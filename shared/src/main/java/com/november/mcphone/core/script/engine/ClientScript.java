@@ -1,5 +1,10 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
+import java.util.Map.Entry;
 import com.november.mcphone.core.script.layout.StateRules;
 import com.november.mcphone.core.script.layout.UiState;
 import com.november.mcphone.core.script.http.HttpRequests;
@@ -37,7 +42,7 @@ public final class ClientScript {
     public static final int MAX_SOURCE = 64 * 1024;
     public static final int MAX_FUNCTIONS = 16;
     public static final int MAX_PARAMETERS = 4;
-    private static final Set<String> RESERVED = Set.of("state", "ctx", "backend", "close", "back", "nav", "call");
+    private static final Set<String> RESERVED = ImmutableSet.of("state", "ctx", "backend", "close", "back", "nav", "call");
 
     private final Map<String, Object> initial;
     private final Map<String, Integer> functions;
@@ -57,7 +62,7 @@ public final class ClientScript {
     public static ClientScript compile(String source, int lineOffset, Function<String, Map<String, Object>> parseInitial) {
         RuntimeException literalError;
         try {
-            return new ClientScript(parseInitial.apply(source), Map.of(), null, lineOffset);
+            return new ClientScript(parseInitial.apply(source), ImmutableMap.of(), null, lineOffset);
         } catch (RuntimeException e) {
             literalError = e;
         }
@@ -68,38 +73,42 @@ public final class ClientScript {
         env.setLanguageVersion(Context.VERSION_ES6);
         AstRoot root;
         try {
-            root = new Parser(env).parse(source, "<script>", 1);
+            // The 1.7 String lexer counts code points, while AST ranges index UTF-16.
+            // Its Reader lexer uses UTF-16, as do modern Rhino and String.substring.
+            root = new Parser(env).parse(new java.io.StringReader(source), "<script>", 1);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("StringReader failed", e);
         } catch (RuntimeException | StackOverflowError e) {
-            throw bad(e instanceof RhinoException rhino ? rhino.lineNumber() : 1, "JavaScript 语法错误或解析深度超限");
+            throw bad(e instanceof RhinoException ? ((RhinoException) e).lineNumber() : 1, "JavaScript 语法错误或解析深度超限");
         }
         char[] literals = source.toCharArray();
         char[] methods = source.toCharArray();
         Map<String, Integer> names = new LinkedHashMap<>();
         for (Node node : root) {
             AstNode ast = (AstNode) node;
-            if (ast instanceof FunctionNode fn && fn.getFunctionType() == FunctionNode.FUNCTION_STATEMENT) {
-                String name = fn.getName();
+            if (ast instanceof FunctionNode && ((FunctionNode) ast).getFunctionType() == FunctionNode.FUNCTION_STATEMENT) {
+                String name = ((FunctionNode) ast).getName();
                 if (!StateRules.KEY.matcher(name).matches() || RESERVED.contains(name)
                         || ScriptSandbox.ALLOWED_GLOBALS.contains(name)) {
-                    throw bad(fn.getLineno(), "函数名不合法或占用了保留名称");
+                    throw bad(((FunctionNode) ast).getLineno(), "函数名不合法或占用了保留名称");
                 }
-                if (fn.isGenerator() || fn.hasRestParameter() || fn.getDefaultParams() != null
-                        || fn.getParams().size() > MAX_PARAMETERS) {
-                    throw bad(fn.getLineno(), "只接受普通函数和最多 4 个简单形参，不支持默认参数或剩余参数");
+                if (((FunctionNode) ast).isGenerator() || ((FunctionNode) ast).hasRestParameter() || ((FunctionNode) ast).getDefaultParams() != null
+                        || ((FunctionNode) ast).getParams().size() > MAX_PARAMETERS) {
+                    throw bad(((FunctionNode) ast).getLineno(), "只接受普通函数和最多 4 个简单形参，不支持默认参数或剩余参数");
                 }
                 Set<String> parameters = new LinkedHashSet<>();
-                for (AstNode parameter : fn.getParams()) {
-                    if (!(parameter instanceof Name id) || !StateRules.KEY.matcher(id.getIdentifier()).matches()
-                            || RESERVED.contains(id.getIdentifier()) || ScriptSandbox.ALLOWED_GLOBALS.contains(id.getIdentifier())
-                            || "arguments".equals(id.getIdentifier()) || !parameters.add(id.getIdentifier())) {
+                for (AstNode parameter : ((FunctionNode) ast).getParams()) {
+                    if (!(parameter instanceof Name) || !StateRules.KEY.matcher(((Name) parameter).getIdentifier()).matches()
+                            || RESERVED.contains(((Name) parameter).getIdentifier()) || ScriptSandbox.ALLOWED_GLOBALS.contains(((Name) parameter).getIdentifier())
+                            || "arguments".equals(((Name) parameter).getIdentifier()) || !parameters.add(((Name) parameter).getIdentifier())) {
                         throw bad(parameter.getLineno(), "形参必须是合法且不重复的简单名称，不能占用宿主或内建名称");
                     }
                 }
                 if (("onInit".equals(name) || "onResume".equals(name)) && !parameters.isEmpty()) {
-                    throw bad(fn.getLineno(), name + " 必须是无参函数");
+                    throw bad(((FunctionNode) ast).getLineno(), name + " 必须是无参函数");
                 }
-                if (names.putIfAbsent(name, parameters.size()) != null) throw bad(fn.getLineno(), "函数 '" + name + "' 重复声明");
-                if (names.size() > MAX_FUNCTIONS) throw bad(fn.getLineno(), "每页最多 16 个顶层函数");
+                if (names.putIfAbsent(name, parameters.size()) != null) throw bad(((FunctionNode) ast).getLineno(), "函数 '" + name + "' 重复声明");
+                if (names.size() > MAX_FUNCTIONS) throw bad(((FunctionNode) ast).getLineno(), "每页最多 16 个顶层函数");
                 blank(literals, ast);
             } else {
                 blank(methods, ast);
@@ -113,7 +122,7 @@ public final class ClientScript {
             Script code = cx.compileString(new String(methods), "<script>", 1, null);
             return new ClientScript(initial, Collections.unmodifiableMap(names), code, lineOffset);
         } catch (RuntimeException | StackOverflowError e) {
-            throw bad(e instanceof RhinoException rhino ? rhino.lineNumber() : 1, "JavaScript 编译失败或编译深度超限");
+            throw bad(e instanceof RhinoException ? ((RhinoException) e).lineNumber() : 1, "JavaScript 编译失败或编译深度超限");
         }
     }
 
@@ -141,7 +150,7 @@ public final class ClientScript {
 
     public synchronized Map<String, Object> invoke(String name, Map<String, Object> values, UiState state,
                                                    LocalStore.Transaction storage) {
-        return invoke(name, List.of(), values, state, storage);
+        return invoke(name, ImmutableList.of(), values, state, storage);
     }
 
     /** Template arguments cross as bounded primitives, never wrapped Java objects or state containers. */
@@ -170,7 +179,7 @@ public final class ClientScript {
     public synchronized Map<String, Object> respond(HttpRequests.Request request, HttpRequests.Result response,
                                                     UiState state, LocalStore.Transaction storage, HttpRequests requests,
                                                     DelayedCallbacks.Batch timers) {
-        return invoke(request.callback(), List.of(response.status(), response.body(), response.error()),
+        return invoke(request.callback(), ImmutableList.of(response.status(), response.body(), response.error()),
                 state.values(), state, storage, requests, timers, HttpRequests.MAX_BODY_BYTES);
     }
 
@@ -185,7 +194,7 @@ public final class ClientScript {
             if (!(value instanceof String || value instanceof Integer || value instanceof Boolean)) {
                 throw new Failure("客户端函数第 " + (i + 1) + " 个参数必须是字符串、32 位整数或布尔值");
             }
-            if (value instanceof String text && text.length() > argumentLimit) {
+            if (value instanceof String && ((String) value).length() > argumentLimit) {
                 throw new Failure("客户端函数字符串参数最多 " + argumentLimit + " 个 UTF-16 代码单元");
             }
             args[i] = value;
@@ -208,17 +217,17 @@ public final class ClientScript {
                 installContext(cx, scope, storage, requests, state, timers);
                 code.exec(cx, scope); // Only function declarations survived the compile-time AST pass.
                 Object fn = scope.get(name, scope);
-                if (!(fn instanceof Callable callable)) throw new Failure("客户端函数不可调用");
-                callable.call(cx, scope, scope, args);
+                if (!(fn instanceof Callable)) throw new Failure("客户端函数不可调用");
+                ((Callable) fn).call(cx, scope, scope, args);
                 noAccessor(scope, "state");
                 if (scope.get("state", scope) != snapshot) throw new Failure("不能替换或删除 state，只能修改其中的字段");
                 Object result = fromJs(cx, snapshot, 0, state.stringLimit());
-                if (!(result instanceof Map<?, ?> map) || !map.keySet().equals(values.keySet())) {
+                if (!(result instanceof Map<?, ?>) || !((Map<?, ?>) result).keySet().equals(values.keySet())) {
                     throw new Failure("不能添加或删除 state 字段");
                 }
                 Map<String, Object> next = new LinkedHashMap<>();
                 for (String key : values.keySet()) {
-                    Object value = map.get(key);
+                    Object value = ((Map<?, ?>) result).get(key);
                     String why = state.writeProblem(key, value);
                     if (why != null) throw new Failure(why);
                     next.put(key, value);
@@ -237,7 +246,7 @@ public final class ClientScript {
             throw failure;
         } catch (RuntimeException e) {
             // Do not stringify thrown script objects or log unbounded user-controlled error messages.
-            int line = e instanceof RhinoException rhino ? Math.max(1, rhino.lineNumber()) + lineOffset : 0;
+            int line = e instanceof RhinoException ? Math.max(1, ((RhinoException) e).lineNumber()) + lineOffset : 0;
             throw new Failure("客户端函数执行失败" + (line > 0 ? "（script 第 " + line + " 行）" : ""));
         } finally {
             globals = null;
@@ -270,7 +279,7 @@ public final class ClientScript {
         store.sealObject();
         ScriptableObject ctx = HostFn.obj(cx, scope);
         ScriptableObject params = HostFn.obj(cx, scope);
-        for (var entry : state.parameters().values().entrySet()) {
+        for (Entry<String,Object> entry : state.parameters().values().entrySet()) {
             ScriptableObject.defineProperty(params, entry.getKey(), entry.getValue(),
                     ScriptableObject.READONLY | ScriptableObject.PERMANENT);
         }
@@ -288,7 +297,8 @@ public final class ClientScript {
             catch (Failure e) { throw HostError.invalid(e.getMessage()); }
         });
         storeFunction(http, scope, "cancel", 1, (c, s, args) -> {
-            if (args.length != 1 || !(args[0] instanceof Number number) || !Double.isFinite(number.doubleValue())
+            Number number = args.length == 1 && args[0] instanceof Number ? (Number) args[0] : null;
+            if (number == null || !Double.isFinite(number.doubleValue())
                     || number.doubleValue() != Math.rint(number.doubleValue()) || number.doubleValue() < 0
                     || number.doubleValue() > Integer.MAX_VALUE) throw HostError.invalid("cancel 需要非负的 32 位整数请求编号");
             if (requests == null) throw HostError.invalid("当前页面没有可用的网络请求宿主");
@@ -300,7 +310,8 @@ public final class ClientScript {
         ScriptableObject.defineProperty(ctx, "http", http, ScriptableObject.READONLY | ScriptableObject.PERMANENT);
         ScriptableObject timer = HostFn.obj(cx, scope);
         storeFunction(timer, scope, "after", 2, (c, s, args) -> {
-            if (args.length != 2 || !(args[0] instanceof Number number) || !Double.isFinite(number.doubleValue())
+            Number number = args.length == 2 && args[0] instanceof Number ? (Number) args[0] : null;
+            if (number == null || !Double.isFinite(number.doubleValue())
                     || number.doubleValue() != Math.rint(number.doubleValue()) || number.doubleValue() < DelayedCallbacks.MIN_DELAY_MS
                     || number.doubleValue() > DelayedCallbacks.MAX_DELAY_MS) throw HostError.invalid("after 需要 50–60000 毫秒的整数和回调函数名");
             if (timers == null) throw HostError.invalid("当前页面没有可用的延迟任务宿主");
@@ -310,7 +321,8 @@ public final class ClientScript {
             catch (IllegalArgumentException e) { throw HostError.invalid(e.getMessage()); }
         });
         storeFunction(timer, scope, "cancel", 1, (c, s, args) -> {
-            if (args.length != 1 || !(args[0] instanceof Number number) || !Double.isFinite(number.doubleValue())
+            Number number = args.length == 1 && args[0] instanceof Number ? (Number) args[0] : null;
+            if (number == null || !Double.isFinite(number.doubleValue())
                     || number.doubleValue() != Math.rint(number.doubleValue()) || number.doubleValue() < 0
                     || number.doubleValue() > Integer.MAX_VALUE) throw HostError.invalid("cancel 需要非负的 32 位整数任务编号");
             if (timers == null) throw HostError.invalid("当前页面没有可用的延迟任务宿主");
@@ -326,42 +338,42 @@ public final class ClientScript {
 
     private HttpRequests.Request readRequest(Context cx, Object value, String callback) {
         Map<String, Object> options = ownFields(cx, value, 5);
-        if (!Set.of("url", "method", "headers", "body", "timeoutMs").containsAll(options.keySet())) {
+        if (!ImmutableSet.of("url", "method", "headers", "body", "timeoutMs").containsAll(options.keySet())) {
             throw HostError.invalid("未知的 HTTP 请求选项");
         }
         String url = requestString(options.get("url"), "url", 2048);
         String method = requestString(options.getOrDefault("method", "GET"), "method", 4);
         String body = requestString(options.getOrDefault("body", ""), "body", HttpRequests.MAX_BODY_BYTES);
         Object rawTimeout = options.getOrDefault("timeoutMs", HttpRequests.DEFAULT_TIMEOUT_MS);
-        if (!(rawTimeout instanceof Number number) || !Double.isFinite(number.doubleValue())
-                || number.doubleValue() != Math.rint(number.doubleValue()) || number.doubleValue() < 1000
-                || number.doubleValue() > 120_000) throw HostError.invalid("timeoutMs 需为 1000–120000 的整数");
+        if (!(rawTimeout instanceof Number) || !Double.isFinite(((Number) rawTimeout).doubleValue())
+                || ((Number) rawTimeout).doubleValue() != Math.rint(((Number) rawTimeout).doubleValue()) || ((Number) rawTimeout).doubleValue() < 1000
+                || ((Number) rawTimeout).doubleValue() > 120_000) throw HostError.invalid("timeoutMs 需为 1000–120000 的整数");
         Map<String, String> headers = new LinkedHashMap<>();
         if (options.containsKey("headers")) {
-            for (var field : ownFields(cx, options.get("headers"), 16).entrySet()) {
+            for (Entry<String,Object> field : ownFields(cx, options.get("headers"), 16).entrySet()) {
                 headers.put(field.getKey(), requestString(field.getValue(), "header", 4096));
             }
         }
-        return new HttpRequests.Request(url, method, headers, body, number.intValue(), callback);
+        return new HttpRequests.Request(url, method, headers, body, ((Number) rawTimeout).intValue(), callback);
     }
 
     private Map<String, Object> ownFields(Context cx, Object value, int limit) {
-        if (!(value instanceof NativeObject object)) throw HostError.invalid("请求选项和请求头必须是普通对象");
-        noSymbols(cx, object);
-        Object[] ids = object.getAllIds();
+        if (!(value instanceof NativeObject)) throw HostError.invalid("请求选项和请求头必须是普通对象");
+        noSymbols(cx, ((NativeObject) value));
+        Object[] ids = ((NativeObject) value).getAllIds();
         if (ids.length > limit) throw HostError.invalid("HTTP 对象字段过多");
         Map<String, Object> fields = new LinkedHashMap<>();
         for (Object id : ids) {
-            if (!(id instanceof String key)) throw HostError.invalid("HTTP 对象字段名必须是字符串");
-            noAccessor(object, key);
-            fields.put(key, object.get(key, object));
+            if (!(id instanceof String)) throw HostError.invalid("HTTP 对象字段名必须是字符串");
+            noAccessor(((NativeObject) value), ((String) id));
+            fields.put(((String) id), ((NativeObject) value).get(((String) id), ((NativeObject) value)));
         }
         return fields;
     }
 
     private static String requestString(Object value, String field, int limit) {
-        if (!(value instanceof CharSequence text) || text.length() > limit) throw HostError.invalid(field + " 类型或长度不合法");
-        return text.toString();
+        if (!(value instanceof CharSequence) || ((CharSequence) value).length() > limit) throw HostError.invalid(field + " 类型或长度不合法");
+        return ((CharSequence) value).toString();
     }
 
     private static void storeFunction(ScriptableObject target, Scriptable scope, String name, int arity, HostFn.Body body) {
@@ -382,16 +394,16 @@ public final class ClientScript {
     }
 
     private static Object toJs(Context cx, Scriptable scope, Object value) {
-        if (value instanceof Map<?, ?> map) {
+        if (value instanceof Map<?, ?>) {
             ScriptableObject obj = (ScriptableObject) cx.newObject(scope);
-            for (Map.Entry<?, ?> e : map.entrySet()) {
+            for (Map.Entry<?, ?> e : ((Map<?, ?>) value).entrySet()) {
                 ScriptableObject.defineProperty(obj, (String) e.getKey(), toJs(cx, scope, e.getValue()), ScriptableObject.EMPTY);
             }
             return obj;
         }
-        if (value instanceof List<?> list) {
-            Object[] items = new Object[list.size()];
-            for (int i = 0; i < items.length; i++) items[i] = toJs(cx, scope, list.get(i));
+        if (value instanceof List<?>) {
+            Object[] items = new Object[((List<?>) value).size()];
+            for (int i = 0; i < items.length; i++) items[i] = toJs(cx, scope, ((List<?>) value).get(i));
             return cx.newArray(scope, items);
         }
         return value; // Only the existing UiState primitive types, never a wrapped Java object.
@@ -399,43 +411,43 @@ public final class ClientScript {
 
     private Object fromJs(Context cx, Object value, int depth, int stringLimit) {
         if (value instanceof Boolean) return value;
-        if (value instanceof CharSequence text) {
-            if (text.length() > stringLimit) throw new Failure("state 字符串最多 " + stringLimit + " 个 UTF-16 代码单元");
-            return text.toString();
+        if (value instanceof CharSequence) {
+            if (((CharSequence) value).length() > stringLimit) throw new Failure("state 字符串最多 " + stringLimit + " 个 UTF-16 代码单元");
+            return ((CharSequence) value).toString();
         }
-        if (value instanceof Number number) {
-            double n = number.doubleValue();
+        if (value instanceof Number) {
+            double n = ((Number) value).doubleValue();
             if (!Double.isFinite(n) || n != Math.rint(n) || n < Integer.MIN_VALUE || n > Integer.MAX_VALUE) {
                 throw new Failure("state 数值必须是 32 位整数");
             }
             return (int) n;
         }
         if (depth > StateRules.MAX_DEPTH) throw new Failure("state 数据嵌套过深");
-        if (value instanceof NativeArray array) {
-            if (array.getLength() > StateRules.MAX_ARRAY) throw new Failure("state 数组最多 32 项");
-            noSymbols(cx, array);
-            int size = (int) array.getLength();
-            for (Object id : array.getAllIds()) {
+        if (value instanceof NativeArray) {
+            if (((NativeArray) value).getLength() > StateRules.MAX_ARRAY) throw new Failure("state 数组最多 32 项");
+            noSymbols(cx, ((NativeArray) value));
+            int size = (int) ((NativeArray) value).getLength();
+            for (Object id : ((NativeArray) value).getAllIds()) {
                 if (id.equals("length")) continue;
-                if (!(id instanceof Integer index) || index < 0 || index >= size) throw new Failure("state 数组不能带额外属性");
+                if (!(id instanceof Integer) || ((Integer) id) < 0 || ((Integer) id) >= size) throw new Failure("state 数组不能带额外属性");
             }
             List<Object> out = new ArrayList<>();
             for (int i = 0; i < size; i++) {
-                noAccessor(array, i);
-                if (!array.has(i, array)) throw new Failure("state 数组不能包含空位");
-                out.add(fromJs(cx, array.get(i, array), depth + 1, stringLimit));
+                noAccessor(((NativeArray) value), i);
+                if (!((NativeArray) value).has(i, ((NativeArray) value))) throw new Failure("state 数组不能包含空位");
+                out.add(fromJs(cx, ((NativeArray) value).get(i, ((NativeArray) value)), depth + 1, stringLimit));
             }
             return out;
         }
-        if (value instanceof NativeObject object) {
-            noSymbols(cx, object);
-            Object[] ids = object.getAllIds();
+        if (value instanceof NativeObject) {
+            noSymbols(cx, ((NativeObject) value));
+            Object[] ids = ((NativeObject) value).getAllIds();
             if (ids.length > StateRules.MAX_OBJECT_KEYS) throw new Failure("state 对象最多 16 个字段");
             Map<String, Object> out = new LinkedHashMap<>();
             for (Object id : ids) {
-                if (!(id instanceof String key) || !StateRules.KEY.matcher(key).matches()) throw new Failure("state 对象字段名不合法");
-                noAccessor(object, key);
-                out.put(key, fromJs(cx, object.get(key, object), depth + 1, stringLimit));
+                if (!(id instanceof String) || !StateRules.KEY.matcher(((String) id)).matches()) throw new Failure("state 对象字段名不合法");
+                noAccessor(((NativeObject) value), ((String) id));
+                out.put(((String) id), fromJs(cx, ((NativeObject) value).get(((String) id), ((NativeObject) value)), depth + 1, stringLimit));
             }
             return out;
         }
@@ -449,8 +461,8 @@ public final class ClientScript {
     }
 
     private static void noAccessor(ScriptableObject object, Object key) {
-        String name = key instanceof String s ? s : null;
-        int index = key instanceof Integer i ? i : 0;
+        String name = key instanceof String ? ((String) key) : null;
+        int index = key instanceof Integer ? ((Integer) key) : 0;
         if (object.getGetterOrSetter(name, index, false) instanceof Callable
                 || object.getGetterOrSetter(name, index, true) instanceof Callable) {
             throw new Failure("state 不能包含 getter 或 setter");

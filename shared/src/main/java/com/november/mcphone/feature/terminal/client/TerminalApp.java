@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.terminal.client;
 
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.api.client.app.RequiredMod;
 import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.core.net.MCphoneNetwork;
@@ -47,7 +50,7 @@ public final class TerminalApp extends PhoneApp {
      * <b>这不会把那三个类加载进来</b>：它们是编译期常量，javac 直接内联成 ldc
      * ——理由与验法见 {@code Ae2Integration.NAME} 的注释。
      */
-    private static final List<RequiredMod> COMPANIONS = List.of(
+    private static final List<RequiredMod> COMPANIONS = ImmutableList.of(
             new RequiredMod(Ae2Integration.MODID, Ae2Integration.NAME),
             new RequiredMod("refinedstorage", "Refined Storage"),
             new RequiredMod(TomsStorageIntegration.MODID, TomsStorageIntegration.NAME));
@@ -135,7 +138,7 @@ public final class TerminalApp extends PhoneApp {
 
         // 分隔符走语言文件：中文用「、」，英文用「, 」。写死一个的话另一边必然难看
         String names = String.join(I18n.get("mcphone.terminal.list_sep"),
-                active.stream().map(TerminalIntegration::displayName).toList());
+                active.stream().map(TerminalIntegration::displayName).collect(Java8Collections.toList()));
         return text + I18n.get("mcphone.app.terminal.desc.connected", names);
     }
 }

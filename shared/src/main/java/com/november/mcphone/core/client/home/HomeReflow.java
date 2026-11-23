@@ -1,15 +1,46 @@
 package com.november.mcphone.core.client.home;
 
+import com.google.common.collect.ImmutableMap;
+
 import java.util.HashMap;
 import java.util.Map;
 
 /** Post-drop movement from the last visible desktop positions to the settled layout. */
 public final class HomeReflow {
     public static final long DURATION_MS = 185;
-    public static final HomeReflow NONE = new HomeReflow(Map.of());
+    public static final HomeReflow NONE = new HomeReflow(ImmutableMap.of());
 
     /** Top-left icon position in logical pixels. */
-    public record Position(double x, double y) {}
+    public static final class Position {
+        private final double x;
+        private final double y;
+
+        public Position(double x, double y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        public double x() { return x; }
+
+        public double y() { return y; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Position)) return false;
+            Position that = (Position) other;
+            return Double.compare(this.x, that.x) == 0
+                    && Double.compare(this.y, that.y) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            return hash;
+        }
+
+        @Override public String toString() { return "Position[x=" + x + ", y=" + y + "]"; }
+}
 
     private final Map<String, Position> offsets;
 
@@ -32,7 +63,7 @@ public final class HomeReflow {
                 offsets.put(id, new Position(origin.x() - resting.x(), origin.y() - resting.y()));
             }
         });
-        return offsets.isEmpty() ? NONE : new HomeReflow(Map.copyOf(offsets));
+        return offsets.isEmpty() ? NONE : new HomeReflow(ImmutableMap.copyOf(offsets));
     }
 
     public boolean isEmpty() {

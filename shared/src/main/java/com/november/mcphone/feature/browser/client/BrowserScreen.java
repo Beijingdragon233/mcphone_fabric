@@ -329,9 +329,13 @@ public final class BrowserScreen extends PhoneScreenBase {
     private void onNavButton(int index) {
         if (browser == null) return;
         switch (index) {
-            case 0 -> { if (browser.canGoBack()) browser.goBack(); }
-            case 1 -> { if (browser.canGoForward()) browser.goForward(); }
-            default -> browser.reload();
+            case 0: { if (browser.canGoBack()) browser.goBack(); }
+                break;
+            case 1: { if (browser.canGoForward()) browser.goForward(); }
+                break;
+            default:
+                browser.reload();
+                break;
         }
         urlEdited = false;
     }
@@ -441,7 +445,7 @@ public final class BrowserScreen extends PhoneScreenBase {
     private static String toUrl(String input) {
         if (input.contains("://")) return input;
         if (!input.contains(" ") && input.contains(".")) return "https://" + input;
-        return SEARCH_URL + URLEncoder.encode(input, StandardCharsets.UTF_8);
+        return SEARCH_URL + com.november.mcphone.util.Java8.formEncode(input, StandardCharsets.UTF_8);
     }
 
     @Override

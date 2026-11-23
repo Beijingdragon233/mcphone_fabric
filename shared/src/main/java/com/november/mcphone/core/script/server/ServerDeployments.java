@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableSet;
+
 /**
  * {@link DeploymentView} 的生产实现：只读 {@link DeploymentData}（S17）。
  *
@@ -41,6 +43,6 @@ public final class ServerDeployments implements DeploymentView {
     @Override
     public java.util.Set<String> approvedCapabilities(String appId) {
         Deployment d = appId == null ? null : data.deployment(appId);
-        return d == null ? java.util.Set.of() : new java.util.LinkedHashSet<>(d.approvedCapabilities());
+        return d == null ? ImmutableSet.of() : new java.util.LinkedHashSet<>(d.approvedCapabilities());
     }
 }

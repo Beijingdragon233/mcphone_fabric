@@ -10,13 +10,22 @@ final class RhinoRuntimeIdentity {
     private RhinoRuntimeIdentity() {}
     static void reportOnce() {
         if (!REPORTED.compareAndSet(false, true)) return;
-        var type = Context.class;
-        var domain = type.getProtectionDomain();
-        var source = domain.getCodeSource();
-        var module = type.getModule();
+        Class<Context> type = Context.class;
+        java.security.ProtectionDomain domain = type.getProtectionDomain();
+        java.security.CodeSource source = domain.getCodeSource();
         MCphone.LOGGER.info("[MCphone] 私有 Rhino：version={} module={} origin={} class={}",
                 type.getPackage().getImplementationVersion(),
-                module.isNamed() ? module.getName() : "unnamed",
+                moduleName(type),
                 source == null ? type.getResource("Context.class") : source.getLocation(), type.getName());
+    }
+
+    private static String moduleName(Class<?> type) {
+        try {
+            Object module = Class.class.getMethod("getModule").invoke(type);
+            String name = (String) module.getClass().getMethod("getName").invoke(module);
+            return name == null ? "unnamed" : name;
+        } catch (ReflectiveOperationException ignored) {
+            return "unnamed";
+        }
     }
 }

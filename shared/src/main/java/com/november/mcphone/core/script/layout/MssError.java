@@ -59,7 +59,36 @@ public final class MssError extends RuntimeException {
     }
 
     /** 原文里的一个位置。当实参传进模板时占两个 %d，并随 {@link #shift} 一起挪。 */
-    record Pos(int line, int col) implements Serializable {
+    static final class Pos implements Serializable {
+        private final int line;
+        private final int col;
+
+        Pos(int line, int col) {
+            this.line = line;
+            this.col = col;
+        }
+
+        public int line() { return line; }
+
+        public int col() { return col; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Pos)) return false;
+            Pos that = (Pos) other;
+            return this.line == that.line
+                    && this.col == that.col;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(line);
+            hash = 31 * hash + java.util.Objects.hashCode(col);
+            return hash;
+        }
+
+        @Override public String toString() { return "Pos[line=" + line + ", col=" + col + "]"; }
+
     }
 
     private final Code code;
@@ -100,7 +129,8 @@ public final class MssError extends RuntimeException {
     public MssError shift(int lines) {
         Object[] moved = args.clone();
         for (int i = 0; i < moved.length; i++) {
-            if (moved[i] instanceof Pos p) moved[i] = new Pos(p.line() + lines, p.col());
+            Object pMatch;
+            if ((pMatch = moved[i]) instanceof Pos) moved[i] = new Pos(((Pos) pMatch).line() + lines, ((Pos) pMatch).col());
         }
         return new MssError(code, line + lines, col, moved);
     }
@@ -120,9 +150,9 @@ public final class MssError extends RuntimeException {
             flat.add(col);
         }
         for (Object a : args) {
-            if (a instanceof Pos p) {
-                flat.add(p.line());
-                flat.add(p.col());
+            if (a instanceof Pos) {
+                flat.add(((Pos) a).line());
+                flat.add(((Pos) a).col());
             } else {
                 flat.add(a);
             }

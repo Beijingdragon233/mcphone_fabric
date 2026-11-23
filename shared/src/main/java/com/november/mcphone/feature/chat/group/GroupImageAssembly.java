@@ -8,9 +8,34 @@ import java.util.WeakHashMap;
 
 /** 每条连接仅一份群上传；群 ID、独立票据、元数据和顺序必须全匹配。 */
 public final class GroupImageAssembly {
-    public record Complete(GroupCommand.Upload header, byte[] png) {
-        public Complete { png = png.clone(); }
-        @Override public byte[] png() { return png.clone(); }
+    public static final class Complete {
+        private final GroupCommand.Upload header;
+        private final byte[] png;
+
+        public GroupCommand.Upload header() { return header; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Complete)) return false;
+            Complete that = (Complete) other;
+            return java.util.Objects.equals(this.header, that.header)
+                    && java.util.Objects.equals(this.png, that.png);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(header);
+            hash = 31 * hash + java.util.Objects.hashCode(png);
+            return hash;
+        }
+
+        @Override public String toString() { return "Complete[header=" + header + ", png=" + png + "]"; }
+
+        public Complete(GroupCommand.Upload header, byte[] png) { png = png.clone();
+            this.header = header;
+            this.png = png;
+        }
+        public byte[] png() { return png.clone(); }
     }
     private static final class Session {
         final GroupCommand.Upload header;
@@ -26,8 +51,8 @@ public final class GroupImageAssembly {
                 || (chunk.frames() > 1 && (chunk.frameMs() < 20 || chunk.frameMs() > 5000))
                 || limit < 1 || limit > ChatImage.MAX_BYTES_CEILING) { pending.remove(connection); return null; }
         if (chunk.index() == 0) pending.put(connection, new Session(chunk, limit, now));
-        var session = pending.get(connection); if (session == null) return null;
-        var first = session.header; byte[] data = chunk.data();
+        GroupImageAssembly.Session session = pending.get(connection); if (session == null) return null;
+        GroupCommand.Upload first = session.header; byte[] data = chunk.data();
         if (!first.group().equals(chunk.group()) || !first.request().equals(chunk.request()) || first.count() != chunk.count()
                 || first.width() != chunk.width() || first.height() != chunk.height() || first.frames() != chunk.frames()
                 || first.frameMs() != chunk.frameMs() || chunk.index() != session.next || now - session.started > ChatImage.UPLOAD_TIMEOUT_MS

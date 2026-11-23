@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableList;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,8 +28,8 @@ final class ChatImageRequests {
     /** lastAttempt 返回 null 表示无需下载，0 表示尚未请求；只对可见 ID 查询缓存。 */
     List<UUID> batch(UUID peer, long now, int limit, Function<UUID, Long> lastAttempt) {
         if (peer == null || !peer.equals(framePeer) || limit <= 0
-                || now - lastRequestMs < REQUEST_INTERVAL_MS) return List.of();
-        var out = new ArrayList<UUID>();
+                || now - lastRequestMs < REQUEST_INTERVAL_MS) return ImmutableList.of();
+        ArrayList<UUID> out = new ArrayList<UUID>();
         for (UUID image : visible) {
             Long attempted = lastAttempt.apply(image);
             if (attempted == null || (attempted != 0 && now - attempted < RETRY_AFTER_MS)) continue;
@@ -35,7 +37,7 @@ final class ChatImageRequests {
             if (out.size() >= limit) break;
         }
         if (!out.isEmpty()) lastRequestMs = now;
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     void clear() {

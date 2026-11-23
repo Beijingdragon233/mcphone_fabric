@@ -117,7 +117,7 @@ public final class ImmersiveEngineeringManual implements ExternalBook {
             }
 
             Object screen = getGui.invoke(manual);
-            if (screen instanceof Screen s) return s;
+            if (screen instanceof Screen) return ((Screen) screen);
 
             MCphone.LOGGER.error("[MCphone] 沉浸工程的 getGui() 给回来的不是一个 Screen（{}），"
                     + "手册打不开", screen == null ? "null" : screen.getClass().getName());

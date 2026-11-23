@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.internal.rhino.javascript.Callable;
 import com.november.mcphone.internal.rhino.javascript.Context;
 import com.november.mcphone.internal.rhino.javascript.LambdaFunction;
@@ -76,7 +79,7 @@ public final class ScriptSandbox {
      * {@code escape} / {@code unescape} / {@code Continuation} / {@code JavaException} / {@code With}。
      * §32.7 那七个样例 App 一个都用不上它们。
      */
-    public static final Set<String> ALLOWED_GLOBALS = Set.of(
+    public static final Set<String> ALLOWED_GLOBALS = ImmutableSet.of(
             "Object", "Array", "String", "Number", "Boolean", "BigInt",
             "Math", "JSON", "Date", "RegExp",
             "Map", "Set", "WeakMap", "WeakSet", "Symbol", "globalThis",
@@ -86,7 +89,7 @@ public final class ScriptSandbox {
             "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent");
 
     /** 这几个的 this 小、参数大也能炸，单独包。 */
-    private static final List<String> EXTRA_WRAPPED_HOLDERS = List.of("Array", "JSON");
+    private static final List<String> EXTRA_WRAPPED_HOLDERS = ImmutableList.of("Array", "JSON");
 
     /**
      * 建一个加固过的顶层 scope。<b>三步顺序不能变。</b>
@@ -105,6 +108,20 @@ public final class ScriptSandbox {
      */
     public static ScriptableObject harden(Context cx, java.util.function.Consumer<ScriptableObject> beforeSeal) {
         ScriptableObject s = (ScriptableObject) cx.initSafeStandardObjects(null, false);
+        // Rhino 1.7 lacks AggregateError. Install it before the same size gates and
+        // sealing pass used for native errors; no author code runs during setup.
+        if (!ScriptableObject.hasProperty(s, "AggregateError")) {
+            cx.evaluateString(s,
+                    "(function(){function AggregateError(errors,message){"
+                    + "if(!(this instanceof AggregateError))return new AggregateError(errors,message);"
+                    + "Object.defineProperty(this,'message',{value:message===undefined?'':String(message),writable:true,configurable:true});"
+                    + "Object.defineProperty(this,'errors',{value:Array.from(errors),writable:true,configurable:true});"
+                    + "}AggregateError.prototype=Object.create(Error.prototype);"
+                    + "Object.defineProperty(AggregateError.prototype,'name',{value:'AggregateError',writable:true,configurable:true});"
+                    + "Object.defineProperty(AggregateError.prototype,'constructor',{value:AggregateError,writable:true,configurable:true});"
+                    + "Object.defineProperty(this,'AggregateError',{value:AggregateError,writable:true,configurable:true});"
+                    + "}).call(this);", "<aggregate-error-compat>", 1, null);
+        }
 
         // ① 切断 .constructor 链 + 给 Function.prototype.apply 装尺寸闸 + 密封它。
         //    三件事都必须赶在【第②步删掉 Function 这个全局之前】：那之后这个对象从 scope 上
@@ -116,21 +133,21 @@ public final class ScriptSandbox {
         //    不装的话 apply(null, {length:1e8}) 会在原生代码里把 array-like 物化成 Object[]：
         //    指令预算（instr=0）与墙钟都够不着，直接 OOM（ADV-27，实测 7 个函数 1.2~2.1 秒）。
         Object fn = ScriptableObject.getProperty(s, "Function");
-        if (fn instanceof Scriptable fnObj) {
-            Object proto = ScriptableObject.getProperty(fnObj, "prototype");
-            if (proto instanceof ScriptableObject p) {
+        if (fn instanceof Scriptable) {
+            Object proto = ScriptableObject.getProperty(((Scriptable) fn), "prototype");
+            if (proto instanceof ScriptableObject) {
                 //    少了这一步，[].constructor.constructor('return 42')() 照样能编译执行
-                ScriptableObject.deleteProperty(p, "constructor");
+                ScriptableObject.deleteProperty(((ScriptableObject) proto), "constructor");
 
-                Object apply = ScriptableObject.getProperty(p, "apply");
-                if (apply instanceof Callable applyFn) {
-                    wrapOne(p, s, "Function.prototype", "apply", applyFn);
+                Object apply = ScriptableObject.getProperty(((ScriptableObject) proto), "apply");
+                if (apply instanceof Callable) {
+                    wrapOne(((ScriptableObject) proto), s, "Function.prototype", "apply", ((Callable) apply));
                 }
 
                 // 密封是闸的一部分，不是顺手做的：第③步按【全局表】逐个密封，而 Function
                 // 已在第②步被删，这个对象于是被整个跳过 —— 实测未密封时脚本
                 // p.apply = 1 与 delete p.apply 都成功，闸当场作废。
-                p.sealObject();
+                ((ScriptableObject) proto).sealObject();
             }
         }
 
@@ -138,8 +155,8 @@ public final class ScriptSandbox {
         //    必须 getAllIds() 不是 getIds()：标准全局都是 DONTENUM 的，getIds() 一个都看不见，
         //    照它写等于这一步整个空转（实测：写成 getIds() 时 eval / Script / ArrayBuffer 全都还在）
         for (Object id : s.getAllIds()) {
-            if (id instanceof String name && !ALLOWED_GLOBALS.contains(name)) {
-                ScriptableObject.deleteProperty(s, name);
+            if (id instanceof String && !ALLOWED_GLOBALS.contains(((String) id))) {
+                ScriptableObject.deleteProperty(s, ((String) id));
             }
         }
 
@@ -154,15 +171,15 @@ public final class ScriptSandbox {
         // ③ 逐个密封留下来的全局与它的 prototype。
         //    【不要】密封顶层 scope —— 实测那样脚本连 var 都声明不了
         for (Object id : s.getAllIds()) {
-            if (!(id instanceof String name)) continue;
-            Object o = ScriptableObject.getProperty(s, name);
+            if (!(id instanceof String)) continue;
+            Object o = ScriptableObject.getProperty(s, ((String) id));
             // globalThis 指的就是顶层 scope 自己。封了它脚本连 var 都声明不了
             // （§16.3 的"不要密封顶层 scope"就是这一条，而白名单里放了 globalThis 就会踩到）
             if (o == s) continue;
-            if (o instanceof ScriptableObject so) {
-                Object p = ScriptableObject.getProperty(so, "prototype");
-                if (p instanceof ScriptableObject po) po.sealObject();
-                so.sealObject();
+            if (o instanceof ScriptableObject) {
+                Object p = ScriptableObject.getProperty(((ScriptableObject) o), "prototype");
+                if (p instanceof ScriptableObject) ((ScriptableObject) p).sealObject();
+                ((ScriptableObject) o).sealObject();
             }
         }
         return s;
@@ -171,23 +188,23 @@ public final class ScriptSandbox {
     /** 把 {@code <name>.prototype} 上的每个函数换成带尺寸闸的版本。 */
     private static void wrapPrototype(Scriptable scope, String name) {
         Object holder = ScriptableObject.getProperty(scope, name);
-        if (!(holder instanceof Scriptable h)) return;
-        Object proto = ScriptableObject.getProperty(h, "prototype");
-        if (proto instanceof ScriptableObject po) wrapAll(po, scope, name + ".prototype");
+        if (!(holder instanceof Scriptable)) return;
+        Object proto = ScriptableObject.getProperty(((Scriptable) holder), "prototype");
+        if (proto instanceof ScriptableObject) wrapAll(((ScriptableObject) proto), scope, name + ".prototype");
     }
 
     /** 把 {@code <name>} 自己身上的每个函数换成带尺寸闸的版本（JSON.stringify / parse）。 */
     private static void wrapOwn(Scriptable scope, String name) {
         Object holder = ScriptableObject.getProperty(scope, name);
-        if (holder instanceof ScriptableObject ho) wrapAll(ho, scope, name);
+        if (holder instanceof ScriptableObject) wrapAll(((ScriptableObject) holder), scope, name);
     }
 
     private static void wrapAll(ScriptableObject target, Scriptable scope, String where) {
         for (Object id : target.getAllIds()) {
-            if (!(id instanceof String name)) continue;
-            Object v = ScriptableObject.getProperty(target, name);
-            if (!(v instanceof Callable inner)) continue;
-            wrapOne(target, scope, where, name, inner);
+            if (!(id instanceof String)) continue;
+            Object v = ScriptableObject.getProperty(target, ((String) id));
+            if (!(v instanceof Callable)) continue;
+            wrapOne(target, scope, where, ((String) id), ((Callable) v));
         }
     }
 

@@ -1,5 +1,7 @@
 package com.november.mcphone.core.client;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.platform.ResourceIds;
 
 import com.google.gson.JsonObject;
@@ -269,9 +271,97 @@ public final class PhoneSkin {
     }
 
     /** 一张已确认存在的贴图及其真实尺寸 */
-    private record SkinTexture(ResourceLocation location, int width, int height, int border, int scale, Integer textColor) {}
+    private static final class SkinTexture {
+        private final ResourceLocation location;
+        private final int width;
+        private final int height;
+        private final int border;
+        private final int scale;
+        private final Integer textColor;
 
-    record SkinMetadata(int border, int scale, Integer textColor) {
+        private SkinTexture(ResourceLocation location, int width, int height, int border, int scale, Integer textColor) {
+            this.location = location;
+            this.width = width;
+            this.height = height;
+            this.border = border;
+            this.scale = scale;
+            this.textColor = textColor;
+        }
+
+        public ResourceLocation location() { return location; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        public int border() { return border; }
+
+        public int scale() { return scale; }
+
+        public Integer textColor() { return textColor; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof SkinTexture)) return false;
+            SkinTexture that = (SkinTexture) other;
+            return java.util.Objects.equals(this.location, that.location)
+                    && this.width == that.width
+                    && this.height == that.height
+                    && this.border == that.border
+                    && this.scale == that.scale
+                    && java.util.Objects.equals(this.textColor, that.textColor);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(location);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            hash = 31 * hash + java.util.Objects.hashCode(border);
+            hash = 31 * hash + java.util.Objects.hashCode(scale);
+            hash = 31 * hash + java.util.Objects.hashCode(textColor);
+            return hash;
+        }
+
+        @Override public String toString() { return "SkinTexture[location=" + location + ", width=" + width + ", height=" + height + ", border=" + border + ", scale=" + scale + ", textColor=" + textColor + "]"; }
+}
+
+    static final class SkinMetadata {
+        private final int border;
+        private final int scale;
+        private final Integer textColor;
+
+        SkinMetadata(int border, int scale, Integer textColor) {
+            this.border = border;
+            this.scale = scale;
+            this.textColor = textColor;
+        }
+
+        public int border() { return border; }
+
+        public int scale() { return scale; }
+
+        public Integer textColor() { return textColor; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof SkinMetadata)) return false;
+            SkinMetadata that = (SkinMetadata) other;
+            return this.border == that.border
+                    && this.scale == that.scale
+                    && java.util.Objects.equals(this.textColor, that.textColor);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(border);
+            hash = 31 * hash + java.util.Objects.hashCode(scale);
+            hash = 31 * hash + java.util.Objects.hashCode(textColor);
+            return hash;
+        }
+
+        @Override public String toString() { return "SkinMetadata[border=" + border + ", scale=" + scale + ", textColor=" + textColor + "]"; }
+
         SkinMetadata(int border, int scale) { this(border, scale, null); }
     }
 
@@ -519,7 +609,7 @@ public final class PhoneSkin {
 
     /** 从 PNG 头部（前 24 字节）读出 {宽, 高}，不解码整张图；不是合法 PNG 返回 null */
     private static int[] readPngSize(InputStream in) throws Exception {
-        byte[] head = in.readNBytes(24);
+        byte[] head = Java8.readNBytes(in, 24);
         if (head.length < 24) return null;
 
         // 校验 IHDR 标识，避免把别的格式当成 PNG 读出天文数字般的尺寸

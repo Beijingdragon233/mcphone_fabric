@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableList;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,10 +17,98 @@ final class ChatGlass {
     /** 只细分局部轮廓，不创建八倍尺寸的屏幕或渲染缓冲。 */
     static final int PRECISION = 8;
     private static final int EDGE = PRECISION / 2;
-    private record Shape(int width, int height, int radius) {}
-    private record Band(int top, int bottom, int left, int right, int innerLeft, int innerRight) {}
+    private static final class Shape {
+        private final int width;
+        private final int height;
+        private final int radius;
+
+        private Shape(int width, int height, int radius) {
+            this.width = width;
+            this.height = height;
+            this.radius = radius;
+        }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        public int radius() { return radius; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Shape)) return false;
+            Shape that = (Shape) other;
+            return this.width == that.width
+                    && this.height == that.height
+                    && this.radius == that.radius;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            hash = 31 * hash + java.util.Objects.hashCode(radius);
+            return hash;
+        }
+
+        @Override public String toString() { return "Shape[width=" + width + ", height=" + height + ", radius=" + radius + "]"; }
+}
+    private static final class Band {
+        private final int top;
+        private final int bottom;
+        private final int left;
+        private final int right;
+        private final int innerLeft;
+        private final int innerRight;
+
+        private Band(int top, int bottom, int left, int right, int innerLeft, int innerRight) {
+            this.top = top;
+            this.bottom = bottom;
+            this.left = left;
+            this.right = right;
+            this.innerLeft = innerLeft;
+            this.innerRight = innerRight;
+        }
+
+        public int top() { return top; }
+
+        public int bottom() { return bottom; }
+
+        public int left() { return left; }
+
+        public int right() { return right; }
+
+        public int innerLeft() { return innerLeft; }
+
+        public int innerRight() { return innerRight; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Band)) return false;
+            Band that = (Band) other;
+            return this.top == that.top
+                    && this.bottom == that.bottom
+                    && this.left == that.left
+                    && this.right == that.right
+                    && this.innerLeft == that.innerLeft
+                    && this.innerRight == that.innerRight;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(top);
+            hash = 31 * hash + java.util.Objects.hashCode(bottom);
+            hash = 31 * hash + java.util.Objects.hashCode(left);
+            hash = 31 * hash + java.util.Objects.hashCode(right);
+            hash = 31 * hash + java.util.Objects.hashCode(innerLeft);
+            hash = 31 * hash + java.util.Objects.hashCode(innerRight);
+            return hash;
+        }
+
+        @Override public String toString() { return "Band[top=" + top + ", bottom=" + bottom + ", left=" + left + ", right=" + right + ", innerLeft=" + innerLeft + ", innerRight=" + innerRight + "]"; }
+}
     /** 缓存的是小型几何数据，颜色不入键；悬停、切换字体预设不会反复创建轮廓。 */
-    private static final Map<Shape, List<Band>> SHAPES = new LinkedHashMap<>(64, .75f, true) {
+    private static final Map<Shape, List<Band>> SHAPES = new LinkedHashMap<Shape, List<Band>>(64, .75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<Shape, List<Band>> entry) {
             return size() > 64;
         }
@@ -26,7 +116,48 @@ final class ChatGlass {
 
     enum Surface { CARD, SEARCH, NAVIGATION, AVATAR, BUTTON, BADGE, MENU }
 
-    record Palette(int top, int bottom, int edge, int shine) {}
+    static final class Palette {
+        private final int top;
+        private final int bottom;
+        private final int edge;
+        private final int shine;
+
+        Palette(int top, int bottom, int edge, int shine) {
+            this.top = top;
+            this.bottom = bottom;
+            this.edge = edge;
+            this.shine = shine;
+        }
+
+        public int top() { return top; }
+
+        public int bottom() { return bottom; }
+
+        public int edge() { return edge; }
+
+        public int shine() { return shine; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Palette)) return false;
+            Palette that = (Palette) other;
+            return this.top == that.top
+                    && this.bottom == that.bottom
+                    && this.edge == that.edge
+                    && this.shine == that.shine;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(top);
+            hash = 31 * hash + java.util.Objects.hashCode(bottom);
+            hash = 31 * hash + java.util.Objects.hashCode(edge);
+            hash = 31 * hash + java.util.Objects.hashCode(shine);
+            return hash;
+        }
+
+        @Override public String toString() { return "Palette[top=" + top + ", bottom=" + bottom + ", edge=" + edge + ", shine=" + shine + "]"; }
+}
 
     @FunctionalInterface
     interface Fill {
@@ -36,22 +167,45 @@ final class ChatGlass {
     static Palette palette(Surface surface, boolean darkText, boolean hovered) {
         Palette p;
         if (darkText) {
-            p = switch (surface) {
-                case MENU -> new Palette(0xCCFFF1F8, 0xCFE5BED1, 0x809D527A, 0x88FFFFFF);
-                case BADGE -> new Palette(0xD4B35084, 0xCE8B3D65, 0x80C56B98, 0x88FFE0F0);
-                case BUTTON -> new Palette(0x85F0C0D8, 0x60BE86A3, 0x809D527A, 0x88FFF0F8);
-                default -> new Palette(0xA6FFF5FA, 0x75DFB9CF, 0x55AD809A, 0xA6FFFFFF);
-            };
+            switch (surface) {
+                case MENU:
+                    p = new Palette(0xCCFFF1F8, 0xCFE5BED1, 0x809D527A, 0x88FFFFFF);
+                    break;
+                case BADGE:
+                    p = new Palette(0xD4B35084, 0xCE8B3D65, 0x80C56B98, 0x88FFE0F0);
+                    break;
+                case BUTTON:
+                    p = new Palette(0x85F0C0D8, 0x60BE86A3, 0x809D527A, 0x88FFF0F8);
+                    break;
+                default:
+                    p = new Palette(0xA6FFF5FA, 0x75DFB9CF, 0x55AD809A, 0xA6FFFFFF);
+                    break;
+            }
         } else {
-            p = switch (surface) {
-                case MENU -> new Palette(0xCC794864, 0xCF503347, 0x709D6B90, 0x67ECC3DD);
-                case CARD -> new Palette(0x726D486D, 0x483A253E, 0x338F6C92, 0x40D9A4C8);
-                case SEARCH -> new Palette(0x635F4860, 0x5A382C40, 0x588D6D86, 0x52D8AFCA);
-                case NAVIGATION -> new Palette(0x566B4668, 0x723E2944, 0x40987193, 0x52DFC0D5);
-                case AVATAR -> new Palette(0x38966C95, 0x464E304D, 0x36956992, 0x48D4A2C8);
-                case BUTTON -> new Palette(0x426D3D60, 0x28432A43, 0x709D6B90, 0x67ECC3DD);
-                case BADGE -> new Palette(0xB4BC6691, 0xA0813D67, 0x70D78BB1, 0x88FFE0F0);
-            };
+            switch (surface) {
+                case MENU:
+                    p = new Palette(0xCC794864, 0xCF503347, 0x709D6B90, 0x67ECC3DD);
+                    break;
+                case CARD:
+                    p = new Palette(0x726D486D, 0x483A253E, 0x338F6C92, 0x40D9A4C8);
+                    break;
+                case SEARCH:
+                    p = new Palette(0x635F4860, 0x5A382C40, 0x588D6D86, 0x52D8AFCA);
+                    break;
+                case NAVIGATION:
+                    p = new Palette(0x566B4668, 0x723E2944, 0x40987193, 0x52DFC0D5);
+                    break;
+                case AVATAR:
+                    p = new Palette(0x38966C95, 0x464E304D, 0x36956992, 0x48D4A2C8);
+                    break;
+                case BUTTON:
+                    p = new Palette(0x426D3D60, 0x28432A43, 0x709D6B90, 0x67ECC3DD);
+                    break;
+                case BADGE:
+                    p = new Palette(0xB4BC6691, 0xA0813D67, 0x70D78BB1, 0x88FFE0F0);
+                    break;
+                default: throw new IncompatibleClassChangeError();
+            }
         }
         return hovered ? new Palette(brighter(p.top(), 20), brighter(p.bottom(), 14),
                 darkText ? 0x66A95682 : 0x78F1AFD3, darkText ? 0xA6FFFFFF : 0x76FFE8F4) : p;
@@ -100,7 +254,7 @@ final class ChatGlass {
             result.add(new Band(row, row + step, left, right, innerLeft, innerRight));
             row += step;
         }
-        cached = List.copyOf(result);
+        cached = ImmutableList.copyOf(result);
         SHAPES.put(key, cached);
         return cached;
     }

@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.chat.profile;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.util.TextSanitizer;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,7 +17,7 @@ public final class ProfileBook {
     public boolean update(UUID actor, UUID target, String text) {
         if (!actor.equals(target)) throw new SecurityException("只能修改自己的个人介绍");
         if (text == null || text.length() > MAX_INTRO) throw new IllegalArgumentException("个人介绍过长");
-        String clean = TextSanitizer.sanitize(text, MAX_INTRO).strip();
+        String clean = Java8.strip(TextSanitizer.sanitize(text, MAX_INTRO));
         if (get(actor).equals(clean)) return false;
         if (clean.isEmpty()) introductions.remove(actor);
         else {
@@ -23,7 +27,7 @@ public final class ProfileBook {
         }
         return true;
     }
-    public Map<UUID, String> snapshot() { return Map.copyOf(introductions); }
+    public Map<UUID, String> snapshot() { return ImmutableMap.copyOf(introductions); }
     public static ProfileBook restore(Map<UUID, String> values) {
         if (values.size() > MAX_PROFILES) throw new IllegalArgumentException("资料容量超限");
         ProfileBook result = new ProfileBook();

@@ -1,5 +1,11 @@
 package com.november.mcphone.core.script.pkg;
 
+import java.nio.file.Paths;
+
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
+import java.util.stream.Stream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -50,10 +56,10 @@ public final class AppSigner {
             System.exit(2);
             return;
         }
-        Path appDir = Path.of(args[0]);
-        Path gameDir = Path.of(args[1]);
+        Path appDir = Paths.get(args[0]);
+        Path gameDir = Paths.get(args[1]);
         String author = args.length > 2 ? args[2] : "";
-        Path out = args.length > 3 ? Path.of(args[3])
+        Path out = args.length > 3 ? Paths.get(args[3])
                 : appDir.resolveSibling(appDir.getFileName() + "-signed.zip");
 
         // ---- 第一步：读包
@@ -136,8 +142,8 @@ public final class AppSigner {
      */
     static Map<String, byte[]> readDir(Path dir) throws Exception {
         Map<String, byte[]> out = new LinkedHashMap<>();
-        try (var walk = Files.walk(dir)) {
-            List<Path> files = walk.filter(Files::isRegularFile).sorted().toList();
+        try (Stream<Path> walk = Files.walk(dir)) {
+            List<Path> files = walk.filter(Files::isRegularFile).sorted().collect(Java8Collections.toList());
             for (Path f : files) {
                 String rel = dir.relativize(f).toString().replace('\\', '/');
                 // META/ 下的东西不进摘要，也不该由作者手放 —— 签名这一步自己写
@@ -146,7 +152,7 @@ public final class AppSigner {
                 out.put(rel, Files.readAllBytes(f));
             }
         }
-        PackageError.PathRules.requireAll(List.copyOf(out.keySet()));
+        PackageError.PathRules.requireAll(ImmutableList.copyOf(out.keySet()));
         return out;
     }
 

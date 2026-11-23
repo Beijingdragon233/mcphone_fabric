@@ -30,8 +30,9 @@ public final class WeatherApp extends PhoneApp {
 
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
-            ps.navigateTo(PhoneScreen.Mode.WEATHER);
+        Object psMatch;
+        if ((psMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) {
+            ((PhoneScreen) psMatch).navigateTo(PhoneScreen.Mode.WEATHER);
         }
     }
 }

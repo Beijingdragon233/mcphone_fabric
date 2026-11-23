@@ -22,7 +22,36 @@ import java.util.UUID;
 public interface IntentApplier {
 
     /** 落地结果：成功用 {@link #ok()}，失败带码与本地化键。 */
-    record Landed(ScriptErrorCode code, String messageKey) {
+    final class Landed {
+        private final ScriptErrorCode code;
+        private final String messageKey;
+
+        public Landed(ScriptErrorCode code, String messageKey) {
+            this.code = code;
+            this.messageKey = messageKey;
+        }
+
+        public ScriptErrorCode code() { return code; }
+
+        public String messageKey() { return messageKey; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Landed)) return false;
+            Landed that = (Landed) other;
+            return java.util.Objects.equals(this.code, that.code)
+                    && java.util.Objects.equals(this.messageKey, that.messageKey);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(code);
+            hash = 31 * hash + java.util.Objects.hashCode(messageKey);
+            return hash;
+        }
+
+        @Override public String toString() { return "Landed[code=" + code + ", messageKey=" + messageKey + "]"; }
+
         public static Landed ok() {
             return new Landed(ScriptErrorCode.OK, "");
         }

@@ -118,8 +118,9 @@ public final class LayoutEngine {
             if (!visible(c, cs, state)) continue;
             // 模板的 :key 进 props.key（§9.4.5）：列表增删时按它找回滚动位置，不按会错位的下标。
             // 带上长度：key 值里可以有 ] 和 .，不带的话 "a].children[0" 会和别的节点的路径拼成同一串
-            String slot = c.props().get("key") instanceof String k && !k.isEmpty()
-                    ? "key[" + k.length() + ":" + k + "]" : "children[" + i + "]";
+            Object kMatch;
+            String slot = (kMatch = c.props().get("key")) instanceof String && !((String) kMatch).isEmpty()
+                    ? "key[" + ((String) kMatch).length() + ":" + ((String) kMatch) + "]" : "children[" + i + "]";
             String childKey = c.id() != null ? "#" + c.id() : (key.isEmpty() ? "" : key + ".") + slot;
             ln.children.add(build(c, cs, sheet, state, childKey, depth + 1, budget));
         }
@@ -174,56 +175,70 @@ public final class LayoutEngine {
         long contentW = 0;
         long contentH = 0;
         switch (n.node.type()) {
-            case TEXT -> {
+            case TEXT: {
                 n.lines = wrap(text(n.node), innerW, tm, s.wrap(), s.maxLines());
                 contentW = widest(n.lines, tm);
                 contentH = (long) n.lines.size() * tm.lineHeight();
             }
-            case IMAGE -> {
+                break;
+            case IMAGE: {
                 int[] px = n.imageSizes == null ? null : n.imageSizes.get(n.node.str("src", ""));
                 // 用不了的图（不在包里、超限、坏文件）没有原始尺寸，按占位尺寸排：
                 // 按 0 排的话 Renderer 的 sized 判定不成立，连占位图都不画，作者看到的是"图没了"
                 contentW = n.node.num("w", px == null ? MISSING_IMAGE : px[0]);
                 contentH = n.node.num("h", px == null ? MISSING_IMAGE : px[1]);
             }
-            case ICON -> contentW = contentH = n.node.num("size", 8);
-            case ITEM -> contentW = contentH = n.node.num("size", 16);
-            case BADGE -> {
+                break;
+            case ICON:
+                contentW = contentH = n.node.num("size", 8);
+                break;
+            case ITEM:
+                contentW = contentH = n.node.num("size", 16);
+                break;
+            case BADGE: {
                 int count = n.node.num("count", 0);
                 if (count != 0) {
                     contentW = tm.width(count > 99 ? "99+" : String.valueOf(count)) + 4L;
                     contentH = tm.lineHeight();
                 }
             }
-            case PROGRESS -> {
+                break;
+            case PROGRESS: {
                 contentW = bounded(innerW);
                 contentH = n.node.num("height", 4);
             }
-            case DIVIDER -> {
+                break;
+            case DIVIDER: {
                 // 竖线的高在 arrange 里取所在行的高：测量时取可用高，auto 高的行会被撑到整屏
                 boolean vertical = n.node.flag("vertical", false);
                 contentW = vertical ? 1 : bounded(innerW);
                 contentH = vertical ? 0 : 1;
             }
-            case SPACER -> {
+                break;
+            case SPACER: {
                 // 父节点只取它主轴那一轴（§5.2 交叉轴 0）；size 为 0 的弹性 spacer 已由样式第 4 层压成 0×0
                 int size = n.node.num("size", 0);
                 if (size > 0) contentW = contentH = size;
             }
-            case TOGGLE -> {
+                break;
+            case TOGGLE: {
                 String label = n.node.str("label", n.node.str("i18n", null));
                 contentW = (label != null ? tm.width(label) + 4L : 0) + TOGGLE_W;
                 contentH = Math.max(tm.lineHeight(), TOGGLE_H);
             }
-            case TEXT_INPUT, TEXTAREA -> {
+                break;
+            case TEXT_INPUT:
+            case TEXTAREA: {
                 contentW = bounded(innerW);
                 contentH = tm.lineHeight() * (n.node.type() == NodeType.TEXTAREA ? 4 : 1);
             }
-            case TAB_BAR -> {
+                break;
+            case TAB_BAR: {
                 contentW = bounded(innerW);
                 contentH = Math.max(tm.lineHeight(), TAB_ICON) + 4L;
             }
-            case GRID -> {
+                break;
+            case GRID: {
                 int cols = gridCols(n);
                 List<LayoutNode> cells = occupying(n.children);
                 int[] colW = columns(bounded(innerW), cols, s.gap());
@@ -242,7 +257,8 @@ public final class LayoutEngine {
                 }
                 contentW = bounded(innerW);
             }
-            case LIST -> {
+                break;
+            case LIST: {
                 int itemHeight = n.node.num("item-height", 0);
                 int count = n.children.size();
                 if (itemHeight > 0) {
@@ -267,7 +283,8 @@ public final class LayoutEngine {
                 // 自身只占可用高，内容总高另存；放进无限高的容器里时没有「可用高」，只能按内容展开
                 contentH = unbounded(innerH) ? n.contentH : innerH;
             }
-            case SCROLL -> {
+                break;
+            case SCROLL: {
                 long acc = 0;
                 boolean seen = false;
                 for (LayoutNode c : n.children) {
@@ -280,7 +297,8 @@ public final class LayoutEngine {
                 contentW = bounded(innerW);
                 contentH = unbounded(innerH) ? n.contentH : innerH;
             }
-            default -> {
+                break;
+            default: {
                 // §5.3「有 children 时忽略 text」看的是写了没有，不是显示了没有：children 全被藏起来的按钮不该变回文字按钮
                 if (n.node.type() == NodeType.BUTTON && n.node.children().isEmpty()) {
                     n.lines = wrap(text(n.node), innerW, tm, false, 1);
@@ -294,23 +312,27 @@ public final class LayoutEngine {
                         boolean gap = occupies(c) && seen;
                         boolean spacer = c.node.type() == NodeType.SPACER;
                         switch (axis) {
-                            case STACK -> {
+                            case STACK: {
                                 contentW = Math.max(contentW, spacer ? 0 : c.measuredW);
                                 contentH = Math.max(contentH, spacer ? 0 : c.measuredH);
                             }
-                            case COLUMN -> {
+                                break;
+                            case COLUMN: {
                                 contentW = Math.max(contentW, spacer ? 0 : c.measuredW);
                                 contentH += c.measuredH + (gap ? s.gap() : 0);
                             }
-                            case ROW -> {
+                                break;
+                            case ROW: {
                                 contentH = Math.max(contentH, spacer ? 0 : c.measuredH);
                                 contentW += c.measuredW + (gap ? s.gap() : 0);
                             }
+                                break;
                         }
                         seen |= occupies(c);
                     }
                 }
             }
+                break;
         }
 
         n.measuredW = outer(s.width(), contentW, availW, s.padLeft() + s.padRight());
@@ -324,11 +346,19 @@ public final class LayoutEngine {
 
     /** auto 是内容加 padding；fill 是可用尺寸，可用尺寸无限时退化成 auto；数字就是外尺寸本身，已含 padding。 */
     private static int outer(SizeSpec spec, long content, int avail, int pads) {
-        long v = switch (spec.kind()) {
-            case AUTO -> content + pads;
-            case FILL -> unbounded(avail) ? content + pads : avail;
-            case FIXED -> spec.value();
-        };
+        long v;
+        switch (spec.kind()) {
+            case AUTO:
+                v = content + pads;
+                break;
+            case FILL:
+                v = unbounded(avail) ? content + pads : avail;
+                break;
+            case FIXED:
+                v = spec.value();
+                break;
+            default: throw new IncompatibleClassChangeError();
+        }
         return clampInt(v);
     }
 
@@ -356,10 +386,17 @@ public final class LayoutEngine {
         int ch = Math.max(0, n.h - s.padTop() - s.padBottom());
 
         switch (n.node.type()) {
-            case GRID -> arrangeGrid(n, cx, cy, cw);
-            case SCROLL -> arrangeFlow(n, cx, cy, cw, n.contentH, true);   // 内容坐标系，主轴没有剩余
-            case LIST -> arrangeList(n, cx, cy, cw);
-            default -> {
+            case GRID:
+                arrangeGrid(n, cx, cy, cw);
+                break;
+            case SCROLL:
+                arrangeFlow(n, cx, cy, cw, n.contentH, true);
+                break;
+                // 内容坐标系，主轴没有剩余
+            case LIST:
+                arrangeList(n, cx, cy, cw);
+                break;
+            default: {
                 Layout axis = axisOf(n);
                 if (axis == Layout.STACK) {
                     arrangeStack(n, cx, cy, cw, ch);
@@ -367,6 +404,7 @@ public final class LayoutEngine {
                     arrangeFlow(n, cx, cy, cw, ch, axis == Layout.COLUMN);
                 }
             }
+                break;
         }
     }
 
@@ -409,13 +447,19 @@ public final class LayoutEngine {
         long between = 0;
         if (free > 0) {
             switch (s.justify()) {
-                case START -> { }
-                case CENTER -> lead = free / 2;
-                case END -> lead = free;
-                case BETWEEN -> {
+                case START: { }
+                    break;
+                case CENTER:
+                    lead = free / 2;
+                    break;
+                case END:
+                    lead = free;
+                    break;
+                case BETWEEN: {
                     if (occupying > 1) between = free / (occupying - 1);
                     else lead = free / 2;
                 }
+                    break;
             }
         }
 
@@ -505,19 +549,29 @@ public final class LayoutEngine {
     }
 
     private static int crossOffset(Align a, int avail, int size) {
-        return switch (a) {
-            case START, STRETCH -> 0;
-            case CENTER -> Math.max(0, (avail - size) / 2);
-            case END -> Math.max(0, avail - size);
-        };
+        switch (a) {
+            case START:
+            case STRETCH:
+                return 0;
+            case CENTER:
+                return Math.max(0, (avail - size) / 2);
+            case END:
+                return Math.max(0, avail - size);
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     private static int mainOffset(Justify j, int avail, int size) {
-        return switch (j) {
-            case START, BETWEEN -> 0;
-            case CENTER -> Math.max(0, (avail - size) / 2);
-            case END -> Math.max(0, avail - size);
-        };
+        switch (j) {
+            case START:
+            case BETWEEN:
+                return 0;
+            case CENTER:
+                return Math.max(0, (avail - size) / 2);
+            case END:
+                return Math.max(0, avail - size);
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     // ============================================================
@@ -630,12 +684,17 @@ public final class LayoutEngine {
 
     /** column / row / stack 的排法由类型决定，样式里的 layout 只对 box 与 button 生效（§6.5）。 */
     private static Layout axisOf(LayoutNode n) {
-        return switch (n.node.type()) {
-            case ROW -> Layout.ROW;
-            case STACK -> Layout.STACK;
-            case BOX, BUTTON -> n.style.layout();
-            default -> Layout.COLUMN;
-        };
+        switch (n.node.type()) {
+            case ROW:
+                return Layout.ROW;
+            case STACK:
+                return Layout.STACK;
+            case BOX:
+            case BUTTON:
+                return n.style.layout();
+            default:
+                return Layout.COLUMN;
+        }
     }
 
     /** count 为 0 的角标不参与 gap、不占格子（§5.2）：否则行里、网格里会留一道空。 */

@@ -21,7 +21,54 @@ package com.november.mcphone.core.client;
  * @param y        条的上边缘
  * @param vertical 立着的（键上下排）还是横着的（键左右排）
  */
-public record NavBarLayout(int x, int y, int w, int h, boolean vertical) {
+public final class NavBarLayout {
+    private final int x;
+    private final int y;
+    private final int w;
+    private final int h;
+    private final boolean vertical;
+
+    public NavBarLayout(int x, int y, int w, int h, boolean vertical) {
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+        this.vertical = vertical;
+    }
+
+    public int x() { return x; }
+
+    public int y() { return y; }
+
+    public int w() { return w; }
+
+    public int h() { return h; }
+
+    public boolean vertical() { return vertical; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof NavBarLayout)) return false;
+        NavBarLayout that = (NavBarLayout) other;
+        return this.x == that.x
+                && this.y == that.y
+                && this.w == that.w
+                && this.h == that.h
+                && this.vertical == that.vertical;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(x);
+        hash = 31 * hash + java.util.Objects.hashCode(y);
+        hash = 31 * hash + java.util.Objects.hashCode(w);
+        hash = 31 * hash + java.util.Objects.hashCode(h);
+        hash = 31 * hash + java.util.Objects.hashCode(vertical);
+        return hash;
+    }
+
+    @Override public String toString() { return "NavBarLayout[x=" + x + ", y=" + y + ", w=" + w + ", h=" + h + ", vertical=" + vertical + "]"; }
+
 
     /**
      * 这台设备的导航条在哪儿。

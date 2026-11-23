@@ -95,6 +95,15 @@
     "populated": true,
     "note": "NeoForge 客户端数据包分发入口。"
   },
+  "1.16.5-matrices": { "since": "1.16.5", "populated": true, "note": "SerializableUUID and Mojang vector/matrix helpers shared by 1.16.5 and 1.18.2." },
+  "forge-1.16.5-sounds": { "since": "1.16.5", "loader": "Forge", "populated": true, "note": "Streaming sound implementation shared by Forge 1.16.5 and 1.18.2." },
+  "1.16.5": { "since": "1.16.5", "populated": true, "note": "Minecraft 1.16.5 APIs and packet codecs." },
+  "forge-1.16.5-java8": {
+    "since": "1.16.5",
+    "loader": "Forge",
+    "populated": true,
+    "note": "Java 8 implementations selected by the legacy Forge target."
+  },
   "forge-1.18.2-waystones": {
     "since": "1.18.2",
     "loader": "Forge",

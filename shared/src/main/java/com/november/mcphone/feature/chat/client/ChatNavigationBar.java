@@ -19,7 +19,16 @@ final class ChatNavigationBar {
         if (button != 0 || bounds == null || !bounds.contains(mx, my)) return null;
         int column = 0;
         while (column < 3 && mx >= bounds.x() + bounds.width() * (column + 1) / 4) column++;
-        return switch(column) { case 0 -> Page.CHATS;case 1 -> Page.CONTACTS;case 3 -> Page.PROFILE;default -> null; };
+        switch (column) {
+            case 0:
+                return Page.CHATS;
+            case 1:
+                return Page.CONTACTS;
+            case 3:
+                return Page.PROFILE;
+            default:
+                return null;
+        }
     }
     void render(GuiGraphics g, Font font, int x, int y, int w, Page active) {
         bounds = new ChatLayout.Rect(x, y, w, ChatLayout.TAB_HEIGHT);

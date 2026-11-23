@@ -1,5 +1,7 @@
 package com.november.mcphone.api.chat;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.PhonePlayerData;
 import com.november.mcphone.feature.chat.ChatData;
 import com.november.mcphone.feature.chat.ChatDelivery;
@@ -61,7 +63,7 @@ public final class PhoneChat {
         if (cached.size() != 1) return Optional.empty();
         UUID id = cached.get(0);
 
-        var cachedName = com.november.mcphone.platform.PlayerAccess.cachedName(server,id);
+        Optional<String> cachedName = com.november.mcphone.platform.PlayerAccess.cachedName(server,id);
         if (cachedName.filter(p -> !p.equalsIgnoreCase(name)).isPresent()) {
             return Optional.empty();
         }
@@ -80,7 +82,7 @@ public final class PhoneChat {
         }
         out.sort(Comparator.comparing(PhoneContact::name, String.CASE_INSENSITIVE_ORDER)
                 .thenComparing(PhoneContact::id));
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /** self 看 other 是什么关系 */

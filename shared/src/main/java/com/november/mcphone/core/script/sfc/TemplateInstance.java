@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.core.script.layout.Node;
 import com.november.mcphone.core.script.layout.NodeParser;
 import com.november.mcphone.core.script.layout.NodeType;
@@ -133,7 +136,8 @@ public final class TemplateInstance {
             boolean binds = !input && bind != null && state.get(bind) != null
                     && (hit.type() == NodeType.TOGGLE || hit.type() == NodeType.TAB_BAR);
             if (hit.type() == NodeType.TAB_BAR && binds) {
-                int count = hit.props().get("tabs") instanceof List<?> tabs ? tabs.size() : 0;
+                Object tabsMatch;
+                int count = (tabsMatch = hit.props().get("tabs")) instanceof List<?> ? ((List<?>) tabsMatch).size() : 0;
                 if (segment < 0 || segment >= count) return null;
             }
             if (!binds && bound == null) return null;
@@ -147,13 +151,13 @@ public final class TemplateInstance {
             }
             try (LocalStore.Transaction transaction = new LocalStore.Transaction(storage)) {
                 Statements.Outcome outcome = bound == null
-                        ? new Statements.Outcome(true, false, false, null, List.of(), List.of())
+                        ? new Statements.Outcome(true, false, false, null, ImmutableList.of(), ImmutableList.of())
                         : bound.run(trial, file, transaction, requests, timers);
                 if (outcome.applied()) {
                     if (!transaction.commit()) {
                         List<String> warnings = new ArrayList<>(outcome.warnings());
                         warnings.add(file + " 本地存储保存失败，原文件和页面数据已保留，" + (input ? "本次输入回调" : "本次点击") + "未完成");
-                        return new Statements.Outcome(false, false, false, null, List.of(), List.copyOf(warnings));
+                        return new Statements.Outcome(false, false, false, null, ImmutableList.of(), ImmutableList.copyOf(warnings));
                     }
                     for (Map.Entry<String, Object> e : trial.values().entrySet()) state.set(e.getKey(), e.getValue());
                     if (requests != null) requests.commit();
@@ -183,7 +187,7 @@ public final class TemplateInstance {
 
     /** 按当前 state 产出一棵树。不抛：超限截断、求值出错降级，原因在 {@link Tree#warnings()}。 */
     public Tree instantiate(UiState state) {
-        return instantiate(state, Map.of());
+        return instantiate(state, ImmutableMap.of());
     }
 
     /**
@@ -224,8 +228,9 @@ public final class TemplateInstance {
             Object v = PropRules.normalize(b.getValue().spec(), b.getValue().expr().run(c), c, tag);
             if (v != null) props.put(b.getKey(), v);
         }
-        if (e.type() == NodeType.TEXT && props.get("text") instanceof String text) {
-            props.put("text", boundedText(text, pass));
+        Object textMatch;
+        if (e.type() == NodeType.TEXT && (textMatch = props.get("text")) instanceof String) {
+            props.put("text", boundedText(((String) textMatch), pass));
         }
         String id = e.id();
         if (id != null && !pass.ids.add(id)) {
@@ -250,7 +255,7 @@ public final class TemplateInstance {
         Set<String> keys = new HashSet<>();
         for (Child ch : e.children()) expand(ch, c, pass, kids, keys);
 
-        Node out = new Node(e.type(), id, e.classes(), Collections.unmodifiableMap(props), List.copyOf(kids), null, null);
+        Node out = new Node(e.type(), id, e.classes(), Collections.unmodifiableMap(props), ImmutableList.copyOf(kids), null, null);
         pass.nodes.add(out);
         if (e.click() != null) pass.clicks.put(out,
                 new Statements.Bound(e.click(), c.boundNames(), c.boundValues(), pass.host));
@@ -260,28 +265,28 @@ public final class TemplateInstance {
     }
 
     private void expand(Child ch, EvalContext c, Pass pass, List<Node> out, Set<String> keys) {
-        if (ch instanceof Chain chain) {
+        if (ch instanceof Chain) {
             // 求值预算用完后条件都得 null，按假走会翻到 v-else、画出与 state 相反的分支：整串都不进树
             if (c.exhausted()) return;
-            for (int i = 0; i < chain.branches().size(); i++) {
-                Expr.Compiled cond = chain.conditions().get(i);
+            for (int i = 0; i < ((Chain) ch).branches().size(); i++) {
+                Expr.Compiled cond = ((Chain) ch).conditions().get(i);
                 boolean taken = cond == null || Values.truthy(cond.run(c));
                 if (c.exhausted()) return;
                 if (taken) {
-                    add(out, node(chain.branches().get(i), c, pass, keys));
+                    add(out, node(((Chain) ch).branches().get(i), c, pass, keys));
                     return;
                 }
             }
-        } else if (ch instanceof Text t) {
+        } else if (ch instanceof Text) {
             if (pass.budget <= 0) {
                 pass.truncated = true;
                 return;
             }
             if (c.exhausted()) return;
             pass.budget--;
-            Object text = t.literal() != null ? t.literal() : PropRules.normalize(TEXT, t.expr().run(c), c, "text");
+            Object text = ((Text) ch).literal() != null ? ((Text) ch).literal() : PropRules.normalize(TEXT, ((Text) ch).expr().run(c), c, "text");
             if (c.exhausted()) return;
-            Node node = new Node(NodeType.TEXT, null, List.of(), Map.of("text", boundedText(Values.text(text), pass)), List.of(), null, null);
+            Node node = new Node(NodeType.TEXT, null, ImmutableList.of(), ImmutableMap.of("text", boundedText(Values.text(text), pass)), ImmutableList.of(), null, null);
             pass.nodes.add(node);
             out.add(node);
         } else {
@@ -300,11 +305,11 @@ public final class TemplateInstance {
         Object source = spec.source().run(c);
         List<?> items = null;
         int count;
-        if (source instanceof List<?> list) {
-            items = list;
-            count = list.size();
-        } else if (source instanceof Integer n) {
-            count = Math.max(0, n);
+        if (source instanceof List<?>) {
+            items = ((List<?>) source);
+            count = ((List<?>) source).size();
+        } else if (source instanceof Integer) {
+            count = Math.max(0, ((Integer) source));
         } else {
             // null 是数据还没到，不算错
             if (source != null) c.warn("v-for 的来源是 " + Values.kind(source) + "，要数组或整数，按空处理");

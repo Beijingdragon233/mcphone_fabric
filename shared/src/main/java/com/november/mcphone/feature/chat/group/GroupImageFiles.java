@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.chat.group;
 
+import com.google.common.collect.ImmutableMap;
+import com.november.mcphone.util.Java8Collections;
+
+import java.util.stream.Stream;
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.feature.chat.ChatImage;
@@ -29,8 +33,8 @@ public final class GroupImageFiles {
     private static Path file(MinecraftServer server, UUID id) { return folder(server).resolve(id + ".png"); }
     public static UUID identity(UUID group, byte[] data) {
         try {
-            var hash = MessageDigest.getInstance("SHA-256"); hash.update(("group:" + group).getBytes(StandardCharsets.UTF_8));
-            var bytes = ByteBuffer.wrap(hash.digest(data)); return new UUID(bytes.getLong(), bytes.getLong());
+            java.security.MessageDigest hash = MessageDigest.getInstance("SHA-256"); hash.update(("group:" + group).getBytes(StandardCharsets.UTF_8));
+            java.nio.ByteBuffer bytes = ByteBuffer.wrap(hash.digest(data)); return new UUID(bytes.getLong(), bytes.getLong());
         } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     public static UUID write(MinecraftServer server, UUID group, byte[] data) {
@@ -49,13 +53,13 @@ public final class GroupImageFiles {
     }
     public static void release(MinecraftServer server, UUID id) {
         synchronized (LOCK) {
-            var active = ACTIVE.get(server);
+            Map<UUID,Integer> active = ACTIVE.get(server);
             if (active != null) active.computeIfPresent(id, (key, count) -> count > 1 ? count - 1 : null);
         }
     }
     public static byte[] read(MinecraftServer server, UUID id) {
         synchronized (LOCK) {
-            try { var path = file(server, id); return Files.isRegularFile(path) && Files.size(path) <= ChatImage.MAX_BYTES_CEILING ? Files.readAllBytes(path) : null; }
+            try { Path path = file(server, id); return Files.isRegularFile(path) && Files.size(path) <= ChatImage.MAX_BYTES_CEILING ? Files.readAllBytes(path) : null; }
             catch (IOException error) { MCphone.LOGGER.warn("群图片读取失败", error); return null; }
         }
     }
@@ -67,7 +71,7 @@ public final class GroupImageFiles {
     }
     private static void remove(MinecraftServer server, UUID id, long before) {
         synchronized (LOCK) {
-            if (ACTIVE.getOrDefault(server, Map.of()).containsKey(id)) return;
+            if (ACTIVE.getOrDefault(server, ImmutableMap.of()).containsKey(id)) return;
             try {
                 Path path = file(server, id);
                 // 新一次上传会更新修改时间；回收任务不能按旧引用快照删掉后来被复用的文件。
@@ -80,8 +84,8 @@ public final class GroupImageFiles {
         Set<UUID> referenced = GroupService.imageReferences(server); long before = System.currentTimeMillis();
         Util.backgroundExecutor().execute(() -> {
             Path folder = folder(server); if (!Files.isDirectory(folder)) return;
-            try (var paths = Files.list(folder)) {
-                for (var path : paths.toList()) {
+            try (Stream<Path> paths = Files.list(folder)) {
+                for (Path path : paths.collect(Java8Collections.toList())) {
                     String name = path.getFileName().toString(); if (!name.endsWith(".png")) continue;
                     try { UUID id = UUID.fromString(name.substring(0, name.length() - 4)); if (!referenced.contains(id)) remove(server, id, before); }
                     catch (IllegalArgumentException ignored) { }

@@ -82,7 +82,7 @@ public final class ServerIntentApplier implements IntentApplier {
         List<ActionIntent> effects = new ArrayList<>();
         for (ActionIntent intent : intents) {
             switch (intent.kind()) {
-                case ActionIntent.ITEM_GIVE -> {
+                case ActionIntent.ITEM_GIVE: {
                     ActionIntent.Give give = intent.asGive();
                     ItemStack stack = ItemRefs.resolve(give.itemId(), give.count());
                     if (stack.isEmpty()) {
@@ -96,7 +96,8 @@ public final class ServerIntentApplier implements IntentApplier {
                     }
                     stacks.add(stack);
                 }
-                case ActionIntent.LOOT_ROLL -> {
+                    break;
+                case ActionIntent.LOOT_ROLL: {
                     ResourceLocation id = tableId(intent);
                     if (id == null) return fail(ScriptErrorCode.INVALID_ARGUMENT, "");
                     if (!LootAccess.exists(level, id)) {
@@ -105,21 +106,25 @@ public final class ServerIntentApplier implements IntentApplier {
                     }
                     stacks.addAll(LootAccess.roll(level, id, player));
                 }
-                case ActionIntent.ATTR_GRANT, ActionIntent.ATTR_REVOKE -> {
+                    break;
+                case ActionIntent.ATTR_GRANT:
+                case ActionIntent.ATTR_REVOKE: {
                     ResourceLocation id = attrId(intent);
                     if (id == null || !PlayerAbilities.available(player, id)) {
                         return new Landed(ScriptErrorCode.INVALID_ARGUMENT, ATTR_UNAVAILABLE);
                     }
                     attrs.add(intent);
                 }
-                case ActionIntent.EFFECT_GIVE -> {
+                    break;
+                case ActionIntent.EFFECT_GIVE: {
                     ResourceLocation id = effectId(intent);
                     if (id == null || !PlayerEffects.available(id)) {
                         return new Landed(ScriptErrorCode.INVALID_ARGUMENT, EFFECT_UNAVAILABLE);
                     }
                     effects.add(intent);
                 }
-                default -> {
+                    break;
+                default: {
                     MCphone.LOGGER.warn("[MCphone] 不认识的意图种类：{}", intent.kind());
                     return fail(ScriptErrorCode.INVALID_ARGUMENT, "");
                 }
@@ -127,7 +132,7 @@ public final class ServerIntentApplier implements IntentApplier {
         }
 
         // ---- 第二步：容量预检（只数空格子，保守）。放不下就一个都不放。
-        var inventory = player.getInventory();
+        net.minecraft.world.entity.player.Inventory inventory = player.getInventory();
         int empty = 0;
         for (int i = 0; i < inventory.getContainerSize(); i++) {
             if (inventory.getItem(i).isEmpty()) empty++;

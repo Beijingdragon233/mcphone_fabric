@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.music.client.playback;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.MCphone;
 import fr.delthas.javamp3.Sound;
 import net.minecraft.client.sounds.AudioStream;
@@ -134,7 +136,7 @@ public final class Mp3Decoder implements AudioDecoder {
             return new PcmAudioStream(sound, format, name, durationMs);
         } catch (IOException | RuntimeException e) {
             raw.close();
-            throw e instanceof IOException io ? io : new IOException(e);
+            throw e instanceof IOException ? ((IOException) e) : new IOException(e);
         }
     }
 
@@ -151,7 +153,7 @@ public final class Mp3Decoder implements AudioDecoder {
     private static long skipId3v2(InputStream in) throws IOException {
         in.mark(ID3V2_HEADER);
 
-        byte[] head = in.readNBytes(ID3V2_HEADER);
+        byte[] head = Java8.readNBytes(in, ID3V2_HEADER);
         if (head.length < ID3V2_HEADER
                 || head[0] != 'I' || head[1] != 'D' || head[2] != '3') {
             in.reset();     // 没有标签，交还给解码器
@@ -162,7 +164,7 @@ public final class Mp3Decoder implements AudioDecoder {
                  | ((head[7] & 0x7F) << 14)
                  | ((head[8] & 0x7F) << 7)
                  |  (head[9] & 0x7F);
-        in.skipNBytes(size);
+        com.november.mcphone.util.Java8.skipNBytes(in, size);
         return ID3V2_HEADER + (long) size;
     }
 

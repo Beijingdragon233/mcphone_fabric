@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat;
 
+import com.google.common.collect.ImmutableList;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -10,12 +12,39 @@ import java.util.UUID;
 final class ChatMessageIdentity {
     public static final UUID MISSING_ID = new UUID(0, 0);
     private ChatMessageIdentity() {}
-    public record Migration(List<ChatMessage> messages, boolean changed) {
-        public Migration { messages = List.copyOf(messages); }
+    public static final class Migration {
+        private final List<ChatMessage> messages;
+        private final boolean changed;
+
+        public List<ChatMessage> messages() { return messages; }
+
+        public boolean changed() { return changed; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Migration)) return false;
+            Migration that = (Migration) other;
+            return java.util.Objects.equals(this.messages, that.messages)
+                    && this.changed == that.changed;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(messages);
+            hash = 31 * hash + java.util.Objects.hashCode(changed);
+            return hash;
+        }
+
+        @Override public String toString() { return "Migration[messages=" + messages + ", changed=" + changed + "]"; }
+
+        public Migration(List<ChatMessage> messages, boolean changed) { messages = ImmutableList.copyOf(messages);
+            this.messages = messages;
+            this.changed = changed;
+        }
     }
     public static Migration normalize(ConversationKey conversation, List<ChatMessage> messages) {
-        var used = new HashSet<UUID>();
-        var result = new ArrayList<ChatMessage>();
+        HashSet<UUID> used = new HashSet<UUID>();
+        ArrayList<ChatMessage> result = new ArrayList<ChatMessage>();
         boolean changed = false;
         for (int i = 0; i < messages.size(); i++) {
             ChatMessage message = messages.get(i);
@@ -37,10 +66,10 @@ final class ChatMessageIdentity {
 
     /** 冻结 1.11.2 的迁移种子；record 新增字段不能改变尚未回存的旧消息身份。 */
     private static String legacyBody(MessageBody body) {
-        if (body instanceof TextBody text) return "TextBody[text=" + text.text() + "]";
-        if (body instanceof ImageBody image) return "ImageBody[image=" + image.image()
-                + ", width=" + image.width() + ", height=" + image.height()
-                + ", frames=" + image.frames() + ", frameMs=" + image.frameMs() + "]";
+        if (body instanceof TextBody) return "TextBody[text=" + ((TextBody) body).text() + "]";
+        if (body instanceof ImageBody) return "ImageBody[image=" + ((ImageBody) body).image()
+                + ", width=" + ((ImageBody) body).width() + ", height=" + ((ImageBody) body).height()
+                + ", frames=" + ((ImageBody) body).frames() + ", frameMs=" + ((ImageBody) body).frameMs() + "]";
         throw new IllegalArgumentException("旧消息迁移不支持正文类型：" + body.kind());
     }
 }

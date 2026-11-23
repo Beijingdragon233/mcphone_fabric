@@ -1,0 +1,164 @@
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+import java.util.zip.ZipFile
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import org.objectweb.asm.ClassReader
+import org.objectweb.asm.ClassWriter
+import org.objectweb.asm.commons.ClassRemapper
+import org.objectweb.asm.commons.Remapper
+
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath 'org.ow2.asm:asm-commons:9.6' }
+}
+
+// Forge 36 has no runtime Jar-in-Jar loader. Merge only explicitly selected runtime libraries.
+def lock = new JsonSlurper().parse(file('../../versions/private-rhino-java8.json'))
+def engineDirectory = file('../../' + lock.mavenPath)
+def engine = new File(engineDirectory, "rhino-" + lock.version + '.jar')
+configurations {
+    legacyEmbedded { canBeConsumed = false; transitive = false }
+    implementation.extendsFrom(legacyEmbedded)
+}
+dependencies {
+    legacyEmbedded files(engine)
+    legacyEmbedded 'fr.delthas:javamp3:1.0.1'
+    legacyEmbedded 'org.bouncycastle:bcprov-jdk15to18:1.87'
+}
+
+def sha256 = { byte[] data -> MessageDigest.getInstance('SHA-256').digest(data).encodeHex().toString() }
+def libraryHashes = [
+    'javamp3-1.0.1.jar': 'ee259df947a4242fd03d164b2fb4c61cc42e167a0af483cc18ce0c0bfa13b1ac',
+    'bcprov-jdk15to18-1.87.jar': '0f1ae1e90adbdf1804f53c5bd3b5e43085ae367c0bd82f1035911a810d9e796d'
+]
+def verifyLibraries = tasks.register('verifyJava8Libraries') {
+    group = 'verification'
+    inputs.files(configurations.legacyEmbedded)
+    doLast {
+        configurations.legacyEmbedded.findAll { it != engine }.each { library ->
+            if (!libraryHashes.containsKey(library.name) || sha256(library.bytes) != libraryHashes[library.name]) {
+                throw new GradleException('Unexpected embedded Java 8 library: ' + library.name)
+            }
+        }
+    }
+}
+
+// Keep the Java 8 crypto implementation private: other installed mods may bundle another BC version.
+def privateCryptoFile = layout.buildDirectory.file('private-libraries/bcprov-java8.jar')
+def relocateCrypto = tasks.register('relocateJava8Crypto') {
+    dependsOn verifyLibraries
+    inputs.files(configurations.legacyEmbedded)
+    outputs.file(privateCryptoFile)
+    doLast {
+        def original = 'org/bouncycastle/'
+        def relocated = 'com/november/mcphone/internal/crypto/'
+        def remapper = new Remapper() {
+            @Override String map(String name) {
+                name.startsWith(original) ? relocated + name.substring(original.length()) : name
+            }
+            @Override Object mapValue(Object value) {
+                if (value instanceof String) return value.replace(original, relocated)
+                        .replace('org.bouncycastle.', 'com.november.mcphone.internal.crypto.')
+                super.mapValue(value)
+            }
+        }
+        def source = configurations.legacyEmbedded.files.find { it.name == 'bcprov-jdk15to18-1.87.jar' }
+        def target = privateCryptoFile.get().asFile
+        target.parentFile.mkdirs()
+        new ZipFile(source).withCloseable { zip ->
+            new ZipOutputStream(new FileOutputStream(target)).withCloseable { output ->
+                Collections.list(zip.entries()).findAll { !it.directory && it.name.startsWith(original) }
+                        .sort { it.name }.each { entry ->
+                    byte[] data = zip.getInputStream(entry).withCloseable { it.readAllBytes() }
+                    if (entry.name.endsWith('.class')) {
+                        def writer = new ClassWriter(0)
+                        new ClassReader(data).accept(new ClassRemapper(writer, remapper), 0)
+                        data = writer.toByteArray()
+                    }
+                    def outEntry = new ZipEntry(relocated + entry.name.substring(original.length()))
+                    outEntry.setTime(0L)
+                    output.putNextEntry(outEntry)
+                    output.write(data)
+                    output.closeEntry()
+                }
+            }
+        }
+    }
+}
+def verifyEngine = tasks.register('verifyJava8Engine') {
+    group = 'verification'
+    inputs.file('../../versions/private-rhino-java8.json')
+    inputs.files(lock.files.keySet().collect { new File(engineDirectory, it) })
+    doLast {
+        lock.files.each { name, expected ->
+            if (sha256(new File(engineDirectory, name).bytes) != expected) {
+                throw new GradleException('Unexpected Java 8 Rhino artifact: ' + name)
+            }
+        }
+        new ZipFile(engine).withCloseable { zip ->
+            def context = zip.getEntry('com/november/mcphone/internal/rhino/javascript/Context.class')
+            if (context == null || zip.getEntry('META-INF/LICENSE-MCPhone-Rhino.txt') == null) {
+                throw new GradleException('Incomplete Java 8 Rhino artifact')
+            }
+        }
+    }
+}
+tasks.withType(JavaCompile).configureEach { dependsOn verifyEngine, verifyLibraries }
+tasks.withType(JavaExec).configureEach {
+    dependsOn relocateCrypto
+    doFirst { classpath = files(privateCryptoFile) + classpath }
+}
+
+def distribution = tasks.named('jar', Jar) {
+    dependsOn relocateCrypto
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+    from({ configurations.legacyEmbedded.findAll { it.name != 'bcprov-jdk15to18-1.87.jar' }.collect { zipTree(it) } }) {
+        exclude 'META-INF/MANIFEST.MF', 'META-INF/maven/**', 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA', 'META-INF/services/java.security.Provider'
+        // Keep package identity for Rhino when its classes are merged into the Minecraft mod JAR.
+    }
+    from({ zipTree(privateCryptoFile) })
+    from('../../gradle/licenses/JavaMP3-1.0.1.txt') { into 'META-INF'; rename { 'LICENSE-JavaMP3.txt' } }
+    from('../../gradle/licenses/BouncyCastle-1.87.html') { into 'META-INF'; rename { 'LICENSE-BouncyCastle.html' } }
+    manifest.attributes(['Implementation-Version': project.version.toString()])
+    manifest.attributes(['Implementation-Version': lock.version.toString()], 'com/november/mcphone/internal/rhino/javascript/')
+}
+
+def verifyDistribution = tasks.register('verifyJava8Distribution') {
+    group = 'verification'
+    dependsOn 'reobfJar', verifyEngine, verifyLibraries
+    inputs.file(distribution.flatMap { it.archiveFile })
+    doLast {
+        new ZipFile(distribution.get().archiveFile.get().asFile).withCloseable { zip ->
+            def entries = Collections.list(zip.entries())
+            ['META-INF/LICENSE-JavaMP3.txt', 'META-INF/LICENSE-BouncyCastle.html',
+             'META-INF/LICENSE-MCPhone-Rhino.txt'].each { name ->
+                if (zip.getEntry(name) == null) throw new GradleException('Missing embedded license: ' + name)
+            }
+            if (entries.find { it.name.startsWith('org/mozilla/') || it.name.startsWith('org/bouncycastle/') || it.name.endsWith('.jar') }) {
+                throw new GradleException('Legacy Forge archive contains a nested jar or unrelocated runtime library')
+            }
+            entries.findAll { it.name.endsWith('.class') }.each { entry ->
+                byte[] header = zip.getInputStream(entry).withCloseable { it.readNBytes(8) }
+                if (header.length != 8 || ((header[6] & 255) << 8 | (header[7] & 255)) > 52) {
+                    throw new GradleException('Not Java 8 bytecode: ' + entry.name)
+                }
+            }
+            new ZipFile(engine).withCloseable { canonical ->
+                Collections.list(canonical.entries()).findAll { !it.directory && it.name != 'META-INF/MANIFEST.MF' }.each { entry ->
+                    def packaged = zip.getEntry(entry.name)
+                    if (packaged == null || !Arrays.equals(canonical.getInputStream(entry).withCloseable { it.readAllBytes() },
+                        zip.getInputStream(packaged).withCloseable { it.readAllBytes() })) {
+                        throw new GradleException('Packaged Java 8 Rhino differs from the locked artifact: ' + entry.name)
+                    }
+                }
+            }
+        }
+    }
+}
+tasks.named('check') { dependsOn verifyDistribution }
+
+tasks.named('assertTestPrivateRhinoIdentityTest', JavaExec) {
+    systemProperty 'mcphone.privateRhino.version', lock.version
+    systemProperty 'mcphone.privateRhino.sha256', lock.files[engine.name]
+}

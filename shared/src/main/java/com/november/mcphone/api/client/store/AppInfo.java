@@ -75,8 +75,60 @@ public final class AppInfo {
      * @param hardRejected   硬拒绝（「签名无效」与「签名被摘掉了」两档）。true 时<b>不许画「仍然继续」</b>
      * @param needsConfirm   要不要二次确认（点一下确认框，不是直接点安装）
      */
-    public record Signature(String stateKey, String fingerprint, String previous,
-                            String requiredPhrase, boolean hardRejected, boolean needsConfirm) {
+    public static final class Signature {
+        private final String stateKey;
+        private final String fingerprint;
+        private final String previous;
+        private final String requiredPhrase;
+        private final boolean hardRejected;
+        private final boolean needsConfirm;
+
+        public Signature(String stateKey, String fingerprint, String previous, String requiredPhrase, boolean hardRejected, boolean needsConfirm) {
+            this.stateKey = stateKey;
+            this.fingerprint = fingerprint;
+            this.previous = previous;
+            this.requiredPhrase = requiredPhrase;
+            this.hardRejected = hardRejected;
+            this.needsConfirm = needsConfirm;
+        }
+
+        public String stateKey() { return stateKey; }
+
+        public String fingerprint() { return fingerprint; }
+
+        public String previous() { return previous; }
+
+        public String requiredPhrase() { return requiredPhrase; }
+
+        public boolean hardRejected() { return hardRejected; }
+
+        public boolean needsConfirm() { return needsConfirm; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Signature)) return false;
+            Signature that = (Signature) other;
+            return java.util.Objects.equals(this.stateKey, that.stateKey)
+                    && java.util.Objects.equals(this.fingerprint, that.fingerprint)
+                    && java.util.Objects.equals(this.previous, that.previous)
+                    && java.util.Objects.equals(this.requiredPhrase, that.requiredPhrase)
+                    && this.hardRejected == that.hardRejected
+                    && this.needsConfirm == that.needsConfirm;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(stateKey);
+            hash = 31 * hash + java.util.Objects.hashCode(fingerprint);
+            hash = 31 * hash + java.util.Objects.hashCode(previous);
+            hash = 31 * hash + java.util.Objects.hashCode(requiredPhrase);
+            hash = 31 * hash + java.util.Objects.hashCode(hardRejected);
+            hash = 31 * hash + java.util.Objects.hashCode(needsConfirm);
+            return hash;
+        }
+
+        @Override public String toString() { return "Signature[stateKey=" + stateKey + ", fingerprint=" + fingerprint + ", previous=" + previous + ", requiredPhrase=" + requiredPhrase + ", hardRejected=" + hardRejected + ", needsConfirm=" + needsConfirm + "]"; }
+
     }
 
     /** 见 {@link Signature}。 */

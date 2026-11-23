@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
+import java.util.regex.Matcher;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.Style;
@@ -13,13 +17,227 @@ import java.util.regex.Pattern;
 /** 原版折行与原文区间的映射。绘制仍用原版视觉序列，复制只截原文，不插入软换行。 */
 final class ChatTextLayout {
     private static final Pattern GRAPHEME = Pattern.compile("\\X");
-    record Glyph(int start, int end, float left, float right, boolean reversed) {}
-    private record SourceGlyph(int index, boolean reversed) {}
-    private record Run(int start, int end, byte level) {}
-    record Span(float left, float right) {}
-    record Range(int start, int end) {}
-    record Line(int start, int end, FormattedCharSequence text, List<Glyph> glyphs, float width) {
-        Line { glyphs = List.copyOf(glyphs); }
+    static final class Glyph {
+        private final int start;
+        private final int end;
+        private final float left;
+        private final float right;
+        private final boolean reversed;
+
+        Glyph(int start, int end, float left, float right, boolean reversed) {
+            this.start = start;
+            this.end = end;
+            this.left = left;
+            this.right = right;
+            this.reversed = reversed;
+        }
+
+        public int start() { return start; }
+
+        public int end() { return end; }
+
+        public float left() { return left; }
+
+        public float right() { return right; }
+
+        public boolean reversed() { return reversed; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Glyph)) return false;
+            Glyph that = (Glyph) other;
+            return this.start == that.start
+                    && this.end == that.end
+                    && Float.compare(this.left, that.left) == 0
+                    && Float.compare(this.right, that.right) == 0
+                    && this.reversed == that.reversed;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(start);
+            hash = 31 * hash + java.util.Objects.hashCode(end);
+            hash = 31 * hash + java.util.Objects.hashCode(left);
+            hash = 31 * hash + java.util.Objects.hashCode(right);
+            hash = 31 * hash + java.util.Objects.hashCode(reversed);
+            return hash;
+        }
+
+        @Override public String toString() { return "Glyph[start=" + start + ", end=" + end + ", left=" + left + ", right=" + right + ", reversed=" + reversed + "]"; }
+}
+    private static final class SourceGlyph {
+        private final int index;
+        private final boolean reversed;
+
+        private SourceGlyph(int index, boolean reversed) {
+            this.index = index;
+            this.reversed = reversed;
+        }
+
+        public int index() { return index; }
+
+        public boolean reversed() { return reversed; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof SourceGlyph)) return false;
+            SourceGlyph that = (SourceGlyph) other;
+            return this.index == that.index
+                    && this.reversed == that.reversed;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(index);
+            hash = 31 * hash + java.util.Objects.hashCode(reversed);
+            return hash;
+        }
+
+        @Override public String toString() { return "SourceGlyph[index=" + index + ", reversed=" + reversed + "]"; }
+}
+    private static final class Run {
+        private final int start;
+        private final int end;
+        private final byte level;
+
+        private Run(int start, int end, byte level) {
+            this.start = start;
+            this.end = end;
+            this.level = level;
+        }
+
+        public int start() { return start; }
+
+        public int end() { return end; }
+
+        public byte level() { return level; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Run)) return false;
+            Run that = (Run) other;
+            return this.start == that.start
+                    && this.end == that.end
+                    && this.level == that.level;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(start);
+            hash = 31 * hash + java.util.Objects.hashCode(end);
+            hash = 31 * hash + java.util.Objects.hashCode(level);
+            return hash;
+        }
+
+        @Override public String toString() { return "Run[start=" + start + ", end=" + end + ", level=" + level + "]"; }
+}
+    static final class Span {
+        private final float left;
+        private final float right;
+
+        Span(float left, float right) {
+            this.left = left;
+            this.right = right;
+        }
+
+        public float left() { return left; }
+
+        public float right() { return right; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Span)) return false;
+            Span that = (Span) other;
+            return Float.compare(this.left, that.left) == 0
+                    && Float.compare(this.right, that.right) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(left);
+            hash = 31 * hash + java.util.Objects.hashCode(right);
+            return hash;
+        }
+
+        @Override public String toString() { return "Span[left=" + left + ", right=" + right + "]"; }
+}
+    static final class Range {
+        private final int start;
+        private final int end;
+
+        Range(int start, int end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        public int start() { return start; }
+
+        public int end() { return end; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Range)) return false;
+            Range that = (Range) other;
+            return this.start == that.start
+                    && this.end == that.end;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(start);
+            hash = 31 * hash + java.util.Objects.hashCode(end);
+            return hash;
+        }
+
+        @Override public String toString() { return "Range[start=" + start + ", end=" + end + "]"; }
+}
+    static final class Line {
+        private final int start;
+        private final int end;
+        private final FormattedCharSequence text;
+        private final List<Glyph> glyphs;
+        private final float width;
+
+        public int start() { return start; }
+
+        public int end() { return end; }
+
+        public FormattedCharSequence text() { return text; }
+
+        public List<Glyph> glyphs() { return glyphs; }
+
+        public float width() { return width; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Line)) return false;
+            Line that = (Line) other;
+            return this.start == that.start
+                    && this.end == that.end
+                    && java.util.Objects.equals(this.text, that.text)
+                    && java.util.Objects.equals(this.glyphs, that.glyphs)
+                    && Float.compare(this.width, that.width) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(start);
+            hash = 31 * hash + java.util.Objects.hashCode(end);
+            hash = 31 * hash + java.util.Objects.hashCode(text);
+            hash = 31 * hash + java.util.Objects.hashCode(glyphs);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            return hash;
+        }
+
+        @Override public String toString() { return "Line[start=" + start + ", end=" + end + ", text=" + text + ", glyphs=" + glyphs + ", width=" + width + "]"; }
+
+        Line(int start, int end, FormattedCharSequence text, List<Glyph> glyphs, float width) { glyphs = ImmutableList.copyOf(glyphs);
+            this.start = start;
+            this.end = end;
+            this.text = text;
+            this.glyphs = glyphs;
+            this.width = width;
+        }
 
         /** 鼠标靠近字的哪一侧就落在哪一侧；同一组合字符不能拆成半个 emoji 或重音。 */
         int indexAt(double x) {
@@ -50,7 +268,7 @@ final class ChatTextLayout {
                     result.add(new Span(previous.left(), glyph.right()));
                 } else result.add(new Span(glyph.left(), glyph.right()));
             }
-            return List.copyOf(result);
+            return ImmutableList.copyOf(result);
         }
     }
 
@@ -58,11 +276,11 @@ final class ChatTextLayout {
     private final List<Line> lines;
     private ChatTextLayout(String source, List<Line> lines) {
         this.source = source;
-        this.lines = List.copyOf(lines);
+        this.lines = ImmutableList.copyOf(lines);
     }
     String source() { return source; }
     List<Line> lines() { return lines; }
-    List<FormattedCharSequence> visualLines() { return lines.stream().map(Line::text).toList(); }
+    List<FormattedCharSequence> visualLines() { return lines.stream().map(Line::text).collect(Java8Collections.toList()); }
     boolean selectable() {
         return !source.isEmpty() && lines.stream().allMatch(l -> l.start() == l.end() || !l.glyphs().isEmpty());
     }
@@ -74,10 +292,10 @@ final class ChatTextLayout {
         // 字符串版 splitLines 不输出末尾空行，Component 版会输出，补齐同一份索引。
         if (source.isEmpty() || source.endsWith("\n")) ranges.add(new Range(source.length(), source.length()));
         List<FormattedCharSequence> visual = font.split(Component.literal(source), maxWidth);
-        if (visual.isEmpty()) visual = List.of(FormattedCharSequence.EMPTY);
+        if (visual.isEmpty()) visual = ImmutableList.of(FormattedCharSequence.EMPTY);
         if (ranges.size() != visual.size()) throw new IllegalStateException("聊天文本折行与原文区间不一致");
         List<Range> clusters = new ArrayList<>();
-        var matcher = GRAPHEME.matcher(source);
+        Matcher matcher = GRAPHEME.matcher(source);
         while (matcher.find()) clusters.add(new Range(matcher.start(), matcher.end()));
         List<Line> lines = new ArrayList<>();
         for (int i = 0; i < ranges.size(); i++) {
@@ -108,7 +326,7 @@ final class ChatTextLayout {
             Bidi.reorderVisually(levels, 0, runs, 0, runs.length);
             for (Object value : runs) {
                 Run run = (Run) value;
-                List<SourceGlyph> part = positions.stream().filter(p -> p.index() >= run.start() && p.index() < run.end()).toList();
+                List<SourceGlyph> part = positions.stream().filter(p -> p.index() >= run.start() && p.index() < run.end()).collect(Java8Collections.toList());
                 if ((run.level() & 1) != 0) {
                     for (int j = part.size() - 1; j >= 0; j--) reordered.add(new SourceGlyph(part.get(j).index(), true));
                 } else reordered.addAll(part);

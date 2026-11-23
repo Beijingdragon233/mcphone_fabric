@@ -1,0 +1,8 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.november.mcphone.mixin.waystones",
+  "compatibilityLevel": "JAVA_8",
+  "mixins": ["WarpItemMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

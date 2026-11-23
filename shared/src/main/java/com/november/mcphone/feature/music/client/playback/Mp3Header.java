@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.music.client.playback;
 
+import com.november.mcphone.util.Java8;
+
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -8,15 +10,102 @@ import java.io.InputStream;
  * 判据是连着两个规格一致的帧头：同步字只有 11 个 1，ID3 里的 JPEG 封面满篇 0xFF，撞一次是巧合。
  * {@link #peek} 只看不动，靠 mark/reset 还原流。
  */
-public record Mp3Header(Version version, int layer, int sampleRate, int channels,
-                        int bitrate, boolean vbr, HeaderFrame headerFrame) {
+public final class Mp3Header {
+    private final Version version;
+    private final int layer;
+    private final int sampleRate;
+    private final int channels;
+    private final int bitrate;
+    private final boolean vbr;
+    private final HeaderFrame headerFrame;
+
+    public Mp3Header(Version version, int layer, int sampleRate, int channels, int bitrate, boolean vbr, HeaderFrame headerFrame) {
+        this.version = version;
+        this.layer = layer;
+        this.sampleRate = sampleRate;
+        this.channels = channels;
+        this.bitrate = bitrate;
+        this.vbr = vbr;
+        this.headerFrame = headerFrame;
+    }
+
+    public Version version() { return version; }
+
+    public int layer() { return layer; }
+
+    public int sampleRate() { return sampleRate; }
+
+    public int channels() { return channels; }
+
+    public int bitrate() { return bitrate; }
+
+    public boolean vbr() { return vbr; }
+
+    public HeaderFrame headerFrame() { return headerFrame; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof Mp3Header)) return false;
+        Mp3Header that = (Mp3Header) other;
+        return java.util.Objects.equals(this.version, that.version)
+                && this.layer == that.layer
+                && this.sampleRate == that.sampleRate
+                && this.channels == that.channels
+                && this.bitrate == that.bitrate
+                && this.vbr == that.vbr
+                && java.util.Objects.equals(this.headerFrame, that.headerFrame);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(version);
+        hash = 31 * hash + java.util.Objects.hashCode(layer);
+        hash = 31 * hash + java.util.Objects.hashCode(sampleRate);
+        hash = 31 * hash + java.util.Objects.hashCode(channels);
+        hash = 31 * hash + java.util.Objects.hashCode(bitrate);
+        hash = 31 * hash + java.util.Objects.hashCode(vbr);
+        hash = 31 * hash + java.util.Objects.hashCode(headerFrame);
+        return hash;
+    }
+
+    @Override public String toString() { return "Mp3Header[version=" + version + ", layer=" + layer + ", sampleRate=" + sampleRate + ", channels=" + channels + ", bitrate=" + bitrate + ", vbr=" + vbr + ", headerFrame=" + headerFrame + "]"; }
+
 
     /**
      * 头帧（Xing/Info）里那两个数。没有头帧时整个是 null。
      * @param frames 总帧数，0 表示头帧里没写这一项
      * @param bytes  头帧声称一共有多少字节，0 表示没写
      */
-    public record HeaderFrame(int frames, int bytes) {}
+    public static final class HeaderFrame {
+        private final int frames;
+        private final int bytes;
+
+        public HeaderFrame(int frames, int bytes) {
+            this.frames = frames;
+            this.bytes = bytes;
+        }
+
+        public int frames() { return frames; }
+
+        public int bytes() { return bytes; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof HeaderFrame)) return false;
+            HeaderFrame that = (HeaderFrame) other;
+            return this.frames == that.frames
+                    && this.bytes == that.bytes;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(frames);
+            hash = 31 * hash + java.util.Objects.hashCode(bytes);
+            return hash;
+        }
+
+        @Override public String toString() { return "HeaderFrame[frames=" + frames + ", bytes=" + bytes + "]"; }
+}
 
     public enum Version {
         MPEG1("MPEG-1"),
@@ -78,7 +167,7 @@ public record Mp3Header(Version version, int layer, int sampleRate, int channels
 
         in.mark(SCAN_WINDOW);
         try {
-            byte[] window = in.readNBytes(SCAN_WINDOW);
+            byte[] window = Java8.readNBytes(in, SCAN_WINDOW);
             return findFrame(window);
         } finally {
             in.reset();
@@ -138,11 +227,18 @@ public record Mp3Header(Version version, int layer, int sampleRate, int channels
         int rateIndex = (b2 >> 2) & 0x03;
         if (bitrateIndex == 0 || bitrateIndex == 15 || rateIndex == 3) return null;
 
-        Version version = switch (versionId) {
-            case 3 -> Version.MPEG1;
-            case 2 -> Version.MPEG2;
-            default -> Version.MPEG25;
-        };
+        Version version;
+        switch (versionId) {
+            case 3:
+                version = Version.MPEG1;
+                break;
+            case 2:
+                version = Version.MPEG2;
+                break;
+            default:
+                version = Version.MPEG25;
+                break;
+        }
         int layer = 4 - layerId;            // layerId 3→Layer I，1→Layer III
 
         int sampleRate = SAMPLE_RATES[version.ordinal()][rateIndex];
@@ -203,11 +299,14 @@ public record Mp3Header(Version version, int layer, int sampleRate, int channels
 
     private static int[] bitrateTable(Version version, int layer) {
         if (version == Version.MPEG1) {
-            return switch (layer) {
-                case 1 -> BR_V1_L1;
-                case 2 -> BR_V1_L2;
-                default -> BR_V1_L3;
-            };
+            switch (layer) {
+                case 1:
+                    return BR_V1_L1;
+                case 2:
+                    return BR_V1_L2;
+                default:
+                    return BR_V1_L3;
+            }
         }
         return layer == 1 ? BR_V2_L1 : BR_V2_L23;
     }
@@ -257,7 +356,7 @@ public record Mp3Header(Version version, int layer, int sampleRate, int channels
 
     /** 写进日志的一行，如 "MPEG-1 Layer III, 44100Hz, 立体声, 320kbps" */
     public String describe() {
-        return version + " Layer " + "I".repeat(layer)
+        return version + " Layer " + Java8.repeat("I", layer)
                 + ", " + sampleRate + "Hz"
                 + ", " + (channels == 1 ? "单声道" : "立体声")
                 + ", " + (vbr ? "VBR" : (bitrate / 1000) + "kbps");

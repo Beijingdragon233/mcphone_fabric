@@ -20,7 +20,54 @@ final class ChatContactSearch {
     private ChatLayout.Rect bounds;
     private float originY;
     private int originX;
-    record Content(int textX, float inputY, float hintY, float iconY, int inputWidth) {}
+    static final class Content {
+        private final int textX;
+        private final float inputY;
+        private final float hintY;
+        private final float iconY;
+        private final int inputWidth;
+
+        Content(int textX, float inputY, float hintY, float iconY, int inputWidth) {
+            this.textX = textX;
+            this.inputY = inputY;
+            this.hintY = hintY;
+            this.iconY = iconY;
+            this.inputWidth = inputWidth;
+        }
+
+        public int textX() { return textX; }
+
+        public float inputY() { return inputY; }
+
+        public float hintY() { return hintY; }
+
+        public float iconY() { return iconY; }
+
+        public int inputWidth() { return inputWidth; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Content)) return false;
+            Content that = (Content) other;
+            return this.textX == that.textX
+                    && Float.compare(this.inputY, that.inputY) == 0
+                    && Float.compare(this.hintY, that.hintY) == 0
+                    && Float.compare(this.iconY, that.iconY) == 0
+                    && this.inputWidth == that.inputWidth;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(textX);
+            hash = 31 * hash + java.util.Objects.hashCode(inputY);
+            hash = 31 * hash + java.util.Objects.hashCode(hintY);
+            hash = 31 * hash + java.util.Objects.hashCode(iconY);
+            hash = 31 * hash + java.util.Objects.hashCode(inputWidth);
+            return hash;
+        }
+
+        @Override public String toString() { return "Content[textX=" + textX + ", inputY=" + inputY + ", hintY=" + hintY + ", iconY=" + iconY + ", inputWidth=" + inputWidth + "]"; }
+}
     static Content layout(ChatLayout.Rect area, int lineHeight, int cursorWidth, boolean searchIcon) {
         int inset = searchIcon ? ChatLayout.SEARCH_TEXT_X : ChatLayout.SEARCH_PAD_X;
         float centerY = area.y() + area.height() / 2f;

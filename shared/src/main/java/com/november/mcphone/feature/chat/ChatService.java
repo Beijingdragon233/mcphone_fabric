@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.chat;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.Set;
 import com.november.mcphone.core.PhonePlayerData;
 import com.november.mcphone.core.ServerConfig;
 import com.november.mcphone.feature.chat.net.ConversationSummary;
@@ -73,19 +76,19 @@ public final class ChatService {
         UUID id = ticket.map(value -> ChatReplyIdentity.messageId(sender.getUUID(),targetId,false,value)).orElseGet(UUID::randomUUID);
         // 先确认已落库的同一次提交，再找原文；原文可能已经被 100 条上限挤走。
         if (ticket.isPresent()) {
-            var existing = ChatData.get(sender.level().getServer()).getMessages(sender.getUUID(),targetId).stream()
+            Optional<ChatMessage> existing = ChatData.get(sender.level().getServer()).getMessages(sender.getUUID(),targetId).stream()
                     .filter(m -> m.id().equals(id)).findFirst();
-            if (existing.isPresent()) return ChatReplyIdentity.matches(existing.get(),sender.getUUID(),reply.orElseThrow(),text)
+            if (existing.isPresent()) return ChatReplyIdentity.matches(existing.get(),sender.getUUID(),reply.orElseThrow(java.util.NoSuchElementException::new),text)
                     && getMessages(sender,targetId).stream().anyMatch(m -> m.id().equals(id)) ? existing.get() : null;
         }
         Optional<ChatQuote> quote = Optional.empty();
         if (reply.isPresent()) {
-            var original = getMessages(sender,targetId).stream().filter(m -> m.id().equals(reply.get())).findFirst().orElse(null);
+            ChatMessage original = getMessages(sender,targetId).stream().filter(m -> m.id().equals(reply.get())).findFirst().orElse(null);
             if (original == null) {
                 com.november.mcphone.platform.PlayerAccess.message(sender,net.minecraft.network.chat.Component.translatable("mcphone.chat.reply.server_unavailable"),true);
                 return null;
             }
-            var server = sender.level().getServer();
+            net.minecraft.server.MinecraftServer server = sender.level().getServer();
             quote = Optional.of(ChatQuote.from(original,resolveName(server,FriendData.get(server),original.sender(),server.getPlayerList().getPlayer(original.sender()))));
         }
         ChatMessage message = new ChatMessage(id, sender.getUUID(), System.currentTimeMillis(), new TextBody(text,quote));
@@ -154,7 +157,8 @@ public final class ChatService {
         if (!FriendData.get(self.level().getServer()).areFriends(self.getUUID(), peer)) return false;
 
         for (ChatMessage m : getMessages(self, peer)) {
-            if (m.body() instanceof ImageBody image && image.image().equals(imageId)) return true;
+            Object imageMatch;
+            if ((imageMatch = m.body()) instanceof ImageBody && ((ImageBody) imageMatch).image().equals(imageId)) return true;
         }
         return false;
     }
@@ -165,13 +169,14 @@ public final class ChatService {
                 ChatData.get(sender.level().getServer()).addMessage(sender.getUUID(), targetId, message);
 
         if (!evicted.isEmpty()) {
-            var existing = ChatData.get(sender.level().getServer()).getMessages(sender.getUUID(), targetId).stream()
+            Set<UUID> existing = ChatData.get(sender.level().getServer()).getMessages(sender.getUUID(), targetId).stream()
                     .map(ChatMessage::id).collect(java.util.stream.Collectors.toSet());
             ChatDeletionData.get(sender.level().getServer()).retain(sender.getUUID(), targetId, existing);
         }
         for (ChatMessage old : evicted) {
-            if (old.body() instanceof ImageBody image) {
-                deleteImageIfUnreferenced(sender.level().getServer(), sender.getUUID(), targetId, image.image());
+            Object imageMatch_;
+            if ((imageMatch_ = old.body()) instanceof ImageBody) {
+                deleteImageIfUnreferenced(sender.level().getServer(), sender.getUUID(), targetId, ((ImageBody) imageMatch_).image());
             }
         }
     }
@@ -186,7 +191,8 @@ public final class ChatService {
     public static void deleteImageIfUnreferenced(MinecraftServer server, UUID a, UUID b,
                                                  UUID imageId) {
         for (ChatMessage m : ChatData.get(server).getMessages(a, b)) {
-            if (m.body() instanceof ImageBody image && image.image().equals(imageId)) return;
+            Object imageMatch__;
+            if ((imageMatch__ = m.body()) instanceof ImageBody && ((ImageBody) imageMatch__).image().equals(imageId)) return;
         }
         ChatImageStore.delete(server, imageId);
     }
@@ -204,9 +210,10 @@ public final class ChatService {
         // 插入序的 map + 先 remove 再 put，于是键的顺序就是"最后一次用到"的先后
         LinkedHashMap<UUID, Boolean> lastUse = new LinkedHashMap<>();
         for (ChatMessage m : messages) {
-            if (m.body() instanceof ImageBody image) {
-                lastUse.remove(image.image());
-                lastUse.put(image.image(), Boolean.TRUE);
+            Object imageMatch__;
+            if ((imageMatch__ = m.body()) instanceof ImageBody) {
+                lastUse.remove(((ImageBody) imageMatch__).image());
+                lastUse.put(((ImageBody) imageMatch__).image(), Boolean.TRUE);
             }
         }
 
@@ -223,7 +230,7 @@ public final class ChatService {
 
     /** 非好友一律返回空，免得解除好友后还能翻旧账 */
     public static List<ChatMessage> getMessages(ServerPlayer self, UUID peer) {
-        if (!FriendData.get(self.level().getServer()).areFriends(self.getUUID(), peer)) return List.of();
+        if (!FriendData.get(self.level().getServer()).areFriends(self.getUUID(), peer)) return ImmutableList.of();
         return ChatDeletionData.get(self.level().getServer()).visible(self.getUUID(), peer,
                 ChatData.get(self.level().getServer()).getMessages(self.getUUID(), peer));
     }
@@ -387,7 +394,7 @@ public final class ChatService {
         String cached = friends.getName(id);
         if (cached != null) return cached;
 
-        var profile = com.november.mcphone.platform.PlayerAccess.cachedName(server,id);
+        Optional<String> profile = com.november.mcphone.platform.PlayerAccess.cachedName(server,id);
         if (profile.isPresent()) return profile.get();
 
         return id.toString().substring(0, 8);

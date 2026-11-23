@@ -9,13 +9,13 @@ public final class WebLinks {
     private WebLinks() {}
 
     public static String checked(Object value) {
-        if (!(value instanceof String url) || url.isEmpty() || url.length() > MAX_LENGTH) throw invalid();
+        if (!(value instanceof String) || ((String) value).isEmpty() || ((String) value).length() > MAX_LENGTH) throw invalid();
         try {
-            URI uri = URI.create(url);
+            URI uri = URI.create(((String) value));
             if (!("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
                     || uri.getHost() == null || uri.getRawUserInfo() != null
                     || uri.getPort() == 0 || uri.getPort() > 65535) throw invalid();
-            return url;
+            return ((String) value);
         } catch (IllegalArgumentException e) { throw invalid(); }
     }
 

@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.layout;
 
+import com.google.common.collect.ImmutableSet;
+import com.november.mcphone.util.Java8Collections;
+
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -45,7 +48,7 @@ public enum NodeType {
         this.container = container;
         this.interactive = interactive;
         this.acceptsChildren = acceptsChildren;
-        this.props = Set.of(props);
+        this.props = ImmutableSet.copyOf(props);
     }
 
     /** 这个类型自己的字段（§5.4 的「专有字段」那一列）。 */
@@ -84,13 +87,13 @@ public enum NodeType {
 
     /** 全部 json 名，按枚举顺序，用于报错时列出允许的取值。 */
     public static String allNames() {
-        return String.join(" ", Arrays.stream(values()).map(t -> t.json).toList());
+        return String.join(" ", Arrays.stream(values()).map(t -> t.json).collect(Java8Collections.toList()));
     }
 
     /** 接受 children 的那些类型，报错时列给作者看。 */
     public static String childrenAcceptors() {
         return String.join(" ", Arrays.stream(values()).filter(t -> t.acceptsChildren)
-                .map(t -> t.json).toList());
+                .map(t -> t.json).collect(Java8Collections.toList()));
     }
 
     @Override

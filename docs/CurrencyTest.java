@@ -133,7 +133,11 @@ public class CurrencyTest {
         check(rejects(() -> new TxnReason("y", "x".repeat(TxnReason.MAX_REF + 1))) != null, "ref 超长拒");
 
         // 没有 appId 这一格：调用者自报身份 = 审计作废
-        eq(TxnReason.class.getRecordComponents().length, 2, "只有 kind 与 ref，appId 由宿主盖章");
+        java.util.Set<String> fields = new java.util.HashSet<>();
+        for (java.lang.reflect.Field field : TxnReason.class.getDeclaredFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())) fields.add(field.getName());
+        }
+        eq(fields, new java.util.HashSet<>(java.util.Arrays.asList("kind", "ref")), "只有 kind 与 ref，appId 由宿主盖章");
     }
 
     static void holdResult() {

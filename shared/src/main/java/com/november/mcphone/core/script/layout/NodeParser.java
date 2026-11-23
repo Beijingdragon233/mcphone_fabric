@@ -1,8 +1,13 @@
 package com.november.mcphone.core.script.layout;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.november.mcphone.util.GsonCompat;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.november.mcphone.core.script.layout.LayoutError.Code;
@@ -48,7 +53,7 @@ public final class NodeParser {
     public static final int MAX_STATE_STRING = StateRules.MAX_STRING;
 
     /** icon 的固定集合，P0 共 12 个，不许扩展（§5.2）。 */
-    public static final Set<String> ICON_NAMES = Set.of(
+    public static final Set<String> ICON_NAMES = ImmutableSet.of(
             "back", "forward", "up", "down", "check", "cross",
             "plus", "minus", "gear", "search", "info", "warn");
 
@@ -57,13 +62,48 @@ public final class NodeParser {
     private static final Pattern CLASS_NAME = Pattern.compile("[a-z][a-z0-9_-]{0,31}");
     private static final Pattern PLAIN_INT = Pattern.compile("-?\\d+");
 
-    private static final Set<String> TOP_FIELDS = Set.of("state", "pages", "entry");
-    private static final Set<String> SHOW_IF_FIELDS = Set.of("key", "eq", "ne", "truthy");
-    private static final Set<String> ACTION_FIELDS = Set.of("set", "toggle", "nav");
-    private static final Set<String> TAB_FIELDS = Set.of("text", "i18n", "icon");
+    private static final Set<String> TOP_FIELDS = ImmutableSet.of("state", "pages", "entry");
+    private static final Set<String> SHOW_IF_FIELDS = ImmutableSet.of("key", "eq", "ne", "truthy");
+    private static final Set<String> ACTION_FIELDS = ImmutableSet.of("set", "toggle", "nav");
+    private static final Set<String> TAB_FIELDS = ImmutableSet.of("text", "i18n", "icon");
 
     /** 一份界面：初始状态、各页的根节点、入口页（§4.2.1）。 */
-    public record Ui(Map<String, Object> state, Map<String, Node> pages, String entry) {
+    public static final class Ui {
+        private final Map<String, Object> state;
+        private final Map<String, Node> pages;
+        private final String entry;
+
+        public Ui(Map<String, Object> state, Map<String, Node> pages, String entry) {
+            this.state = state;
+            this.pages = pages;
+            this.entry = entry;
+        }
+
+        public Map<String, Object> state() { return state; }
+
+        public Map<String, Node> pages() { return pages; }
+
+        public String entry() { return entry; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Ui)) return false;
+            Ui that = (Ui) other;
+            return java.util.Objects.equals(this.state, that.state)
+                    && java.util.Objects.equals(this.pages, that.pages)
+                    && java.util.Objects.equals(this.entry, that.entry);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(state);
+            hash = 31 * hash + java.util.Objects.hashCode(pages);
+            hash = 31 * hash + java.util.Objects.hashCode(entry);
+            return hash;
+        }
+
+        @Override public String toString() { return "Ui[state=" + state + ", pages=" + pages + ", entry=" + entry + "]"; }
+
 
         /** 入口页的根节点。 */
         public Node root() {
@@ -74,7 +114,7 @@ public final class NodeParser {
     private final Map<String, Integer> offsets;
     private final Map<String, Class<?>> stateTypes = new LinkedHashMap<>();
     private final Map<String, String> ids = new HashMap<>();
-    private Set<String> pageKeys = Set.of();
+    private Set<String> pageKeys = ImmutableSet.of();
     private int nodeCount;
 
     private NodeParser(Map<String, Integer> offsets) {
@@ -95,7 +135,7 @@ public final class NodeParser {
         JsonObject root = parsed.getAsJsonObject();
 
         // 1. 顶层三字段存在性与类型
-        for (String key : root.keySet()) {
+        for (String key : GsonCompat.keys(root)) {
             if (!TOP_FIELDS.contains(key)) {
                 throw fail(Code.E_UNKNOWN_FIELD, key, "顶层", "顶层", key, joined(TOP_FIELDS));
             }
@@ -117,7 +157,7 @@ public final class NodeParser {
                     pages.size() + " 页", "最多 " + MAX_PAGES + " 页");
         }
         Set<String> keys = new LinkedHashSet<>();
-        for (String key : pages.keySet()) {
+        for (String key : GsonCompat.keys(pages)) {
             if (!PAGE_KEY.matcher(key).matches()) {
                 throw fail(Code.E_BAD_VALUE, "pages." + key, "pages", "pages", "页名", key,
                         "匹配 [a-z][a-z0-9_]{0,31}");
@@ -224,7 +264,7 @@ public final class NodeParser {
         // 5b. 未知字段 —— 必须在 5f 之前：写错 "texts" 的人该收到「不认识的字段」，
         // 而不是「缺少必填字段 text」
         Set<String> accepted = type.acceptedFields();
-        for (String key : obj.keySet()) {
+        for (String key : GsonCompat.keys(obj)) {
             if (!accepted.contains(key)) {
                 throw fail(Code.E_UNKNOWN_FIELD, path + "." + key, path, path, key, joined(accepted));
             }
@@ -293,8 +333,8 @@ public final class NodeParser {
             }
         }
 
-        return new Node(type, id, List.copyOf(classes), Collections.unmodifiableMap(props),
-                List.copyOf(children), showIf, onClick);
+        return new Node(type, id, ImmutableList.copyOf(classes), Collections.unmodifiableMap(props),
+                ImmutableList.copyOf(children), showIf, onClick);
     }
 
     private List<String> readClasses(JsonObject obj, String path) {
@@ -330,22 +370,32 @@ public final class NodeParser {
     private Map<String, Object> props(JsonObject obj, NodeType type, String path, JsonArray children) {
         Map<String, Object> out = new LinkedHashMap<>();
         switch (type) {
-            case GRID -> intProp(obj, out, "cols", path, 1, 6);
-            // §5.1 给 list 的 children 写了 2048，而全树上限是 512，那条够不到：513 个子节点
-            // 先撞 E_TOO_MANY_NODES。要让长列表成立得把 list 的子节点单独计数，那是改全树语义。
-            case LIST -> intProp(obj, out, "item-height", path, 0, Integer.MAX_VALUE);
-            case SPACER -> intProp(obj, out, "size", path, 0, Integer.MAX_VALUE);
-            case DIVIDER -> boolProp(obj, out, "vertical", path);
-            case TEXT -> {
+            case GRID:
+                intProp(obj, out, "cols", path, 1, 6);
+                break;
+                // §5.1 给 list 的 children 写了 2048，而全树上限是 512，那条够不到：513 个子节点
+                // 先撞 E_TOO_MANY_NODES。要让长列表成立得把 list 的子节点单独计数，那是改全树语义。
+            case LIST:
+                intProp(obj, out, "item-height", path, 0, Integer.MAX_VALUE);
+                break;
+            case SPACER:
+                intProp(obj, out, "size", path, 0, Integer.MAX_VALUE);
+                break;
+            case DIVIDER:
+                boolProp(obj, out, "vertical", path);
+                break;
+            case TEXT: {
                 label(obj, out, path, true);
                 args(obj, out, path);
             }
-            case IMAGE -> {
+                break;
+            case IMAGE: {
                 out.put("src", imageSrc(obj, path));
                 intProp(obj, out, "w", path, 1, 120);
                 intProp(obj, out, "h", path, 1, 176);
             }
-            case ICON -> {
+                break;
+            case ICON: {
                 String name = requireString(obj, "name", path + ".name", path);
                 if (!ICON_NAMES.contains(name)) {
                     throw fail(Code.E_BAD_VALUE, path + ".name", path, path, "name", name,
@@ -354,17 +404,22 @@ public final class NodeParser {
                 out.put("name", name);
                 intProp(obj, out, "size", path, 6, 20);
             }
-            case ITEM -> {
+                break;
+            case ITEM: {
                 out.put("item", requireString(obj, "item", path + ".item", path));
                 intProp(obj, out, "count", path, 1, 99);
                 intProp(obj, out, "size", path, 8, 20);
             }
-            case BADGE -> intProp(obj, out, "count", path, 0, Integer.MAX_VALUE);
-            case PROGRESS -> {
+                break;
+            case BADGE:
+                intProp(obj, out, "count", path, 0, Integer.MAX_VALUE);
+                break;
+            case PROGRESS: {
                 intProp(obj, out, "value", path, 0, 100);
                 intProp(obj, out, "height", path, 2, 12);
             }
-            case BUTTON -> {
+                break;
+            case BUTTON: {
                 boolean hasChildren = children != null && children.size() > 0;
                 label(obj, out, path, !hasChildren);
                 args(obj, out, path);
@@ -374,25 +429,31 @@ public final class NodeParser {
                             path, "enabledIf"));
                 }
             }
-            case TEXT_INPUT, TEXTAREA -> {
+                break;
+            case TEXT_INPUT:
+            case TEXTAREA: {
                 out.put("bind", bind(obj, path, String.class, "string"));
                 if (obj.has("placeholder")) out.put("placeholder", visibleText(obj, "placeholder", path, MAX_TEXT));
                 intProp(obj, out, "max-length", path, 1, StateRules.MAX_STRING);
                 boolProp(obj, out, "enabled", path);
             }
-            case TOGGLE -> {
+                break;
+            case TOGGLE: {
                 out.put("bind", bind(obj, path, Boolean.class, "bool"));
                 if (obj.has("label")) out.put("label", visibleText(obj, "label", path, MAX_TEXT));
                 stringProp(obj, out, "i18n", path);
                 boolProp(obj, out, "enabled", path);
             }
-            case TAB_BAR -> {
+                break;
+            case TAB_BAR: {
                 out.put("bind", bind(obj, path, Integer.class, "int"));
                 out.put("tabs", tabs(obj, path));
             }
-            default -> {
+                break;
+            default: {
                 // box / column / row / stack / scroll 没有专有字段
             }
+                break;
         }
         return out;
     }
@@ -462,7 +523,7 @@ public final class NodeParser {
                         "string 或 int 的数组", typeOf(e));
             }
         }
-        out.put("args", List.copyOf(values));
+        out.put("args", ImmutableList.copyOf(values));
     }
 
     /**
@@ -515,7 +576,7 @@ public final class NodeParser {
                 throw fail(Code.E_BAD_TYPE, tabPath, path, tabPath, "tabs", "对象", typeOf(e));
             }
             JsonObject tab = e.getAsJsonObject();
-            for (String key : tab.keySet()) {
+            for (String key : GsonCompat.keys(tab)) {
                 if (!TAB_FIELDS.contains(key)) {
                     throw fail(Code.E_UNKNOWN_FIELD, tabPath + "." + key, path, tabPath, key,
                             joined(TAB_FIELDS));
@@ -523,9 +584,9 @@ public final class NodeParser {
             }
             if (tab.size() != 1) {
                 throw fail(Code.E_BAD_VALUE, tabPath, path, tabPath, "tabs",
-                        joined(tab.keySet()), "每项恰好一个：" + joined(TAB_FIELDS));
+                        joined(GsonCompat.keys(tab)), "每项恰好一个：" + joined(TAB_FIELDS));
             }
-            String key = tab.keySet().iterator().next();
+            String key = GsonCompat.keys(tab).iterator().next();
             String value = key.equals("i18n")
                     ? requireString(tab, key, tabPath + "." + key, tabPath)
                     : visibleText(tab, key, tabPath, MAX_TEXT);
@@ -533,9 +594,9 @@ public final class NodeParser {
                 throw fail(Code.E_BAD_VALUE, tabPath + ".icon", path, tabPath, "icon", value,
                         joined(ICON_NAMES));
             }
-            out.add(Map.of(key, value));
+            out.add(ImmutableMap.of(key, value));
         }
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     // ============================================================
@@ -548,7 +609,7 @@ public final class NodeParser {
             throw fail(Code.E_BAD_TYPE, path, nodePath, nodePath, field, "对象", typeOf(raw));
         }
         JsonObject obj = raw.getAsJsonObject();
-        for (String key : obj.keySet()) {
+        for (String key : GsonCompat.keys(obj)) {
             if (!SHOW_IF_FIELDS.contains(key)) {
                 throw fail(Code.E_UNKNOWN_FIELD, path + "." + key, nodePath, path, key,
                         joined(SHOW_IF_FIELDS));
@@ -598,18 +659,21 @@ public final class NodeParser {
     private Node.Action action(JsonElement raw, String path, String nodePath) {
         if (isString(raw)) {
             String builtin = raw.getAsString();
-            return switch (builtin) {
-                case "close" -> new Node.Action(Map.of(), null, null, Node.Action.Builtin.CLOSE);
-                case "back" -> new Node.Action(Map.of(), null, null, Node.Action.Builtin.BACK);
-                default -> throw fail(Code.E_BAD_VALUE, path, nodePath, nodePath, "onClick",
+            switch (builtin) {
+                case "close":
+                    return new Node.Action(ImmutableMap.of(), null, null, Node.Action.Builtin.CLOSE);
+                case "back":
+                    return new Node.Action(ImmutableMap.of(), null, null, Node.Action.Builtin.BACK);
+                default:
+                    throw fail(Code.E_BAD_VALUE, path, nodePath, nodePath, "onClick",
                         builtin, "close back，或者 set / toggle / nav 的对象形式");
-            };
+            }
         }
         if (!raw.isJsonObject()) {
             throw fail(Code.E_BAD_TYPE, path, nodePath, nodePath, "onClick", "字符串或对象", typeOf(raw));
         }
         JsonObject obj = raw.getAsJsonObject();
-        for (String key : obj.keySet()) {
+        for (String key : GsonCompat.keys(obj)) {
             if (!ACTION_FIELDS.contains(key)) {
                 throw fail(Code.E_UNKNOWN_FIELD, path + "." + key, nodePath, path, key, joined(ACTION_FIELDS));
             }
@@ -836,13 +900,27 @@ public final class NodeParser {
             if (pos >= src.length()) syntax("提前结束");
             char c = src.charAt(pos);
             switch (c) {
-                case '{' -> object(path, depth);
-                case '[' -> array(path, depth);
-                case '"' -> string();
-                case 't' -> keyword("true");
-                case 'f' -> keyword("false");
-                case 'n' -> keyword("null");
-                default -> number();
+                case '{':
+                    object(path, depth);
+                    break;
+                case '[':
+                    array(path, depth);
+                    break;
+                case '"':
+                    string();
+                    break;
+                case 't':
+                    keyword("true");
+                    break;
+                case 'f':
+                    keyword("false");
+                    break;
+                case 'n':
+                    keyword("null");
+                    break;
+                default:
+                    number();
+                    break;
             }
         }
 
@@ -906,14 +984,32 @@ public final class NodeParser {
                     if (pos >= src.length()) syntax("转义没有写完");
                     char e = src.charAt(pos++);
                     switch (e) {
-                        case '"', '\\', '/' -> sb.append(e);
-                        case 'b' -> sb.append('\b');
-                        case 'f' -> sb.append('\f');
-                        case 'n' -> sb.append('\n');
-                        case 'r' -> sb.append('\r');
-                        case 't' -> sb.append('\t');
-                        case 'u' -> sb.append(unicodeEscape());
-                        default -> syntax("不认识的转义");
+                        case '"':
+                        case '\\':
+                        case '/':
+                            sb.append(e);
+                            break;
+                        case 'b':
+                            sb.append('\b');
+                            break;
+                        case 'f':
+                            sb.append('\f');
+                            break;
+                        case 'n':
+                            sb.append('\n');
+                            break;
+                        case 'r':
+                            sb.append('\r');
+                            break;
+                        case 't':
+                            sb.append('\t');
+                            break;
+                        case 'u':
+                            sb.append(unicodeEscape());
+                            break;
+                        default:
+                            syntax("不认识的转义");
+                            break;
                     }
                 } else if (c < 0x20) {
                     syntax("字符串里有未转义的控制字符");

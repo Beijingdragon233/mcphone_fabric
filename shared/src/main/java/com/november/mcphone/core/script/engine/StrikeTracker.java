@@ -38,7 +38,36 @@ public final class StrikeTracker {
     /** 复合键的分隔符，取 ASCII 的单元分隔符：id 与 uuid 里都不会出现它。 */
     private static final char SEP = 31;
 
-    private record PlayerState(int strikes, long bannedUntil) {
+    private static final class PlayerState {
+        private final int strikes;
+        private final long bannedUntil;
+
+        private PlayerState(int strikes, long bannedUntil) {
+            this.strikes = strikes;
+            this.bannedUntil = bannedUntil;
+        }
+
+        public int strikes() { return strikes; }
+
+        public long bannedUntil() { return bannedUntil; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof PlayerState)) return false;
+            PlayerState that = (PlayerState) other;
+            return this.strikes == that.strikes
+                    && this.bannedUntil == that.bannedUntil;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(strikes);
+            hash = 31 * hash + java.util.Objects.hashCode(bannedUntil);
+            return hash;
+        }
+
+        @Override public String toString() { return "PlayerState[strikes=" + strikes + ", bannedUntil=" + bannedUntil + "]"; }
+
     }
 
     private final Map<String, PlayerState> players = new HashMap<>();

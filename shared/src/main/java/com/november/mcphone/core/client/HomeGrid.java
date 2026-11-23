@@ -1,5 +1,8 @@
 package com.november.mcphone.core.client;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.core.client.home.HomeArrangement;
@@ -38,7 +41,36 @@ public final class HomeGrid {
     private static final int PAGE_EDGE_GUTTER = 3;
     private static final int CUE_FADE_MS = 80;
 
-    private record DropTarget(String groupId, HomeLayout.Insertion insertion) {}
+    private static final class DropTarget {
+        private final String groupId;
+        private final HomeLayout.Insertion insertion;
+
+        private DropTarget(String groupId, HomeLayout.Insertion insertion) {
+            this.groupId = groupId;
+            this.insertion = insertion;
+        }
+
+        public String groupId() { return groupId; }
+
+        public HomeLayout.Insertion insertion() { return insertion; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof DropTarget)) return false;
+            DropTarget that = (DropTarget) other;
+            return java.util.Objects.equals(this.groupId, that.groupId)
+                    && java.util.Objects.equals(this.insertion, that.insertion);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(groupId);
+            hash = 31 * hash + java.util.Objects.hashCode(insertion);
+            return hash;
+        }
+
+        @Override public String toString() { return "DropTarget[groupId=" + groupId + ", insertion=" + insertion + "]"; }
+}
 
     private static final DropTarget NO_DROP = new DropTarget(null, null);
 
@@ -291,10 +323,10 @@ public final class HomeGrid {
     }
 
     private void drawEntry(GuiGraphics g, HomeArrangement.Entry entry, int ix, int iy, int size) {
-        if (entry instanceof HomeArrangement.Folder folder) {
-            drawFolderImage(g, folder.members(), ix, iy, size, 1f);
-            drawFolderBadge(g, folder.members(), ix, iy, size);
-            drawAppName(g, folder.name(), ix, iy, size);
+        if (entry instanceof HomeArrangement.Folder) {
+            drawFolderImage(g, ((HomeArrangement.Folder) entry).members(), ix, iy, size, 1f);
+            drawFolderBadge(g, ((HomeArrangement.Folder) entry).members(), ix, iy, size);
+            drawAppName(g, ((HomeArrangement.Folder) entry).name(), ix, iy, size);
             return;
         }
         IPhoneApp app = PhoneScreenRegistry.homeApp(entry.id());
@@ -349,9 +381,9 @@ public final class HomeGrid {
     private void drawGhost(GuiGraphics g, HomeArrangement.Entry source, int x, int y, int size) {
         float opacity = DRAG_OPACITY + (MERGE_DRAG_OPACITY - DRAG_OPACITY) * mergeAmount;
         String name;
-        if (source instanceof HomeArrangement.Folder folder) {
-            drawFolderImage(g, folder.members(), x, y, size, opacity);
-            name = folder.name();
+        if (source instanceof HomeArrangement.Folder) {
+            drawFolderImage(g, ((HomeArrangement.Folder) source).members(), x, y, size, opacity);
+            name = ((HomeArrangement.Folder) source).name();
         } else {
             IPhoneApp app = PhoneScreenRegistry.homeApp(source.id());
             if (app == null) return;
@@ -376,14 +408,14 @@ public final class HomeGrid {
 
     private void drawGroupTile(GuiGraphics g, HomeArrangement.Entry target, String sourceId, int x, int y, int size) {
         drawDragPlate(g, x - 2, y - 2, size + 4, size + 4, 0xE8485163, withOpacity(DROP_ACCENT, cueOpacity() * 0.8f));
-        if (target instanceof HomeArrangement.Folder folder) {
-            List<String> members = new ArrayList<>(folder.members().subList(0, Math.min(4, folder.members().size())));
+        if (target instanceof HomeArrangement.Folder) {
+            List<String> members = new ArrayList<>(((HomeArrangement.Folder) target).members().subList(0, Math.min(4, ((HomeArrangement.Folder) target).members().size())));
             members.add(sourceId);
             drawFolderMembers(g, members, x, y, size, 1f);
             drawAddBadge(g, x + size - 0.5f, y + 0.5f);
-            drawAppName(g, folder.name(), x, y, size);
+            drawAppName(g, ((HomeArrangement.Folder) target).name(), x, y, size);
         } else {
-            drawFolderMembers(g, List.of(target.id(), sourceId), x, y, size, 1f);
+            drawFolderMembers(g, ImmutableList.of(target.id(), sourceId), x, y, size, 1f);
             drawAppName(g, Component.translatable("mcphone.home.folder.default").getString(), x, y, size);
         }
     }
@@ -727,20 +759,20 @@ public final class HomeGrid {
         if (drop.groupId() == null && drop.insertion() == null) return;
         Map<String, Position> previous = pagePositions(homePage, true);
         int destination;
-        Map<String, String> formerIds = Map.of();
+        Map<String, String> formerIds = ImmutableMap.of();
         if (folderDrag != null) {
             int boundary = drop.insertion() == null ? -1 : drop.insertion().index();
             destination = PhoneScreenRegistry.dropFolderApp(folderDrag.folderId(), sourceId, boundary, drop.groupId(),
                     Component.translatable("mcphone.home.folder.default").getString());
             if (destination < 0) return;
             if (drop.groupId() == null) previous.put(sourceId, ghost);
-            else formerIds = Map.of(entryAt(destination).id(), drop.groupId());
+            else formerIds = ImmutableMap.of(entryAt(destination).id(), drop.groupId());
         } else if (drop.groupId() != null) {
             int targetIndex = indexOf(drop.groupId());
             if (!PhoneScreenRegistry.groupHomeApps(sourceId, drop.groupId(),
                     Component.translatable("mcphone.home.folder.default").getString())) return;
             destination = from < targetIndex ? targetIndex - 1 : targetIndex;
-            formerIds = Map.of(entryAt(destination).id(), drop.groupId());
+            formerIds = ImmutableMap.of(entryAt(destination).id(), drop.groupId());
         } else {
             destination = drop.insertion().index();
             if (!PhoneScreenRegistry.moveHomeEntry(sourceId, destination)) return;

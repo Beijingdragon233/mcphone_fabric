@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.reader.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneSkin;
@@ -8,6 +12,7 @@ import com.november.mcphone.feature.reader.BookRef;
 import com.november.mcphone.feature.reader.BookSearch;
 import com.november.mcphone.feature.reader.ShelfOrder;
 import com.november.mcphone.feature.reader.client.compat.BookQuirks;
+import com.november.mcphone.feature.reader.client.source.BookSource;
 import com.november.mcphone.feature.reader.client.source.BookSources;
 import com.november.mcphone.feature.reader.client.source.TxtBookSource;
 import net.minecraft.client.gui.Font;
@@ -143,7 +148,7 @@ public final class BookList {
     private int rowsX, rowsTop, rowsBottom, rowsW, lastRowH = 12;
 
     /** 当前页该列哪些书（还没过搜索），以及算它用的三个输入。见 {@link #base} */
-    private List<BookRef> baseBooks = List.of();
+    private List<BookRef> baseBooks = ImmutableList.of();
     private List<BookRef> baseFrom;
     private Tab baseTab;
     private int baseRevision = -1;
@@ -158,7 +163,7 @@ public final class BookList {
     private String scrollQuery = "";
 
     /** 上一次筛出来的结果，以及算它用的那两个输入。见 {@link #filtered} */
-    private List<BookRef> filteredBooks = List.of();
+    private List<BookRef> filteredBooks = ImmutableList.of();
     private List<BookRef> filteredFrom;
     private String filteredQuery;
 
@@ -213,7 +218,7 @@ public final class BookList {
      *                      "第 1 位"在完整的架子上是哪一位？没有一个答案是玩家预期的
      */
     private boolean canReorder(int count) {
-        return tab == Tab.SHELF && query().isBlank() && count > 1;
+        return tab == Tab.SHELF && Java8.isBlank(query()) && count > 1;
     }
 
     public BookRef consumeOpenRequest() {
@@ -343,7 +348,7 @@ public final class BookList {
 
     /** 没在搜就是"共几本"，在搜就是"命中/总数" */
     private String countText(int total, int matched) {
-        return query().isBlank()
+        return Java8.isBlank(query())
                 ? Component.translatable("mcphone.reader.count", total).getString()
                 : Component.translatable("mcphone.reader.count_filtered", matched, total).getString();
     }
@@ -377,7 +382,7 @@ public final class BookList {
         g.drawString(font, Component.translatable(title).getString(),
                 x, y, FontPalette.subtle(), false);
         y += font.lineHeight + 2;
-        for (var line : font.split(Component.translatable(hint), w)) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable(hint), w)) {
             g.drawString(font, line, x, y, FontPalette.dim(), false);
             y += font.lineHeight;
         }
@@ -723,7 +728,7 @@ public final class BookList {
         for (BookRef book : all) {
             if (!isLocal(book)) out.add(book);
         }
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     //  搜索
@@ -762,14 +767,14 @@ public final class BookList {
 
     /** 命中的书，按分数从高到低。同分保持书架原来的顺序（List.sort 是稳定排序） */
     private static List<BookRef> select(List<BookRef> all, String query) {
-        if (query.isBlank()) return all;
+        if (Java8.isBlank(query)) return all;
 
         List<Scored> hits = new ArrayList<>();
         for (BookRef book : all) {
             String id = book.bookId().toString();
             int score = BookSearch.score(query,
                     book.title().getString(), book.owner(), id);
-            var source = BookSources.of(book);
+            BookSource source = BookSources.of(book);
             if (source != null) {
                 for (String alias : source.searchAliases(book)) {
                     score = Math.max(score, BookSearch.score(query, alias, book.owner(), id));
@@ -782,17 +787,46 @@ public final class BookList {
 
         List<BookRef> out = new ArrayList<>(hits.size());
         for (Scored hit : hits) out.add(hit.book());
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /** 排序用的一对：书与它这次的得分。分数只算一次，别放进比较器里现算 */
-    private record Scored(BookRef book, int score) {}
+    private static final class Scored {
+        private final BookRef book;
+        private final int score;
+
+        private Scored(BookRef book, int score) {
+            this.book = book;
+            this.score = score;
+        }
+
+        public BookRef book() { return book; }
+
+        public int score() { return score; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Scored)) return false;
+            Scored that = (Scored) other;
+            return java.util.Objects.equals(this.book, that.book)
+                    && this.score == that.score;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(book);
+            hash = 31 * hash + java.util.Objects.hashCode(score);
+            return hash;
+        }
+
+        @Override public String toString() { return "Scored[book=" + book + ", score=" + score + "]"; }
+}
 
     /** 忘掉上一次筛的结果，下次渲染重算 */
     private void forgetFiltered() {
         filteredFrom = null;
         filteredQuery = null;
-        filteredBooks = List.of();
+        filteredBooks = ImmutableList.of();
     }
 
     /** 这本是玩家自己放进目录的小说吗。本地书的规矩与模组手册不一样，见 base 与 renderRows */

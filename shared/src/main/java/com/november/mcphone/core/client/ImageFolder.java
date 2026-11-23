@@ -1,5 +1,6 @@
 package com.november.mcphone.core.client;
 
+import java.util.stream.Stream;
 import com.november.mcphone.platform.client.SystemFiles;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.november.mcphone.MCphone;
@@ -62,7 +63,42 @@ public final class ImageFolder {
      * @param fileName     文件名（含后缀）
      * @param lastModified 修改时间戳，用于排序与缓存键
      */
-    public record Entry(Path path, String fileName, long lastModified) {
+    public static final class Entry {
+        private final Path path;
+        private final String fileName;
+        private final long lastModified;
+
+        public Entry(Path path, String fileName, long lastModified) {
+            this.path = path;
+            this.fileName = fileName;
+            this.lastModified = lastModified;
+        }
+
+        public Path path() { return path; }
+
+        public String fileName() { return fileName; }
+
+        public long lastModified() { return lastModified; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Entry)) return false;
+            Entry that = (Entry) other;
+            return java.util.Objects.equals(this.path, that.path)
+                    && java.util.Objects.equals(this.fileName, that.fileName)
+                    && this.lastModified == that.lastModified;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(path);
+            hash = 31 * hash + java.util.Objects.hashCode(fileName);
+            hash = 31 * hash + java.util.Objects.hashCode(lastModified);
+            return hash;
+        }
+
+        @Override public String toString() { return "Entry[path=" + path + ", fileName=" + fileName + ", lastModified=" + lastModified + "]"; }
+
 
         /** 缓存键带上修改时间：同名文件被覆盖后键会变，不会读到旧贴图 */
         public String cacheKey() { return fileName + ":" + lastModified; }
@@ -121,7 +157,7 @@ public final class ImageFolder {
         this.minCached = minCached;
         this.maxCached = minCached;
         this.texturePrefix = texturePrefix;
-        this.thumbnails = new LinkedHashMap<>(minCached + 1, 0.75f, true) {
+        this.thumbnails = new LinkedHashMap<String, ImageCodec.Texture>(minCached + 1, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<String, ImageCodec.Texture> eldest) {
                 if (size() <= maxCached) return false;
@@ -203,7 +239,7 @@ public final class ImageFolder {
             return;
         }
 
-        try (var stream = Files.list(dir)) {
+        try (Stream<Path> stream = Files.list(dir)) {
             stream.filter(this::accepts)
                   .filter(Files::isRegularFile)
                   .forEach(p -> {

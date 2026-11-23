@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.feature.chat.ChatMessage;
 import com.november.mcphone.feature.chat.ImageBody;
 import com.november.mcphone.feature.chat.TextBody;
@@ -51,10 +53,98 @@ final class ChatMessageLayout {
      * frames/frameMs 也从消息上抄过来（静态图是 1 和 0）：像素里看不出一张图是不是动图，
      * 而画的时候要靠它挑帧。
      */
-    record Block(BlockType type, boolean self, List<FormattedCharSequence> lines,
-                         UUID image, int w, int h, int frames, int frameMs, ChatLayout.MessageRow placement,
-                         ChatLayout.TextOrigin textOrigin, ChatMessage message, ChatTextLayout text) {
-        int quoteHeight() { return message != null && message.body() instanceof TextBody t && t.quote().isPresent() ? ChatReplyView.HEIGHT : 0; }
+    static final class Block {
+        private final BlockType type;
+        private final boolean self;
+        private final List<FormattedCharSequence> lines;
+        private final UUID image;
+        private final int w;
+        private final int h;
+        private final int frames;
+        private final int frameMs;
+        private final ChatLayout.MessageRow placement;
+        private final ChatLayout.TextOrigin textOrigin;
+        private final ChatMessage message;
+        private final ChatTextLayout text;
+
+        Block(BlockType type, boolean self, List<FormattedCharSequence> lines, UUID image, int w, int h, int frames, int frameMs, ChatLayout.MessageRow placement, ChatLayout.TextOrigin textOrigin, ChatMessage message, ChatTextLayout text) {
+            this.type = type;
+            this.self = self;
+            this.lines = lines;
+            this.image = image;
+            this.w = w;
+            this.h = h;
+            this.frames = frames;
+            this.frameMs = frameMs;
+            this.placement = placement;
+            this.textOrigin = textOrigin;
+            this.message = message;
+            this.text = text;
+        }
+
+        public BlockType type() { return type; }
+
+        public boolean self() { return self; }
+
+        public List<FormattedCharSequence> lines() { return lines; }
+
+        public UUID image() { return image; }
+
+        public int w() { return w; }
+
+        public int h() { return h; }
+
+        public int frames() { return frames; }
+
+        public int frameMs() { return frameMs; }
+
+        public ChatLayout.MessageRow placement() { return placement; }
+
+        public ChatLayout.TextOrigin textOrigin() { return textOrigin; }
+
+        public ChatMessage message() { return message; }
+
+        public ChatTextLayout text() { return text; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Block)) return false;
+            Block that = (Block) other;
+            return java.util.Objects.equals(this.type, that.type)
+                    && this.self == that.self
+                    && java.util.Objects.equals(this.lines, that.lines)
+                    && java.util.Objects.equals(this.image, that.image)
+                    && this.w == that.w
+                    && this.h == that.h
+                    && this.frames == that.frames
+                    && this.frameMs == that.frameMs
+                    && java.util.Objects.equals(this.placement, that.placement)
+                    && java.util.Objects.equals(this.textOrigin, that.textOrigin)
+                    && java.util.Objects.equals(this.message, that.message)
+                    && java.util.Objects.equals(this.text, that.text);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(type);
+            hash = 31 * hash + java.util.Objects.hashCode(self);
+            hash = 31 * hash + java.util.Objects.hashCode(lines);
+            hash = 31 * hash + java.util.Objects.hashCode(image);
+            hash = 31 * hash + java.util.Objects.hashCode(w);
+            hash = 31 * hash + java.util.Objects.hashCode(h);
+            hash = 31 * hash + java.util.Objects.hashCode(frames);
+            hash = 31 * hash + java.util.Objects.hashCode(frameMs);
+            hash = 31 * hash + java.util.Objects.hashCode(placement);
+            hash = 31 * hash + java.util.Objects.hashCode(textOrigin);
+            hash = 31 * hash + java.util.Objects.hashCode(message);
+            hash = 31 * hash + java.util.Objects.hashCode(text);
+            return hash;
+        }
+
+        @Override public String toString() { return "Block[type=" + type + ", self=" + self + ", lines=" + lines + ", image=" + image + ", w=" + w + ", h=" + h + ", frames=" + frames + ", frameMs=" + frameMs + ", placement=" + placement + ", textOrigin=" + textOrigin + ", message=" + message + ", text=" + text + "]"; }
+
+        int quoteHeight() { Object tMatch;
+        return message != null && (tMatch = message.body()) instanceof TextBody && ((TextBody) tMatch).quote().isPresent() ? ChatReplyView.HEIGHT : 0; }
         int rowHeight() { return placement.height(); }
     }
 
@@ -78,7 +168,7 @@ final class ChatMessageLayout {
                 // 时间格式只有数字与分隔符，不需要初始化客户端语言或双向排版。
                 FormattedCharSequence stamp = FormattedCharSequence.forward(formatStamp(m.time()), Style.EMPTY);
                 int stampH = nameLineHeight + STAMP_PAD_Y * 2;
-                out.add(new Block(BlockType.STAMP, false, List.of(stamp), null,
+                out.add(new Block(BlockType.STAMP, false, ImmutableList.of(stamp), null,
                         ChatLayout.scaledWidth(font.width(stamp), ChatLayout.META_SCALE),
                         stampH, 1, 0, new ChatLayout.MessageRow(0, 0, stampH), null, null, null));
             }
@@ -86,29 +176,32 @@ final class ChatMessageLayout {
 
             boolean self = selfId != null && selfId.equals(m.sender());
 
-            if (m.body() instanceof ImageBody image) {
-                out.add(imageBlock(m, image, self, bubbleMaxW, nameLineHeight, senderLineHeight, group));
+            Object imageMatch;
+            if ((imageMatch = m.body()) instanceof ImageBody) {
+                out.add(imageBlock(m, ((ImageBody) imageMatch), self, bubbleMaxW, nameLineHeight, senderLineHeight, group));
                 continue;
             }
 
-            String text = m.body() instanceof TextBody t ? t.text() : m.body().preview().getString();
+            Object tMatch_;
+            String text = (tMatch_ = m.body()) instanceof TextBody ? ((TextBody) tMatch_).text() : m.body().preview().getString();
             ChatTextLayout selectable = ChatTextLayout.build(font, text, textMaxW);
             List<FormattedCharSequence> lines = selectable.visualLines();
             int textW = 0;
-            for (var line : lines) textW = Math.max(textW, font.width(line));
+            for (net.minecraft.util.FormattedCharSequence line : lines) textW = Math.max(textW, font.width(line));
 
             int bubbleH = lines.size() * ChatUi.lineHeight(font, ChatLayout.TEXT_SCALE) + BUBBLE_PAD_Y * 2;
             int bubbleW = ChatLayout.scaledWidth(textW, ChatLayout.TEXT_SCALE) + BUBBLE_PAD_X * 2;
-            int quoteH = m.body() instanceof TextBody t && t.quote().isPresent() ? ChatReplyView.HEIGHT : 0;
+            Object tMatch__;
+            int quoteH = (tMatch__ = m.body()) instanceof TextBody && ((TextBody) tMatch__).quote().isPresent() ? ChatReplyView.HEIGHT : 0;
             if (quoteH > 0) bubbleW = bubbleMaxW;
-            var origin = ChatLayout.bubbleText(bubbleW,bubbleH,textW,font.lineHeight,lines.size());
+            ChatLayout.TextOrigin origin = ChatLayout.bubbleText(bubbleW,bubbleH,textW,font.lineHeight,lines.size());
             bubbleH += quoteH;
             out.add(new Block(BlockType.TEXT, self, lines, null,
                     bubbleW, bubbleH, 1, 0, placement(bubbleH, nameLineHeight, senderLineHeight, group),
                     new ChatLayout.TextOrigin(quoteH > 0 ? BUBBLE_PAD_X : origin.x(),origin.y()+quoteH), m, selectable));
         }
 
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     private static ChatLayout.MessageRow placement(int height, int reservedNameHeight, int senderHeight, boolean group) {
@@ -125,13 +218,13 @@ final class ChatMessageLayout {
         int w = Math.max(1, Math.round(image.width() * scale));
         int h = Math.max(1, Math.round(image.height() * scale));
 
-        return new Block(BlockType.IMAGE, self, List.of(), image.image(), w, h,
+        return new Block(BlockType.IMAGE, self, ImmutableList.of(), image.image(), w, h,
                 image.frames(), image.frameMs(), placement(h, nameLineHeight, senderLineHeight, group), null, message, null);
     }
 
     private static String formatStamp(long time) {
-        var zone = ZoneId.systemDefault();
-        var dateTime = Instant.ofEpochMilli(time).atZone(zone);
+        java.time.ZoneId zone = ZoneId.systemDefault();
+        java.time.ZonedDateTime dateTime = Instant.ofEpochMilli(time).atZone(zone);
         return dateTime.toLocalDate().equals(LocalDate.now(zone))
                 ? dateTime.format(TIME_FORMAT)
                 : dateTime.format(DATE_TIME_FORMAT);

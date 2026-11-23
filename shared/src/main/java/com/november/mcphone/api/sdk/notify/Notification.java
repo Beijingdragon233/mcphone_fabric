@@ -1,5 +1,7 @@
 package com.november.mcphone.api.sdk.notify;
 
+import com.google.common.collect.ImmutableList;
+
 import net.minecraft.resources.ResourceLocation;
 
 import java.util.List;
@@ -33,18 +35,76 @@ import java.util.List;
  * @param dedupeKey 去重键，可为 null。同一个键的连发只留最新一条（§33.4）
  * @param expiresAt 过期时刻的毫秒时间戳，0 表示不过期
  */
-public record Notification(
-        long id,
-        ResourceLocation appId,
-        String topic,
-        String titleKey,
-        List<String> titleArgs,
-        String bodyKey,
-        List<String> bodyArgs,
-        long createdAt,
-        Priority priority,
-        String dedupeKey,
-        long expiresAt) {
+public final class Notification {
+    private final long id;
+    private final ResourceLocation appId;
+    private final String topic;
+    private final String titleKey;
+    private final List<String> titleArgs;
+    private final String bodyKey;
+    private final List<String> bodyArgs;
+    private final long createdAt;
+    private final Priority priority;
+    private final String dedupeKey;
+    private final long expiresAt;
+
+    public long id() { return id; }
+
+    public ResourceLocation appId() { return appId; }
+
+    public String topic() { return topic; }
+
+    public String titleKey() { return titleKey; }
+
+    public List<String> titleArgs() { return titleArgs; }
+
+    public String bodyKey() { return bodyKey; }
+
+    public List<String> bodyArgs() { return bodyArgs; }
+
+    public long createdAt() { return createdAt; }
+
+    public Priority priority() { return priority; }
+
+    public String dedupeKey() { return dedupeKey; }
+
+    public long expiresAt() { return expiresAt; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof Notification)) return false;
+        Notification that = (Notification) other;
+        return this.id == that.id
+                && java.util.Objects.equals(this.appId, that.appId)
+                && java.util.Objects.equals(this.topic, that.topic)
+                && java.util.Objects.equals(this.titleKey, that.titleKey)
+                && java.util.Objects.equals(this.titleArgs, that.titleArgs)
+                && java.util.Objects.equals(this.bodyKey, that.bodyKey)
+                && java.util.Objects.equals(this.bodyArgs, that.bodyArgs)
+                && this.createdAt == that.createdAt
+                && java.util.Objects.equals(this.priority, that.priority)
+                && java.util.Objects.equals(this.dedupeKey, that.dedupeKey)
+                && this.expiresAt == that.expiresAt;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(id);
+        hash = 31 * hash + java.util.Objects.hashCode(appId);
+        hash = 31 * hash + java.util.Objects.hashCode(topic);
+        hash = 31 * hash + java.util.Objects.hashCode(titleKey);
+        hash = 31 * hash + java.util.Objects.hashCode(titleArgs);
+        hash = 31 * hash + java.util.Objects.hashCode(bodyKey);
+        hash = 31 * hash + java.util.Objects.hashCode(bodyArgs);
+        hash = 31 * hash + java.util.Objects.hashCode(createdAt);
+        hash = 31 * hash + java.util.Objects.hashCode(priority);
+        hash = 31 * hash + java.util.Objects.hashCode(dedupeKey);
+        hash = 31 * hash + java.util.Objects.hashCode(expiresAt);
+        return hash;
+    }
+
+    @Override public String toString() { return "Notification[id=" + id + ", appId=" + appId + ", topic=" + topic + ", titleKey=" + titleKey + ", titleArgs=" + titleArgs + ", bodyKey=" + bodyKey + ", bodyArgs=" + bodyArgs + ", createdAt=" + createdAt + ", priority=" + priority + ", dedupeKey=" + dedupeKey + ", expiresAt=" + expiresAt + "]"; }
+
 
     /** 每 App 每玩家的条数上限，超出淘汰最旧的<b>已读</b>项（§23.3）。 */
     public static final int MAX_PER_APP = 32;
@@ -52,17 +112,28 @@ public record Notification(
     /** {@link #topic} 与 {@link #dedupeKey} 的长度上限。 */
     public static final int MAX_KEY = 64;
 
-    public Notification {
+    public Notification(long id, ResourceLocation appId, String topic, String titleKey, List<String> titleArgs, String bodyKey, List<String> bodyArgs, long createdAt, Priority priority, String dedupeKey, long expiresAt) {
         if (appId == null) throw new IllegalArgumentException("Notification.appId 不能为 null");
         if (titleKey == null || titleKey.isEmpty()) {
             throw new IllegalArgumentException("titleKey 是本地化键，不能为空");
         }
         topic = clamp(topic, "topic");
         dedupeKey = dedupeKey == null ? null : clamp(dedupeKey, "dedupeKey");
-        titleArgs = titleArgs == null ? List.of() : List.copyOf(titleArgs);
-        bodyArgs = bodyArgs == null ? List.of() : List.copyOf(bodyArgs);
+        titleArgs = titleArgs == null ? ImmutableList.of() : ImmutableList.copyOf(titleArgs);
+        bodyArgs = bodyArgs == null ? ImmutableList.of() : ImmutableList.copyOf(bodyArgs);
         if (priority == null) priority = Priority.NORMAL;
         if (expiresAt < 0) throw new IllegalArgumentException("expiresAt 不能为负");
+        this.id = id;
+        this.appId = appId;
+        this.topic = topic;
+        this.titleKey = titleKey;
+        this.titleArgs = titleArgs;
+        this.bodyKey = bodyKey;
+        this.bodyArgs = bodyArgs;
+        this.createdAt = createdAt;
+        this.priority = priority;
+        this.dedupeKey = dedupeKey;
+        this.expiresAt = expiresAt;
     }
 
     private static String clamp(String s, String field) {

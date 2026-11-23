@@ -41,8 +41,8 @@ public final class PhoneConversation {
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof PhoneConversation c && self.equals(c.self) && peer.equals(c.peer)
-                && unread == c.unread && lastMessageTime.equals(c.lastMessageTime);
+        return o instanceof PhoneConversation && self.equals(((PhoneConversation) o).self) && peer.equals(((PhoneConversation) o).peer)
+                && unread == ((PhoneConversation) o).unread && lastMessageTime.equals(((PhoneConversation) o).lastMessageTime);
     }
 
     @Override

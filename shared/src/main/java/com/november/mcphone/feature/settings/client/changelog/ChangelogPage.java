@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.settings.client.changelog;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.FontPreset;
 import com.november.mcphone.core.client.GuiUtil;
@@ -14,28 +18,110 @@ import java.util.List;
 
 /** 弹窗和历史页共用正文；标题、关闭按钮固定，只有正文滚动。 */
 public final class ChangelogPage {
-    private List<Changelog.Release> releases = List.of();
+    private List<Changelog.Release> releases = ImmutableList.of();
     private static final int CLOSE_INSET = 3;
 
     private int scroll, maxScroll;
     private int left, top, width, bottom, textTop, textBottom;
     private boolean modal;
-    private List<Row> rows = List.of();
+    private List<Row> rows = ImmutableList.of();
     private Font layoutFont;
     private int layoutWidth;
     private String layoutLanguage;
     private FontPreset layoutPalette;
     private final List<LinkHit> links = new ArrayList<>();
-    private record LinkHit(int x, int y, int width, int height, String url) {
+    private static final class LinkHit {
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+        private final String url;
+
+        private LinkHit(int x, int y, int width, int height, String url) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.url = url;
+        }
+
+        public int x() { return x; }
+
+        public int y() { return y; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        public String url() { return url; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof LinkHit)) return false;
+            LinkHit that = (LinkHit) other;
+            return this.x == that.x
+                    && this.y == that.y
+                    && this.width == that.width
+                    && this.height == that.height
+                    && java.util.Objects.equals(this.url, that.url);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            hash = 31 * hash + java.util.Objects.hashCode(url);
+            return hash;
+        }
+
+        @Override public String toString() { return "LinkHit[x=" + x + ", y=" + y + ", width=" + width + ", height=" + height + ", url=" + url + "]"; }
+
         boolean contains(double mx, double my) { return mx >= x && mx < x + width && my >= y && my < y + height; }
     }
-    private record Row(FormattedCharSequence text, int color, String url) {}
+    private static final class Row {
+        private final FormattedCharSequence text;
+        private final int color;
+        private final String url;
+
+        private Row(FormattedCharSequence text, int color, String url) {
+            this.text = text;
+            this.color = color;
+            this.url = url;
+        }
+
+        public FormattedCharSequence text() { return text; }
+
+        public int color() { return color; }
+
+        public String url() { return url; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Row)) return false;
+            Row that = (Row) other;
+            return java.util.Objects.equals(this.text, that.text)
+                    && this.color == that.color
+                    && java.util.Objects.equals(this.url, that.url);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(text);
+            hash = 31 * hash + java.util.Objects.hashCode(color);
+            hash = 31 * hash + java.util.Objects.hashCode(url);
+            return hash;
+        }
+
+        @Override public String toString() { return "Row[text=" + text + ", color=" + color + ", url=" + url + "]"; }
+}
 
     public void open(List<Changelog.Release> values) {
         releases = values;
         scroll = maxScroll = 0;
         layoutFont = null;
-        rows = List.of();
+        rows = ImmutableList.of();
         links.clear();
     }
     public void render(GuiGraphics g, int x, int y, int w, int h, int statusH, int navH,
@@ -112,25 +198,25 @@ public final class ChangelogPage {
     private void layout(Font font, int textWidth, String language) {
         if (layoutFont == font && layoutWidth == textWidth && language.equals(layoutLanguage)
                 && layoutPalette == FontPalette.current()) return;
-        var next = new ArrayList<Row>();
+        ArrayList<ChangelogPage.Row> next = new ArrayList<Row>();
         if (releases.isEmpty()) add(next, font, Component.translatable("mcphone.changelog.empty").getString(), textWidth, FontPalette.subtle(), null);
         for (Changelog.Release release : releases) {
             String version = release.version().equals("next")
                     ? Component.translatable("mcphone.changelog.upcoming").getString() : "v" + release.version();
             add(next, font, version, textWidth, FontPalette.title(), null);
-            if (!release.date().isBlank()) add(next, font, release.date(), textWidth, FontPalette.subtle(), null);
+            if (!Java8.isBlank(release.date())) add(next, font, release.date(), textWidth, FontPalette.subtle(), null);
             for (Changelog.Section section : release.sections(language)) {
                 add(next, font, section.title(), textWidth, FontPalette.notice(), null);
                 for (String source : section.entries()) {
-                    var entry = ChangelogText.parse(source);
+                    ChangelogText.Entry entry = ChangelogText.parse(source);
                     add(next, font, "• " + entry.text(), textWidth, FontPalette.body(), null);
-                    for (var link : entry.links()) add(next, font, "↗ " + link.label(), textWidth, FontPalette.link(), link.url());
+                    for (ChangelogText.Link link : entry.links()) add(next, font, "↗ " + link.label(), textWidth, FontPalette.link(), link.url());
                     next.add(new Row(FormattedCharSequence.EMPTY, 0, null));
                 }
             }
             next.add(new Row(FormattedCharSequence.EMPTY, 0, null));
         }
-        rows = List.copyOf(next);
+        rows = ImmutableList.copyOf(next);
         layoutFont = font;
         layoutWidth = textWidth;
         layoutLanguage = language;
@@ -138,13 +224,13 @@ public final class ChangelogPage {
         links.clear();
     }
     private static void add(List<Row> rows, Font font, String text, int width, int color, String url) {
-        for (var line : font.split(Component.literal(text), width)) rows.add(new Row(line, color, url));
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.literal(text), width)) rows.add(new Row(line, color, url));
     }
     /** 返回是否点中关闭按钮；其他点击全部由手机的模态层吞掉。 */
     public boolean mouseClicked(double mx, double my, int button) {
         if (button != 0) return false;
         if (hitsCloseButton(mx, my)) return true;
-        for (var link : links) if (link.contains(mx, my)) {
+        for (ChangelogPage.LinkHit link : links) if (link.contains(mx, my)) {
             net.minecraft.Util.getPlatform().openUri(link.url());
             break;
         }

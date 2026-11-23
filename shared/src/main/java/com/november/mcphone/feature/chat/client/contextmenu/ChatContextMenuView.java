@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client.contextmenu;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.feature.chat.client.ChatUi;
@@ -11,7 +13,42 @@ import java.util.List;
 /** 聊天首页、消息和输入框共用的菜单视图；只负责显示与命中，不持有业务数据或网络。 */
 public final class ChatContextMenuView {
     public enum Icon { COPY, DELETE, PASTE, CREATE_GROUP, ADD_CONTACT, FAVORITE, REPLY }
-    public record Entry(String labelKey, Icon icon, boolean enabled) {}
+    public static final class Entry {
+        private final String labelKey;
+        private final Icon icon;
+        private final boolean enabled;
+
+        public Entry(String labelKey, Icon icon, boolean enabled) {
+            this.labelKey = labelKey;
+            this.icon = icon;
+            this.enabled = enabled;
+        }
+
+        public String labelKey() { return labelKey; }
+
+        public Icon icon() { return icon; }
+
+        public boolean enabled() { return enabled; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Entry)) return false;
+            Entry that = (Entry) other;
+            return java.util.Objects.equals(this.labelKey, that.labelKey)
+                    && java.util.Objects.equals(this.icon, that.icon)
+                    && this.enabled == that.enabled;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(labelKey);
+            hash = 31 * hash + java.util.Objects.hashCode(icon);
+            hash = 31 * hash + java.util.Objects.hashCode(enabled);
+            return hash;
+        }
+
+        @Override public String toString() { return "Entry[labelKey=" + labelKey + ", icon=" + icon + ", enabled=" + enabled + "]"; }
+}
     @FunctionalInterface public interface PanelPainter { void paint(GuiGraphics g, int x, int y, int width, int height); }
     private static final float SCALE = .75f;
     // 深色菜单叠约 18% 灰白；浅色菜单轻微压暗，保留原面板的透明层次。
@@ -20,33 +57,33 @@ public final class ChatContextMenuView {
     private boolean open;
     private double anchorX, anchorY;
     private ChatContextMenuLayout.Layout layout;
-    private List<Entry> entries = List.of();
+    private List<Entry> entries = ImmutableList.of();
 
     public boolean isOpen() { return open; }
-    public void open(double x, double y) { open = true; anchorX = x; anchorY = y; layout = null; entries = List.of(); }
-    public boolean dismiss() { boolean wasOpen = open; open = false; layout = null; entries = List.of(); return wasOpen; }
+    public void open(double x, double y) { open = true; anchorX = x; anchorY = y; layout = null; entries = ImmutableList.of(); }
+    public boolean dismiss() { boolean wasOpen = open; open = false; layout = null; entries = ImmutableList.of(); return wasOpen; }
     public int hitIndex(double x, double y) {
         int row = !open || layout == null ? -1 : layout.rowAt(x, y);
         return row < 0 || !entries.get(row).enabled() ? -1 : row;
     }
     void arrange(ChatContextMenuLayout.Bounds viewport, int labelWidth, int textHeight, List<Entry> entries) {
-        this.entries = List.copyOf(entries);
+        this.entries = ImmutableList.copyOf(entries);
         layout = ChatContextMenuLayout.place(anchorX, anchorY, viewport, labelWidth, textHeight, entries.size());
     }
     public void render(GuiGraphics g, Font font, int x, int y, int width, int height, int mx, int my,
                        List<Entry> entries, PanelPainter painter) {
         if (!open || entries.isEmpty()) return;
         int labelWidth = 0;
-        for (var entry : entries) labelWidth = Math.max(labelWidth,
+        for (ChatContextMenuView.Entry entry : entries) labelWidth = Math.max(labelWidth,
                 (int) Math.ceil(font.width(Component.translatable(entry.labelKey())) * SCALE));
         arrange(new ChatContextMenuLayout.Bounds(x,y,width,height), labelWidth,
                 (int) Math.ceil(font.lineHeight * SCALE), entries);
-        var bounds = layout.bounds();
+        ChatContextMenuLayout.Bounds bounds = layout.bounds();
         painter.paint(g, bounds.x(), bounds.y(), bounds.width(), bounds.height());
         float inkHeight = Math.max(1, font.lineHeight - 2) * SCALE;
         int hoveredIndex = hitIndex(mx, my);
         for (int i = 0; i < entries.size(); i++) {
-            var entry = entries.get(i);
+            ChatContextMenuView.Entry entry = entries.get(i);
             int rowY = bounds.y() + ChatContextMenuLayout.PAD + i * layout.rowHeight();
             boolean hovered = hoveredIndex == i;
             if (hovered) {

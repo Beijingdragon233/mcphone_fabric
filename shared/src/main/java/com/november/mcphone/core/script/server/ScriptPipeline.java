@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.net.ScriptErrorCode;
 import com.november.mcphone.core.script.net.ScriptProtocol;
@@ -117,7 +119,7 @@ public final class ScriptPipeline {
             // 回一个响应而不是静默丢弃：§15.1 写死同 App 最多 4 个未完成调用，
             // 静默丢 4 个就把 App 卡死在 IN_PROGRESS，玩家只能重开
             send.accept(new ScriptRpcResult(rpc.requestId(), ScriptErrorCode.INVALID_ARGUMENT,
-                    new byte[0], KEY_STALE_CONNECTION, java.util.List.of(), 0, 0));
+                    new byte[0], KEY_STALE_CONNECTION, ImmutableList.of(), 0, 0));
             return;
         }
 
@@ -129,7 +131,7 @@ public final class ScriptPipeline {
             // 部署在、但这个动作没在包里声明：还是 NOT_DEPLOYED（两轴都不在），但给一条自己的文案键，
             // 别让玩家看到"本服没有这个 App"（它明明在）——对抗组 Q1 的粒度修正
             send.accept(new ScriptRpcResult(rpc.requestId(), ScriptErrorCode.NOT_DEPLOYED,
-                    new byte[0], KEY_NO_SUCH_ACTION, java.util.List.of(), 0, 0));
+                    new byte[0], KEY_NO_SUCH_ACTION, ImmutableList.of(), 0, 0));
             return;
         }
 
@@ -150,9 +152,9 @@ public final class ScriptPipeline {
         byte[] digest = IdempotencyKey.digestOf(rpc.params());
         IdempotencyLedger.Verdict v = ledger.check(id, key, digest);
 
-        if (v instanceof IdempotencyLedger.Verdict.Replay r) {
-            send.accept(new ScriptRpcResult(rpc.requestId(), r.code(), r.data(),
-                    r.code().defaultMessageKey(), java.util.List.of(), r.retryAfterMs(), r.stateRevision()));
+        if (v instanceof IdempotencyLedger.Verdict.Replay) {
+            send.accept(new ScriptRpcResult(rpc.requestId(), ((IdempotencyLedger.Verdict.Replay) v).code(), ((IdempotencyLedger.Verdict.Replay) v).data(),
+                    ((IdempotencyLedger.Verdict.Replay) v).code().defaultMessageKey(), ImmutableList.of(), ((IdempotencyLedger.Verdict.Replay) v).retryAfterMs(), ((IdempotencyLedger.Verdict.Replay) v).stateRevision()));
             return;
         }
         if (v instanceof IdempotencyLedger.Verdict.InProgress) {
@@ -163,8 +165,8 @@ public final class ScriptPipeline {
             send.accept(ScriptRpcResult.fail(rpc.requestId(), ScriptErrorCode.INVALID_ARGUMENT));
             return;
         }
-        if (v instanceof IdempotencyLedger.Verdict.Full f) {
-            send.accept(ScriptRpcResult.rateLimited(rpc.requestId(), f.retryAfterMs(), KEY_SERVER_BUSY));
+        if (v instanceof IdempotencyLedger.Verdict.Full) {
+            send.accept(ScriptRpcResult.rateLimited(rpc.requestId(), ((IdempotencyLedger.Verdict.Full) v).retryAfterMs(), KEY_SERVER_BUSY));
             return;
         }
 
@@ -271,6 +273,6 @@ public final class ScriptPipeline {
     /** 一条失败结果，带本地化键；键为空时用码的默认键。 */
     private static ScriptRpcResult fail(ScriptRpc rpc, ScriptErrorCode code, String messageKey) {
         String key = messageKey == null || messageKey.isEmpty() ? code.defaultMessageKey() : messageKey;
-        return new ScriptRpcResult(rpc.requestId(), code, new byte[0], key, List.of(), 0, 0);
+        return new ScriptRpcResult(rpc.requestId(), code, new byte[0], key, ImmutableList.of(), 0, 0);
     }
 }

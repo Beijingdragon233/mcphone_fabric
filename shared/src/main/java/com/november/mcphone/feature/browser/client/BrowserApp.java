@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.browser.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.client.app.RequiredMod;
 import com.november.mcphone.core.client.PhoneApp;
 import com.november.mcphone.feature.browser.client.BrowserBackends;
@@ -25,7 +27,7 @@ public final class BrowserApp extends PhoneApp {
      */
     @Override
     public List<RequiredMod> companionMods() {
-        return List.of(new RequiredMod(BrowserBackends.MCEF_MODID, "MCEF"));
+        return ImmutableList.of(new RequiredMod(BrowserBackends.MCEF_MODID, "MCEF"));
     }
 
     /**

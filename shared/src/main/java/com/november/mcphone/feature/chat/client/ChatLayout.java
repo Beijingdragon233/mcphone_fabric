@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8;
+
 /** 聊天页的逻辑像素布局。字号换算与输入栏分区共用一份，绘制和点击不能各算各的。 */
 public final class ChatLayout {
     private ChatLayout() {}
@@ -58,7 +60,7 @@ public final class ChatLayout {
     }
 
     public static boolean hasText(String text) {
-        return text != null && !text.isBlank();
+        return text != null && !Java8.isBlank(text);
     }
 
     /** 空白时加号只占图标宽，有文字时才留发送按钮宽；表情始终与右侧动作相隔两个像素。 */
@@ -71,7 +73,54 @@ public final class ChatLayout {
         return new Composer(inputX, inputWidth, stickerX, actionX, actionWidth);
     }
 
-    public record Composer(int inputX, int inputWidth, int stickerX, int actionX, int actionWidth) {}
+    public static final class Composer {
+        private final int inputX;
+        private final int inputWidth;
+        private final int stickerX;
+        private final int actionX;
+        private final int actionWidth;
+
+        public Composer(int inputX, int inputWidth, int stickerX, int actionX, int actionWidth) {
+            this.inputX = inputX;
+            this.inputWidth = inputWidth;
+            this.stickerX = stickerX;
+            this.actionX = actionX;
+            this.actionWidth = actionWidth;
+        }
+
+        public int inputX() { return inputX; }
+
+        public int inputWidth() { return inputWidth; }
+
+        public int stickerX() { return stickerX; }
+
+        public int actionX() { return actionX; }
+
+        public int actionWidth() { return actionWidth; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Composer)) return false;
+            Composer that = (Composer) other;
+            return this.inputX == that.inputX
+                    && this.inputWidth == that.inputWidth
+                    && this.stickerX == that.stickerX
+                    && this.actionX == that.actionX
+                    && this.actionWidth == that.actionWidth;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(inputX);
+            hash = 31 * hash + java.util.Objects.hashCode(inputWidth);
+            hash = 31 * hash + java.util.Objects.hashCode(stickerX);
+            hash = 31 * hash + java.util.Objects.hashCode(actionX);
+            hash = 31 * hash + java.util.Objects.hashCode(actionWidth);
+            return hash;
+        }
+
+        @Override public String toString() { return "Composer[inputX=" + inputX + ", inputWidth=" + inputWidth + ", stickerX=" + stickerX + ", actionX=" + actionX + ", actionWidth=" + actionWidth + "]"; }
+}
 
     /** 名称一行、摘要一行；底部同时容纳未读数与传送图标。 */
     public static int cardHeight(int nameLineHeight, int previewLineHeight) {
@@ -79,13 +128,147 @@ public final class ChatLayout {
                 nameLineHeight + 1 + Math.max(previewLineHeight, UNREAD_HEIGHT)) + CARD_PAD * 2;
     }
 
-    public record Rect(int x, int y, int width, int height) {
+    public static final class Rect {
+        private final int x;
+        private final int y;
+        private final int width;
+        private final int height;
+
+        public Rect(int x, int y, int width, int height) {
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+        }
+
+        public int x() { return x; }
+
+        public int y() { return y; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Rect)) return false;
+            Rect that = (Rect) other;
+            return this.x == that.x
+                    && this.y == that.y
+                    && this.width == that.width
+                    && this.height == that.height;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            return hash;
+        }
+
+        @Override public String toString() { return "Rect[x=" + x + ", y=" + y + ", width=" + width + ", height=" + height + "]"; }
+
         public boolean contains(double mx, double my) { return hit(mx, my, x, y, width, height); }
     }
 
-    public record Card(int height, Rect avatarFrame, int textX, int nameY, int nameWidth,
-                       int timeX, float timeY, float previewY, int previewWidth,
-                       float teleportX, float teleportY, Rect teleportHit, Rect unread) {}
+    public static final class Card {
+        private final int height;
+        private final Rect avatarFrame;
+        private final int textX;
+        private final int nameY;
+        private final int nameWidth;
+        private final int timeX;
+        private final float timeY;
+        private final float previewY;
+        private final int previewWidth;
+        private final float teleportX;
+        private final float teleportY;
+        private final Rect teleportHit;
+        private final Rect unread;
+
+        public Card(int height, Rect avatarFrame, int textX, int nameY, int nameWidth, int timeX, float timeY, float previewY, int previewWidth, float teleportX, float teleportY, Rect teleportHit, Rect unread) {
+            this.height = height;
+            this.avatarFrame = avatarFrame;
+            this.textX = textX;
+            this.nameY = nameY;
+            this.nameWidth = nameWidth;
+            this.timeX = timeX;
+            this.timeY = timeY;
+            this.previewY = previewY;
+            this.previewWidth = previewWidth;
+            this.teleportX = teleportX;
+            this.teleportY = teleportY;
+            this.teleportHit = teleportHit;
+            this.unread = unread;
+        }
+
+        public int height() { return height; }
+
+        public Rect avatarFrame() { return avatarFrame; }
+
+        public int textX() { return textX; }
+
+        public int nameY() { return nameY; }
+
+        public int nameWidth() { return nameWidth; }
+
+        public int timeX() { return timeX; }
+
+        public float timeY() { return timeY; }
+
+        public float previewY() { return previewY; }
+
+        public int previewWidth() { return previewWidth; }
+
+        public float teleportX() { return teleportX; }
+
+        public float teleportY() { return teleportY; }
+
+        public Rect teleportHit() { return teleportHit; }
+
+        public Rect unread() { return unread; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Card)) return false;
+            Card that = (Card) other;
+            return this.height == that.height
+                    && java.util.Objects.equals(this.avatarFrame, that.avatarFrame)
+                    && this.textX == that.textX
+                    && this.nameY == that.nameY
+                    && this.nameWidth == that.nameWidth
+                    && this.timeX == that.timeX
+                    && Float.compare(this.timeY, that.timeY) == 0
+                    && Float.compare(this.previewY, that.previewY) == 0
+                    && this.previewWidth == that.previewWidth
+                    && Float.compare(this.teleportX, that.teleportX) == 0
+                    && Float.compare(this.teleportY, that.teleportY) == 0
+                    && java.util.Objects.equals(this.teleportHit, that.teleportHit)
+                    && java.util.Objects.equals(this.unread, that.unread);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            hash = 31 * hash + java.util.Objects.hashCode(avatarFrame);
+            hash = 31 * hash + java.util.Objects.hashCode(textX);
+            hash = 31 * hash + java.util.Objects.hashCode(nameY);
+            hash = 31 * hash + java.util.Objects.hashCode(nameWidth);
+            hash = 31 * hash + java.util.Objects.hashCode(timeX);
+            hash = 31 * hash + java.util.Objects.hashCode(timeY);
+            hash = 31 * hash + java.util.Objects.hashCode(previewY);
+            hash = 31 * hash + java.util.Objects.hashCode(previewWidth);
+            hash = 31 * hash + java.util.Objects.hashCode(teleportX);
+            hash = 31 * hash + java.util.Objects.hashCode(teleportY);
+            hash = 31 * hash + java.util.Objects.hashCode(teleportHit);
+            hash = 31 * hash + java.util.Objects.hashCode(unread);
+            return hash;
+        }
+
+        @Override public String toString() { return "Card[height=" + height + ", avatarFrame=" + avatarFrame + ", textX=" + textX + ", nameY=" + nameY + ", nameWidth=" + nameWidth + ", timeX=" + timeX + ", timeY=" + timeY + ", previewY=" + previewY + ", previewWidth=" + previewWidth + ", teleportX=" + teleportX + ", teleportY=" + teleportY + ", teleportHit=" + teleportHit + ", unread=" + unread + "]"; }
+}
 
     /** 图标、文字和点击范围共用底行中心；传送的纵向点击区不能跨到名称或时间上。 */
     public static Card card(int width, int nameHeight, int previewHeight, int timeWidth,
@@ -128,7 +311,42 @@ public final class ChatLayout {
         return new MessageRow(avatarY, contentY, avatarY + Math.max(AVATAR_SIZE, contentHeight));
     }
 
-    public record MessageRow(int avatarY, int contentY, int height) {}
+    public static final class MessageRow {
+        private final int avatarY;
+        private final int contentY;
+        private final int height;
+
+        public MessageRow(int avatarY, int contentY, int height) {
+            this.avatarY = avatarY;
+            this.contentY = contentY;
+            this.height = height;
+        }
+
+        public int avatarY() { return avatarY; }
+
+        public int contentY() { return contentY; }
+
+        public int height() { return height; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof MessageRow)) return false;
+            MessageRow that = (MessageRow) other;
+            return this.avatarY == that.avatarY
+                    && this.contentY == that.contentY
+                    && this.height == that.height;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(avatarY);
+            hash = 31 * hash + java.util.Objects.hashCode(contentY);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            return hash;
+        }
+
+        @Override public String toString() { return "MessageRow[avatarY=" + avatarY + ", contentY=" + contentY + ", height=" + height + "]"; }
+}
 
     /** 群聊按头像、昵称、气泡组成一行；头像从行顶开始，昵称紧贴正文而不是悬在头像上方。 */
     public static MessageRow groupMessageRow(int contentHeight, int nameLineHeight) {
@@ -164,7 +382,36 @@ public final class ChatLayout {
         return new TextOrigin((width - inkWidth) / 2f, (height - inkHeight) / 2f - TEXT_SCALE / 2f);
     }
 
-    public record TextOrigin(float x, float y) {}
+    public static final class TextOrigin {
+        private final float x;
+        private final float y;
+
+        public TextOrigin(float x, float y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        public float x() { return x; }
+
+        public float y() { return y; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof TextOrigin)) return false;
+            TextOrigin that = (TextOrigin) other;
+            return Float.compare(this.x, that.x) == 0
+                    && Float.compare(this.y, that.y) == 0;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            return hash;
+        }
+
+        @Override public String toString() { return "TextOrigin[x=" + x + ", y=" + y + "]"; }
+}
 
     /** 右边和下边不包含在命中区内，贴近的两个控件不能同时接到边界上的点击。 */
     public static boolean hit(double mx, double my, int x, int y, int width, int height) {

@@ -1,5 +1,8 @@
 package com.november.mcphone.feature.chat;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+
 import com.mojang.serialization.Codec;
 import com.november.mcphone.MCphone;
 import net.minecraft.nbt.CompoundTag;
@@ -59,7 +62,7 @@ public class ChatData extends PhoneSavedData {
      */
     public List<ChatMessage> getMessages(UUID a, UUID b) {
         List<ChatMessage> list = conversations.get(conversationKey(a, b));
-        return list == null ? List.of() : List.copyOf(list);
+        return list == null ? ImmutableList.of() : ImmutableList.copyOf(list);
     }
 
     /**
@@ -74,7 +77,7 @@ public class ChatData extends PhoneSavedData {
                 conversations.computeIfAbsent(conversationKey(from, to), k -> new ArrayList<>());
         list.add(message);
 
-        List<ChatMessage> evicted = List.of();
+        List<ChatMessage> evicted = ImmutableList.of();
         while (list.size() > MAX_MESSAGES_PER_CONVERSATION) {
             if (evicted.isEmpty()) evicted = new ArrayList<>(1);
             evicted.add(list.remove(0));
@@ -94,14 +97,44 @@ public class ChatData extends PhoneSavedData {
         Set<UUID> out = new HashSet<>();
         for (List<ChatMessage> list : conversations.values()) {
             for (ChatMessage m : list) {
-                if (m.body() instanceof ImageBody image) out.add(image.image());
+                Object imageMatch;
+                if ((imageMatch = m.body()) instanceof ImageBody) out.add(((ImageBody) imageMatch).image());
             }
         }
         return out;
     }
 
     /** 会话列表那一行要的两样东西；last 在还没聊过时为 null */
-    public record Tail(ChatMessage last, int unread) {
+    public static final class Tail {
+        private final ChatMessage last;
+        private final int unread;
+
+        public Tail(ChatMessage last, int unread) {
+            this.last = last;
+            this.unread = unread;
+        }
+
+        public ChatMessage last() { return last; }
+
+        public int unread() { return unread; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Tail)) return false;
+            Tail that = (Tail) other;
+            return java.util.Objects.equals(this.last, that.last)
+                    && this.unread == that.unread;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(last);
+            hash = 31 * hash + java.util.Objects.hashCode(unread);
+            return hash;
+        }
+
+        @Override public String toString() { return "Tail[last=" + last + ", unread=" + unread + "]"; }
+
         static final Tail EMPTY = new Tail(null, 0);
     }
 
@@ -141,7 +174,7 @@ public class ChatData extends PhoneSavedData {
         Map<String, List<ChatMessage>> loaded = CONVERSATIONS_CODEC
                 .parse(NbtOps.INSTANCE, tag.get("conversations"))
                 .resultOrPartial(err -> MCphone.LOGGER.error("聊天记录读取失败: {}", err))
-                .orElse(Map.of());
+                .orElse(ImmutableMap.of());
 
         // Codec 解出来的列表不可变，必须复制成可变的；读不懂的键跳过而不是抛，别为一条坏记录让全服起不来
         Map<ConversationKey, List<ChatMessage>> mutable = new HashMap<>();
@@ -152,7 +185,7 @@ public class ChatData extends PhoneSavedData {
                 MCphone.LOGGER.warn("[MCphone] 跳过一条读不懂的会话键: {}", k);
                 return;
             }
-            var migration = ChatMessageIdentity.normalize(key, v);
+            ChatMessageIdentity.Migration migration = ChatMessageIdentity.normalize(key, v);
             migrated[0] |= migration.changed();
             mutable.put(key, new ArrayList<>(migration.messages()));
         });

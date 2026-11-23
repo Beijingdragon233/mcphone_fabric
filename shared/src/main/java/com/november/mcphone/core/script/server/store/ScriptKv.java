@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server.store;
 
+import com.google.common.collect.ImmutableMap;
+
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
@@ -27,9 +29,28 @@ import java.util.Map;
  * {@code once} / 领取次数一律走 {@link ScriptGuards}，<b>不放这里</b>。
  * 放一起脚本就能把"只能领一次"清零（§19.2、§20.2）。
  */
-public record ScriptKv(Map<String, String> values) {
+public final class ScriptKv {
+    private final Map<String, String> values;
 
-    public static final ScriptKv DEFAULT = new ScriptKv(Map.of());
+    public Map<String, String> values() { return values; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ScriptKv)) return false;
+        ScriptKv that = (ScriptKv) other;
+        return java.util.Objects.equals(this.values, that.values);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(values);
+        return hash;
+    }
+
+    @Override public String toString() { return "ScriptKv[values=" + values + "]"; }
+
+
+    public static final ScriptKv DEFAULT = new ScriptKv(ImmutableMap.of());
 
     public static final Codec<ScriptKv> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
@@ -38,8 +59,9 @@ public record ScriptKv(Map<String, String> values) {
             ).apply(instance, ScriptKv::new)
     );
 
-    public ScriptKv {
-        values = Map.copyOf(values);
+    public ScriptKv(Map<String, String> values) {
+        values = ImmutableMap.copyOf(values);
+        this.values = values;
     }
 
     /** 逻辑键的前五段（§17.3）。玩家那一段由"挂在谁身上"隐含。 */

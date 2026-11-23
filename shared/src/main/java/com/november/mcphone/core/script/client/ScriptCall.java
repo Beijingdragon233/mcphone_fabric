@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.script.net.ScriptErrorCode;
 import com.november.mcphone.core.script.net.ScriptProtocol;
@@ -71,7 +73,42 @@ public final class ScriptCall {
         void send(ScriptRpc rpc);
     }
 
-    private record Pending(String appId, String actionId, Consumer<ScriptRpcResult> callback) {
+    private static final class Pending {
+        private final String appId;
+        private final String actionId;
+        private final Consumer<ScriptRpcResult> callback;
+
+        private Pending(String appId, String actionId, Consumer<ScriptRpcResult> callback) {
+            this.appId = appId;
+            this.actionId = actionId;
+            this.callback = callback;
+        }
+
+        public String appId() { return appId; }
+
+        public String actionId() { return actionId; }
+
+        public Consumer<ScriptRpcResult> callback() { return callback; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Pending)) return false;
+            Pending that = (Pending) other;
+            return java.util.Objects.equals(this.appId, that.appId)
+                    && java.util.Objects.equals(this.actionId, that.actionId)
+                    && java.util.Objects.equals(this.callback, that.callback);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(appId);
+            hash = 31 * hash + java.util.Objects.hashCode(actionId);
+            hash = 31 * hash + java.util.Objects.hashCode(callback);
+            return hash;
+        }
+
+        @Override public String toString() { return "Pending[appId=" + appId + ", actionId=" + actionId + ", callback=" + callback + "]"; }
+
     }
 
     private static volatile Sender sender;
@@ -229,7 +266,7 @@ public final class ScriptCall {
     private static long finishNow(long requestId, ScriptErrorCode code, Consumer<ScriptRpcResult> callback) {
         if (callback != null) {
             ScriptRpcResult local = new ScriptRpcResult(requestId, code, new byte[0],
-                    code.defaultMessageKey(), List.of(), 0, 0);
+                    code.defaultMessageKey(), ImmutableList.of(), 0, 0);
             try {
                 callback.accept(local);
             } catch (VirtualMachineError fatal) {

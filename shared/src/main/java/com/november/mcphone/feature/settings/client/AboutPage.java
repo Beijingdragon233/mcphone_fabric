@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.settings.client;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.api.client.app.IPhoneApp;
 import com.november.mcphone.api.client.app.RequiredMod;
@@ -186,7 +188,7 @@ public final class AboutPage {
             }
         }
 
-        return List.copyOf(byId.values());
+        return ImmutableList.copyOf(byId.values());
     }
 
     /** 一行"标签 …… 值"，值靠右。排法与截断规则见 GuiUtil.drawLabelValueRow */

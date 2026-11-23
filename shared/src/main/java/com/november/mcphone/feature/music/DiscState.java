@@ -13,7 +13,36 @@ import net.minecraft.world.item.ItemStack;
  * @param disc        空栈表示没放
  * @param startedTick 开始外放的游戏刻，-1 表示没在放
  */
-public record DiscState(ItemStack disc, long startedTick) {
+public final class DiscState {
+    private final ItemStack disc;
+    private final long startedTick;
+
+    public DiscState(ItemStack disc, long startedTick) {
+        this.disc = disc;
+        this.startedTick = startedTick;
+    }
+
+    public ItemStack disc() { return disc; }
+
+    public long startedTick() { return startedTick; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof DiscState)) return false;
+        DiscState that = (DiscState) other;
+        return java.util.Objects.equals(this.disc, that.disc)
+                && this.startedTick == that.startedTick;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(disc);
+        hash = 31 * hash + java.util.Objects.hashCode(startedTick);
+        return hash;
+    }
+
+    @Override public String toString() { return "DiscState[disc=" + disc + ", startedTick=" + startedTick + "]"; }
+
 
     /** "没在放"哨兵；startedTick 与下发给客户端的终点刻共用这一个值 */
     public static final long NOT_PLAYING = -1L;

@@ -18,13 +18,14 @@ public final class ChatGroupEvents {
     public static void onMessage(GroupReply.Message reply) {
         ChatImageSender.onGroupMessage(reply);
         GroupTransport.acknowledge(reply.request());
-        var mc = Minecraft.getInstance(); var entry = reply.summary().last().orElseThrow();
+        net.minecraft.client.Minecraft mc = Minecraft.getInstance(); com.november.mcphone.feature.chat.group.GroupMessage entry = reply.summary().last().orElseThrow(java.util.NoSuchElementException::new);
+        Object phoneMatch;
         if (mc.player == null || entry.message().sender().equals(mc.player.getUUID()) || !PhoneItem.isCarriedBy(mc.player)
-                || mc.screen instanceof PhoneScreen phone && phone.isViewingGroup(reply.summary().id())) return;
+                || (phoneMatch = mc.screen) instanceof PhoneScreen && ((PhoneScreen) phoneMatch).isViewingGroup(reply.summary().id())) return;
         // 通知 token 显式带群命名空间，不与同 UUID 的私聊通知合并。
         UUID token = UUID.nameUUIDFromBytes(("mcphone:group:" + reply.summary().id()).getBytes(StandardCharsets.UTF_8));
         String preview = entry.senderName() + ": " + PhoneToast.preview(entry.message());
-        var old = mc.getToasts().getToast(PhoneToast.class, token);
+        com.november.mcphone.core.client.PhoneToast old = mc.getToasts().getToast(PhoneToast.class, token);
         if (old != null) old.addMessage(preview); else mc.getToasts().addToast(new PhoneToast(token, entry.message().sender(), reply.summary().name(), preview));
     }
     public static void onResult(GroupReply.Result reply) { ChatImageSender.onGroupResult(reply); GroupTransport.result(reply); }

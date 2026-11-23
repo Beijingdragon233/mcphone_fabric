@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat;
 
+import com.google.common.collect.ImmutableSet;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -61,7 +63,7 @@ public final class FriendGraph {
     /** 没有好友时返回空集合，不是 null */
     public Set<UUID> friendsOf(UUID player) {
         Set<UUID> of = adjacency.get(player);
-        return of == null ? Set.of() : Collections.unmodifiableSet(of);
+        return of == null ? ImmutableSet.of() : Collections.unmodifiableSet(of);
     }
 
     public int countFriends(UUID player) {

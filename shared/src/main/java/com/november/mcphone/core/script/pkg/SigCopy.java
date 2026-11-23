@@ -46,14 +46,21 @@ public final class SigCopy {
 
     /** 一档对应哪一条文案。<b>UI 查这张表，不自己判。</b> */
     public static String keyFor(TrustState.State state) {
-        return switch (state) {
-            case INVALID -> SIG_INVALID;
-            case KEY_CHANGED -> SIG_KEY_CHANGED;
-            case UNSIGNED -> SIG_UNSIGNED;
-            case UNKNOWN_AUTHOR -> SIG_UNKNOWN;
-            case TRUSTED -> SIG_TRUSTED;
-            case SIGNATURE_REMOVED -> SIG_REMOVED;
-        };
+        switch (state) {
+            case INVALID:
+                return SIG_INVALID;
+            case KEY_CHANGED:
+                return SIG_KEY_CHANGED;
+            case UNSIGNED:
+                return SIG_UNSIGNED;
+            case UNKNOWN_AUTHOR:
+                return SIG_UNKNOWN;
+            case TRUSTED:
+                return SIG_TRUSTED;
+            case SIGNATURE_REMOVED:
+                return SIG_REMOVED;
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     // ---------------------------------------------------------------- 确认短语

@@ -1,5 +1,7 @@
 package com.november.mcphone.compat;
 
+import com.november.mcphone.util.Java8;
+
 import com.github.tartaricacid.netmusic.item.ItemMusicCD;
 import com.november.mcphone.MCphone;
 import com.november.mcphone.feature.music.NetSong;
@@ -88,10 +90,10 @@ public final class NetMusicCompat {
         if (info == null) return Optional.empty();
 
         String url = info.songUrl;
-        if (url == null || url.isBlank()) return Optional.empty();
+        if (url == null || Java8.isBlank(url)) return Optional.empty();
 
         String title = info.songName;
-        if (title == null || title.isBlank()) title = url;
+        if (title == null || Java8.isBlank(title)) title = url;
 
         return Optional.of(new NetSong(
                 clamp(url, NetSong.MAX_URL),

@@ -53,8 +53,8 @@ final class LocalAudioDevice<C> implements AutoCloseable {
             if (!driver.supportsThreadContext(device)) throw new IOException("音频设备不支持线程局部上下文");
             context = driver.createContext(device);
             if (context == 0) throw new IOException("无法创建本地音频上下文");
-            var result = new LocalAudioDevice<>(driver,device,context);
-            try (var ignored = result.enter()) {
+            LocalAudioDevice<C> result = new LocalAudioDevice<>(driver,device,context);
+            try (LocalAudioDevice<C>.Scope ignored = result.enter()) {
                 result.capabilities = driver.createCapabilities(device);
             }
             return result;

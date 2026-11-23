@@ -164,8 +164,10 @@ public final class CurrencyGateway {
             if (interrupted) Thread.currentThread().interrupt();
         }
         if (c.state.get() == CANCELLED) throw refuse(KEY_CLOSED);
-        if (c.error instanceof RuntimeException re) throw re;
-        if (c.error instanceof Error er) throw er;
+        Object reMatch;
+        if ((reMatch = c.error) instanceof RuntimeException) throw ((RuntimeException) reMatch);
+        Object erMatch;
+        if ((erMatch = c.error) instanceof Error) throw ((Error) erMatch);
         // 受检异常换成替身抛：原来那个挂成 cause 的话，日志渲染 Caused by 时会调它的 getMessage，它可能自己会炸
         if (c.error != null) throw ProviderFailure.of(c.error);
         return c.result;

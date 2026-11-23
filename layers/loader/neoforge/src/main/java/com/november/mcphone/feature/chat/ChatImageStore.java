@@ -204,8 +204,8 @@ public final class ChatImageStore {
         if (!Files.isDirectory(dir)) return;   // 还没人发过图
 
         int removed = 0;
-        try (var stream = Files.list(dir)) {
-            for (Path path : stream.toList()) {
+        try (java.util.stream.Stream<Path> stream = Files.list(dir)) {
+            for (Path path : stream.collect(java.util.stream.Collectors.toList())) {
                 UUID id = parseId(path);
                 // 认不出名字的文件不动：那多半是服主自己放进去的东西，不该替他删
                 if (id == null || referenced.contains(id)) continue;

@@ -242,7 +242,7 @@ public final class MusicPage {
 
     /** 没有世界时返回 Long.MAX_VALUE：判据是「现在 < 终点才算在放」，给 0 会让唱片永远显示在放 */
     private static long gameTime() {
-        var mc = net.minecraft.client.Minecraft.getInstance();
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
         return mc.level == null ? Long.MAX_VALUE : mc.level.getGameTime();
     }
 
@@ -259,7 +259,7 @@ public final class MusicPage {
         // 按词换行，完整保留导入步骤和支持的格式。
         Component hint = Component.translatable("mcphone.music.empty_hint",
                 AudioDecoders.supportedNames());
-        for (var line : font.split(hint, w)) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(hint, w)) {
             g.drawString(font, line, x, y, FontPalette.dim(), false);
             y += font.lineHeight;
         }
@@ -382,11 +382,15 @@ public final class MusicPage {
     }
 
     private static PhoneSkin.Element modeElement(PlayMode mode) {
-        return switch (mode) {
-            case LIST_LOOP -> PhoneSkin.Element.MUSIC_MODE_LIST_LOOP;
-            case SINGLE_LOOP -> PhoneSkin.Element.MUSIC_MODE_SINGLE_LOOP;
-            case SHUFFLE -> PhoneSkin.Element.MUSIC_MODE_SHUFFLE;
-        };
+        switch (mode) {
+            case LIST_LOOP:
+                return PhoneSkin.Element.MUSIC_MODE_LIST_LOOP;
+            case SINGLE_LOOP:
+                return PhoneSkin.Element.MUSIC_MODE_SINGLE_LOOP;
+            case SHUFFLE:
+                return PhoneSkin.Element.MUSIC_MODE_SHUFFLE;
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     public boolean mouseClicked(double mx, double my, int button) {

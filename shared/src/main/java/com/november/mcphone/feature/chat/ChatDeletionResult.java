@@ -7,7 +7,7 @@ public enum ChatDeletionResult {
     ChatDeletionResult(int wireId) { this.wireId = wireId; }
     public int wireId() { return wireId; }
     public static ChatDeletionResult fromWire(int value) {
-        for (var result : values()) if (result.wireId == value) return result;
+        for (ChatDeletionResult result : values()) if (result.wireId == value) return result;
         throw new IllegalArgumentException("未知删除结果: " + value);
     }
 }

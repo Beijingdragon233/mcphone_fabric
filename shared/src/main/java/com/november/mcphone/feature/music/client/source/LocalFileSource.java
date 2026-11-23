@@ -1,5 +1,9 @@
 package com.november.mcphone.feature.music.client.source;
 
+import java.nio.file.Paths;
+
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.client.ClientPaths;
 import com.november.mcphone.core.PhonePaths;
 import com.november.mcphone.MCphone;
@@ -39,9 +43,9 @@ public final class LocalFileSource implements MusicSource {
     public static final String ID = "local";
 
     /** 相对布局常量；实际文件访问使用当前游戏实例，不读取旧目录。 */
-    public static final Path MUSIC_DIR = Path.of(PhonePaths.MUSIC.relative());
+    public static final Path MUSIC_DIR = Paths.get(PhonePaths.MUSIC.relative());
 
-    private List<Track> cached = List.of();
+    private List<Track> cached = ImmutableList.of();
 
     /** 音乐目录的统一入口；打开文件夹前也要补建，目录可能在进入 App 后被删除。 */
     public static Path directory() {
@@ -73,7 +77,7 @@ public final class LocalFileSource implements MusicSource {
             // 目录不在就建一个：玩家照着提示去放歌时，那个文件夹得已经存在，
             // 否则他还得自己一层层建出来
             directory();
-            cached = List.of();
+            cached = ImmutableList.of();
             return;
         }
 
@@ -89,7 +93,7 @@ public final class LocalFileSource implements MusicSource {
             MCphone.LOGGER.warn("[MCphone] 扫描音乐目录失败: {}", e.toString());
         }
 
-        cached = List.copyOf(found);
+        cached = ImmutableList.copyOf(found);
     }
 
     @Override

@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.PhoneTheme;
 import com.november.mcphone.core.client.PlayerAvatar;
@@ -53,10 +55,10 @@ public final class ChatAddContact {
     public static ChatAddContact newFriends() { return new ChatAddContact(true); }
     static List<OnlinePlayer> requestPlayers(List<OnlinePlayer> players) {
         return players.stream().filter(p -> p.relation() == Relation.REQUEST_RECEIVED
-                || p.relation() == Relation.REQUEST_SENT).toList();
+                || p.relation() == Relation.REQUEST_SENT).collect(Java8Collections.toList());
     }
     private List<OnlinePlayer> players() {
-        var list = ChatClientCache.getOnlinePlayers();
+        List<com.november.mcphone.feature.chat.net.OnlinePlayer> list = ChatClientCache.getOnlinePlayers();
         return requestsOnly ? requestPlayers(list) : list;
     }
 
@@ -94,7 +96,7 @@ public final class ChatAddContact {
         List<OnlinePlayer> players = players();
 
         if (requestsOnly) {
-            for (var line : font.split(Component.translatable("mcphone.chat.contacts.requests_online_hint"),
+            for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.chat.contacts.requests_online_hint"),
                     ChatLayout.unscaledWidth(w, ChatLayout.META_SCALE))) {
                 ChatUi.text(g, font, line, x, y, ChatLayout.META_SCALE, FontPalette.dim());
                 y += ChatUi.lineHeight(font, ChatLayout.META_SCALE);
@@ -103,7 +105,7 @@ public final class ChatAddContact {
         }
 
         if (ChatClientCache.isOnlineListTruncated()) {
-            for (var line : font.split(Component.translatable("mcphone.chat.truncated",
+            for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.chat.truncated",
                     players.size(), ChatClientCache.getTotalOnline()),
                     ChatLayout.unscaledWidth(w, ChatLayout.TEXT_SCALE))) {
                 ChatUi.text(g, font, line, x, y, ChatLayout.TEXT_SCALE, FontPalette.notice());
@@ -113,7 +115,7 @@ public final class ChatAddContact {
         }
 
         if (players.isEmpty()) {
-            for (var line : font.split(Component.translatable(requestsOnly
+            for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable(requestsOnly
                     ? "mcphone.chat.contacts.requests_empty" : "mcphone.chat.online_empty"),
                     ChatLayout.unscaledWidth(w, ChatLayout.TEXT_SCALE))) {
                 ChatUi.text(g, font, line, x, y, ChatLayout.TEXT_SCALE, FontPalette.subtle());
@@ -168,32 +170,48 @@ public final class ChatAddContact {
         if (p == null) return false;
 
         switch (p.relation()) {
-            case NONE -> MCphoneNetwork.sendToServer(new FriendRequestPacket(p.id()));
-            case REQUEST_RECEIVED ->
-                    MCphoneNetwork.sendToServer(new RespondFriendRequestPacket(p.id(), true));
-            case FRIEND -> MCphoneNetwork.sendToServer(new RemoveFriendPacket(p.id()));
-            // 已发出的申请只能等对方处理，重复发包没用
-            case REQUEST_SENT -> { }
+            case NONE:
+                MCphoneNetwork.sendToServer(new FriendRequestPacket(p.id()));
+                break;
+            case REQUEST_RECEIVED:
+                MCphoneNetwork.sendToServer(new RespondFriendRequestPacket(p.id(), true));
+                break;
+            case FRIEND:
+                MCphoneNetwork.sendToServer(new RemoveFriendPacket(p.id()));
+                break;
+                // 已发出的申请只能等对方处理，重复发包没用
+            case REQUEST_SENT: { }
+                break;
         }
         return true;
     }
 
     private static String actionKey(Relation relation) {
-        return switch (relation) {
-            case NONE -> "mcphone.chat.add_action";
-            case REQUEST_SENT -> "mcphone.chat.request_pending";
-            case REQUEST_RECEIVED -> "mcphone.chat.accept_action";
-            case FRIEND -> "mcphone.chat.remove_action";
-        };
+        switch (relation) {
+            case NONE:
+                return "mcphone.chat.add_action";
+            case REQUEST_SENT:
+                return "mcphone.chat.request_pending";
+            case REQUEST_RECEIVED:
+                return "mcphone.chat.accept_action";
+            case FRIEND:
+                return "mcphone.chat.remove_action";
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     private static int actionColor(Relation relation) {
-        return switch (relation) {
-            case NONE -> colorAdd();
-            case REQUEST_SENT -> colorPending();
-            case REQUEST_RECEIVED -> colorAccept();
-            case FRIEND -> colorRemove();
-        };
+        switch (relation) {
+            case NONE:
+                return colorAdd();
+            case REQUEST_SENT:
+                return colorPending();
+            case REQUEST_RECEIVED:
+                return colorAccept();
+            case FRIEND:
+                return colorRemove();
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     public boolean mouseScrolled(double scrollY) {

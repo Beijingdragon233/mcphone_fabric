@@ -24,8 +24,9 @@ public final class SettingsApp extends PhoneApp {
 
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
-            ps.navigateTo(PhoneScreen.Mode.SETTINGS);
+        Object psMatch;
+        if ((psMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) {
+            ((PhoneScreen) psMatch).navigateTo(PhoneScreen.Mode.SETTINGS);
         }
     }
 }

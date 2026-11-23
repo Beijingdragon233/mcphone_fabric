@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.script.net.ScriptErrorCode;
 
 import java.util.List;
@@ -42,8 +44,60 @@ public interface ActionEvaluator {
     /**
      * @param seq 这一次求值的序号，只用于日志与排查。<b>不是幂等键</b>
      */
-    record Request(String appId, String actionId, byte[] params,
-                   PlayerSnapshot player, String deployRev, long seq) {
+    final class Request {
+        private final String appId;
+        private final String actionId;
+        private final byte[] params;
+        private final PlayerSnapshot player;
+        private final String deployRev;
+        private final long seq;
+
+        public Request(String appId, String actionId, byte[] params, PlayerSnapshot player, String deployRev, long seq) {
+            this.appId = appId;
+            this.actionId = actionId;
+            this.params = params;
+            this.player = player;
+            this.deployRev = deployRev;
+            this.seq = seq;
+        }
+
+        public String appId() { return appId; }
+
+        public String actionId() { return actionId; }
+
+        public byte[] params() { return params; }
+
+        public PlayerSnapshot player() { return player; }
+
+        public String deployRev() { return deployRev; }
+
+        public long seq() { return seq; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Request)) return false;
+            Request that = (Request) other;
+            return java.util.Objects.equals(this.appId, that.appId)
+                    && java.util.Objects.equals(this.actionId, that.actionId)
+                    && java.util.Objects.equals(this.params, that.params)
+                    && java.util.Objects.equals(this.player, that.player)
+                    && java.util.Objects.equals(this.deployRev, that.deployRev)
+                    && this.seq == that.seq;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(appId);
+            hash = 31 * hash + java.util.Objects.hashCode(actionId);
+            hash = 31 * hash + java.util.Objects.hashCode(params);
+            hash = 31 * hash + java.util.Objects.hashCode(player);
+            hash = 31 * hash + java.util.Objects.hashCode(deployRev);
+            hash = 31 * hash + java.util.Objects.hashCode(seq);
+            return hash;
+        }
+
+        @Override public String toString() { return "Request[appId=" + appId + ", actionId=" + actionId + ", params=" + params + ", player=" + player + ", deployRev=" + deployRev + ", seq=" + seq + "]"; }
+
     }
 
     /**
@@ -53,15 +107,76 @@ public interface ActionEvaluator {
      * <b>它们的值只有业务层知道</b>（{@code COOLDOWN} 的 nextAt、{@code EXHAUSTED} 的余量、
      * §20.6 的 revision）。不放在这里，S13 到货时就要改这个已经合并的签名。
      */
-    record Outcome(ScriptErrorCode code, byte[] data, String messageKey, List<String> messageArgs,
-                   long retryAfterMs, long stateRevision, List<ActionIntent> intents, boolean moneyMoved) {
+    final class Outcome {
+        private final ScriptErrorCode code;
+        private final byte[] data;
+        private final String messageKey;
+        private final List<String> messageArgs;
+        private final long retryAfterMs;
+        private final long stateRevision;
+        private final List<ActionIntent> intents;
+        private final boolean moneyMoved;
 
-        public Outcome {
+        public ScriptErrorCode code() { return code; }
+
+        public byte[] data() { return data; }
+
+        public String messageKey() { return messageKey; }
+
+        public List<String> messageArgs() { return messageArgs; }
+
+        public long retryAfterMs() { return retryAfterMs; }
+
+        public long stateRevision() { return stateRevision; }
+
+        public List<ActionIntent> intents() { return intents; }
+
+        public boolean moneyMoved() { return moneyMoved; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Outcome)) return false;
+            Outcome that = (Outcome) other;
+            return java.util.Objects.equals(this.code, that.code)
+                    && java.util.Objects.equals(this.data, that.data)
+                    && java.util.Objects.equals(this.messageKey, that.messageKey)
+                    && java.util.Objects.equals(this.messageArgs, that.messageArgs)
+                    && this.retryAfterMs == that.retryAfterMs
+                    && this.stateRevision == that.stateRevision
+                    && java.util.Objects.equals(this.intents, that.intents)
+                    && this.moneyMoved == that.moneyMoved;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(code);
+            hash = 31 * hash + java.util.Objects.hashCode(data);
+            hash = 31 * hash + java.util.Objects.hashCode(messageKey);
+            hash = 31 * hash + java.util.Objects.hashCode(messageArgs);
+            hash = 31 * hash + java.util.Objects.hashCode(retryAfterMs);
+            hash = 31 * hash + java.util.Objects.hashCode(stateRevision);
+            hash = 31 * hash + java.util.Objects.hashCode(intents);
+            hash = 31 * hash + java.util.Objects.hashCode(moneyMoved);
+            return hash;
+        }
+
+        @Override public String toString() { return "Outcome[code=" + code + ", data=" + data + ", messageKey=" + messageKey + ", messageArgs=" + messageArgs + ", retryAfterMs=" + retryAfterMs + ", stateRevision=" + stateRevision + ", intents=" + intents + ", moneyMoved=" + moneyMoved + "]"; }
+
+
+        public Outcome(ScriptErrorCode code, byte[] data, String messageKey, List<String> messageArgs, long retryAfterMs, long stateRevision, List<ActionIntent> intents, boolean moneyMoved) {
             if (code == null) code = ScriptErrorCode.INTERNAL;
             if (data == null) data = new byte[0];
             if (messageKey == null) messageKey = code.defaultMessageKey();
-            messageArgs = messageArgs == null ? List.of() : List.copyOf(messageArgs);
-            intents = intents == null ? List.of() : List.copyOf(intents);
+            messageArgs = messageArgs == null ? ImmutableList.of() : ImmutableList.copyOf(messageArgs);
+            intents = intents == null ? ImmutableList.of() : ImmutableList.copyOf(intents);
+            this.code = code;
+            this.data = data;
+            this.messageKey = messageKey;
+            this.messageArgs = messageArgs;
+            this.retryAfterMs = retryAfterMs;
+            this.stateRevision = stateRevision;
+            this.intents = intents;
+            this.moneyMoved = moneyMoved;
         }
 
         /**
@@ -75,11 +190,11 @@ public interface ActionEvaluator {
         }
 
         public static Outcome ok(byte[] data, long stateRevision, List<ActionIntent> intents) {
-            return new Outcome(ScriptErrorCode.OK, data, "", List.of(), 0, stateRevision, intents, false);
+            return new Outcome(ScriptErrorCode.OK, data, "", ImmutableList.of(), 0, stateRevision, intents, false);
         }
 
         public static Outcome fail(ScriptErrorCode code) {
-            return new Outcome(code, new byte[0], code.defaultMessageKey(), List.of(), 0, 0, List.of(), false);
+            return new Outcome(code, new byte[0], code.defaultMessageKey(), ImmutableList.of(), 0, 0, ImmutableList.of(), false);
         }
     }
 }

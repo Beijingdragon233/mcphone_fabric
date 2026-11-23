@@ -38,14 +38,14 @@ public final class Amounts {
 
     /** 脚本给的 BigInt → 宿主的 long。不是 BigInt、或者超出 long 范围，都当场中断本次调用。 */
     public static long toLong(Object scriptValue, String where) {
-        if (!(scriptValue instanceof BigInteger b)) {
+        if (!(scriptValue instanceof BigInteger)) {
             throw HostError.invalid(
                     where + " 的金额要 BigInt（写成 123n 或 BigInt('123')），不是数字也不是字符串");
         }
-        if (b.bitLength() > 63) {
-            throw HostError.invalid(where + " 的金额超出 long 范围：" + b);
+        if (((BigInteger) scriptValue).bitLength() > 63) {
+            throw HostError.invalid(where + " 的金额超出 long 范围：" + ((BigInteger) scriptValue));
         }
-        return b.longValueExact();
+        return ((BigInteger) scriptValue).longValueExact();
     }
 
     /** 宿主的 long → 脚本能直接用的 BigInt。 */

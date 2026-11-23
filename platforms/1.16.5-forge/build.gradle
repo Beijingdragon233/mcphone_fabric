@@ -1,0 +1,151 @@
+plugins {
+    id 'net.minecraftforge.gradle' version '6.0.54'
+}
+
+def repoRoot = file('../..')
+def identity = new Properties()
+new File(repoRoot, 'gradle.properties').withInputStream { identity.load(it) }
+['mod_id', 'mod_name', 'mod_license', 'mod_group_id', 'mod_version', 'mod_authors', 'mod_repo_url'].each { key ->
+    ext[key] = identity.getProperty(key)
+    if (!ext[key]) throw new GradleException("Missing repository identity: "+key)
+}
+version = mod_version
+group = mod_group_id
+base { archivesName = mod_id }
+java { toolchain.languageVersion = JavaLanguageVersion.of(8) }
+
+apply from: '../../gradle/mcphone-layers.gradle'
+
+sourceSets.main.java.srcDir '../../shared/src/main/java'
+sourceSets.main.resources.srcDir '../../shared/src/main/resources'
+mcphoneLayers.each { layer ->
+    sourceSets.main.java.srcDir layer.javaDir
+    sourceSets.main.resources.srcDir layer.resourcesDir
+}
+
+minecraft {
+    mappings channel: 'official', version: minecraft_version
+    runs {
+        client {
+            workingDirectory file('run/client')
+            mods { mcphone { source sourceSets.main } }
+        }
+        server {
+            workingDirectory file('run/server')
+            args '--nogui'
+            mods { mcphone { source sourceSets.main } }
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+    maven {
+        url = 'https://cursemaven.com'
+        content { includeGroup 'curse.maven' }
+    }
+}
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    compileOnly fg.deobf('maven.modrinth:curios:5qPuCFYD')
+    compileOnly fg.deobf('maven.modrinth:net-music:eI0HSxIQ')
+    compileOnly fg.deobf('maven.modrinth:patchouli:swxCEODj')
+    compileOnly fg.deobf('maven.modrinth:waystones:vUV2WTLr')
+    compileOnly fg.deobf('maven.modrinth:refined-storage:ubJGKwUA')
+    compileOnly fg.deobf('maven.modrinth:toms-storage:vA1AvvN1')
+    compileOnly fg.deobf('curse.maven:mcef-577541:5830325')
+    compileOnly fg.deobf('curse.maven:applied-energistics-2-223794:3608871')
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.named('processResources', ProcessResources).configure {
+    filteringCharset = 'UTF-8'
+    def metadata = ['mod_id', 'mod_name', 'mod_license', 'mod_version', 'mod_authors', 'mod_repo_url',
+                    'minecraft_version', 'forge_version_range', 'loader_version_range'].collectEntries { [it, project.property(it)] }
+    inputs.properties metadata
+    filesMatching('META-INF/mods.toml') { expand metadata }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest.attributes('MixinConfigs': 'mcphone.ae2.mixins.json,mcphone.waystones.mixins.json,mcphone.refinedstorage.mixins.json')
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    finalizedBy 'reobfJar'
+}
+
+apply from: '../../gradle/mcphone-checks.gradle'
+apply from: '../../gradle/mcphone-sign.gradle'
+apply from: '../../gradle/mcphone-java8-libraries.gradle'
+
+ext.mcphoneApiBindings = '1.16.5-api-names.json'
+ext.mcphoneVersionSources = '../../layers/version/1.16.5/src/main/java'
+ext.mcphoneBindingOverrideLayers = ['forge-1.16.5-java8', 'forge-1.16.5-sounds']
+apply from: '../../gradle/mcphone-port-bindings.gradle'
+
+// Shared assertions use Java 17 syntax. The mod and real Forge launch still use Java 8.
+def assertionCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(17) }
+def assertionLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
+tasks.named('compileAssertTests', JavaCompile) { javaCompiler = assertionCompiler }
+tasks.withType(JavaExec).matching { it.name.startsWith('assertTest') }.configureEach {
+    javaLauncher = assertionLauncher
+}
+
+// Compile these existing sample/security assertions with the production compiler.
+def java8ScriptAssertions = tasks.register('compileJava8ScriptAssertions', JavaCompile) {
+    dependsOn 'bindAssertionApiNames'
+    javaCompiler = javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(8) }
+    source fileTree(layout.buildDirectory.dir('generated/sources/mcphone-api-bindings/assertions')) {
+        include '**/ClientScriptTest.java', '**/ScriptStaticCheckTest.java', '**/Java8ScriptRuntimeTest.java',
+                '**/Java8HttpTransportTest.java', '**/Java8SignaturesTest.java'
+    }
+    classpath = files(sourceSets.main.output, sourceSets.main.compileClasspath)
+    destinationDirectory = layout.buildDirectory.dir('classes/java8-script-assertions')
+}
+def java8ScriptRuns = [
+    'com.november.mcphone.core.script.sfc.ClientScriptTest',
+    'com.november.mcphone.core.script.engine.ScriptStaticCheckTest',
+    'com.november.mcphone.core.script.engine.Java8ScriptRuntimeTest',
+    'com.november.mcphone.core.script.http.Java8HttpTransportTest',
+    'com.november.mcphone.core.script.pkg.Java8SignaturesTest'
+].collect { name ->
+    tasks.register('java8' + name.substring(name.lastIndexOf('.') + 1), JavaExec) {
+        dependsOn java8ScriptAssertions, 'prepareAssertTestResources'
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+        classpath = files(java8ScriptAssertions.flatMap { it.destinationDirectory },
+                layout.buildDirectory.dir('resources/assert-tests'), sourceSets.main.output, sourceSets.main.compileClasspath)
+        mainClass = name
+    }
+}
+tasks.register('verifyJava8ScriptRuntime') { group = 'verification'; dependsOn java8ScriptRuns }
+tasks.named('check') { dependsOn 'verifyJava8ScriptRuntime' }
+tasks.named('assertTestJava8ScriptRuntimeTest', JavaExec) {
+    dependsOn java8ScriptAssertions
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(8) }
+    classpath = files(java8ScriptAssertions.flatMap { it.destinationDirectory },
+            layout.buildDirectory.dir('resources/assert-tests'), sourceSets.main.output, sourceSets.main.compileClasspath)
+}
+
+// Exchange actual encoded keys and signatures between independent Java 8 and Java 17 processes.
+def signatureFixtures = layout.buildDirectory.dir('signature-interop')
+def signatureJvm = { String taskName, int jdk, String operation, String fixture ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn java8ScriptAssertions
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(jdk) }
+        classpath = files(java8ScriptAssertions.flatMap { it.destinationDirectory },
+                sourceSets.main.output, sourceSets.main.compileClasspath)
+        mainClass = 'com.november.mcphone.core.script.pkg.Java8SignaturesTest'
+        args operation, signatureFixtures.get().dir(fixture).asFile.absolutePath
+    }
+}
+def write8 = signatureJvm('writeJava8Signatures', 8, 'write', 'java8')
+def verify17 = signatureJvm('verifyJava8SignaturesOnJava17', 17, 'verify', 'java8')
+verify17.configure { dependsOn write8 }
+def write17 = signatureJvm('writeJava17Signatures', 17, 'write', 'java17')
+def verify8 = signatureJvm('verifyJava17SignaturesOnJava8', 8, 'verify', 'java17')
+verify8.configure { dependsOn write17 }
+tasks.register('verifySignatureInterop') { group = 'verification'; dependsOn verify17, verify8 }
+tasks.named('check') { dependsOn 'verifySignatureInterop' }

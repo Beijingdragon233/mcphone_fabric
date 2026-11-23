@@ -122,7 +122,7 @@ public final class NotesList {
         g.drawString(font, Component.translatable("mcphone.notes.empty").getString(),
                 x, y, FontPalette.subtle(), false);
         y += font.lineHeight + 2;
-        for (var line : font.split(Component.translatable("mcphone.notes.empty_hint"), w)) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.notes.empty_hint"), w)) {
             g.drawString(font, line, x, y, FontPalette.dim(), false);
             y += font.lineHeight;
         }

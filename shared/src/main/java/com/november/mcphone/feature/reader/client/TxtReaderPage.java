@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client;
 
+import com.november.mcphone.util.Java8;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.core.client.PhoneTheme;
@@ -307,7 +309,7 @@ public final class TxtReaderPage {
                 x, y, FontPalette.title(), false);
         y += font.lineHeight + 2;
 
-        for (var line : font.split(Component.translatable("mcphone.reader.txt.broken_hint"), w)) {
+        for (net.minecraft.util.FormattedCharSequence line : font.split(Component.translatable("mcphone.reader.txt.broken_hint"), w)) {
             g.drawString(font, line, x, y, FontPalette.dim(), false);
             y += font.lineHeight;
         }
@@ -364,7 +366,7 @@ public final class TxtReaderPage {
     /** 这一章叫什么。没有标题的（认不出章节的书）由这里起名，那是界面的事，不是切章的事 */
     private String chapterName(int index) {
         String title = book == null ? null : book.chapterTitle(index);
-        if (title != null && !title.isBlank()) return title;
+        if (title != null && !Java8.isBlank(title)) return title;
         return Component.translatable("mcphone.reader.txt.section", index + 1).getString();
     }
 
@@ -426,11 +428,17 @@ public final class TxtReaderPage {
     public boolean keyPressed(int keyCode, Font font) {
         if (book == null) return false;
 
-        return switch (keyCode) {
-            case 263, 266 -> { previousPage(font); yield true; }   // ← / PageUp
-            case 262, 267, 32 -> { nextPage(font); yield true; }   // → / PageDown / 空格
-            default -> false;
-        };
+        switch (keyCode) {
+            case 263:
+            case 266: { previousPage(font); return true; }
+                // ← / PageUp
+            case 262:
+            case 267:
+            case 32: { nextPage(font); return true; }
+                // → / PageDown / 空格
+            default:
+                return false;
+        }
     }
 
     //  翻页

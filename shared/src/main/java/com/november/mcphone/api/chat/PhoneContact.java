@@ -33,7 +33,7 @@ public final class PhoneContact {
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof PhoneContact c && id.equals(c.id) && name.equals(c.name) && online == c.online;
+        return o instanceof PhoneContact && id.equals(((PhoneContact) o).id) && name.equals(((PhoneContact) o).name) && online == ((PhoneContact) o).online;
     }
 
     @Override

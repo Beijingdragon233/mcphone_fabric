@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableList;
+
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.commands.CommandSourceStack;
@@ -171,8 +173,9 @@ public final class ScriptAdminCommand {
             return 0;
         }
         List<String> actions = parseList(actionsArg);
-        List<String> caps = isAll(capsArg) ? List.copyOf(candidate.declaredCapabilities()) : parseList(capsArg);
-        UUID approver = src.getEntity() instanceof ServerPlayer p ? p.getUUID() : null;
+        List<String> caps = isAll(capsArg) ? ImmutableList.copyOf(candidate.declaredCapabilities()) : parseList(capsArg);
+        Object pMatch;
+        UUID approver = (pMatch = src.getEntity()) instanceof ServerPlayer ? ((ServerPlayer) pMatch).getUUID() : null;
         // 覆盖前先看一眼旧的批准集：重新批准是"整条轴替换"，两轴都要重列 —— 拍在这里好回显（对完 S18-A1 的丑话）。
         Deployment before = dd.deployment(candidate.appId());
         DeploymentData.Approval ap;
@@ -294,7 +297,7 @@ public final class ScriptAdminCommand {
     /** null = 全批；{@code -} = 一个都不批；否则按逗号拆（空 = 空集，与 approve 的 fail-closed 一致）。 */
     static List<String> parseList(String arg) {
         if (arg == null) return null;
-        if (arg.equals("-")) return List.of();
+        if (arg.equals("-")) return ImmutableList.of();
         return split(arg);
     }
 

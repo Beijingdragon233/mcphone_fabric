@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.timer;
 
+import com.google.common.collect.ImmutableSet;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -17,8 +19,78 @@ public final class DelayedCallbacks implements AutoCloseable {
     public static final int MIN_DELAY_MS = 50;
     public static final int MAX_DELAY_MS = 60_000;
     private static final AtomicInteger NEXT_ID = new AtomicInteger(1);
-    private record Request(int id, int delayMs, String callback) {}
-    private record Flight(Request request, long due, Consumer<String> receiver) {}
+    private static final class Request {
+        private final int id;
+        private final int delayMs;
+        private final String callback;
+
+        private Request(int id, int delayMs, String callback) {
+            this.id = id;
+            this.delayMs = delayMs;
+            this.callback = callback;
+        }
+
+        public int id() { return id; }
+
+        public int delayMs() { return delayMs; }
+
+        public String callback() { return callback; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Request)) return false;
+            Request that = (Request) other;
+            return this.id == that.id
+                    && this.delayMs == that.delayMs
+                    && java.util.Objects.equals(this.callback, that.callback);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(id);
+            hash = 31 * hash + java.util.Objects.hashCode(delayMs);
+            hash = 31 * hash + java.util.Objects.hashCode(callback);
+            return hash;
+        }
+
+        @Override public String toString() { return "Request[id=" + id + ", delayMs=" + delayMs + ", callback=" + callback + "]"; }
+}
+    private static final class Flight {
+        private final Request request;
+        private final long due;
+        private final Consumer<String> receiver;
+
+        private Flight(Request request, long due, Consumer<String> receiver) {
+            this.request = request;
+            this.due = due;
+            this.receiver = receiver;
+        }
+
+        public Request request() { return request; }
+
+        public long due() { return due; }
+
+        public Consumer<String> receiver() { return receiver; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Flight)) return false;
+            Flight that = (Flight) other;
+            return java.util.Objects.equals(this.request, that.request)
+                    && this.due == that.due
+                    && java.util.Objects.equals(this.receiver, that.receiver);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(request);
+            hash = 31 * hash + java.util.Objects.hashCode(due);
+            hash = 31 * hash + java.util.Objects.hashCode(receiver);
+            return hash;
+        }
+
+        @Override public String toString() { return "Flight[request=" + request + ", due=" + due + ", receiver=" + receiver + "]"; }
+}
     private final Map<Integer, Flight> pending = new LinkedHashMap<>();
     private final BooleanSupplier active;
     private final LongSupplier clock;
@@ -71,7 +143,7 @@ public final class DelayedCallbacks implements AutoCloseable {
         private Batch(DelayedCallbacks owner, Consumer<String> receiver) {
             this.owner = owner;
             this.receiver = java.util.Objects.requireNonNull(receiver);
-            this.owned = owner.usable() ? Set.copyOf(owner.pending.keySet()) : Set.of();
+            this.owned = owner.usable() ? ImmutableSet.copyOf(owner.pending.keySet()) : ImmutableSet.of();
         }
 
         public int after(int delayMs, String callback) {

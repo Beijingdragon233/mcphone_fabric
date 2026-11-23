@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.sfc;
 
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.core.script.engine.ClientScript;
 import com.november.mcphone.core.script.http.HttpRequests;
 import com.november.mcphone.core.script.timer.DelayedCallbacks;
@@ -34,31 +37,223 @@ public final class Statements {
     private static final String SHAPES =
             "@click 只能写 x = 表达式、x++、x--、close()、back()、nav('页面')、nav('页面', {id:1})、openUrl('网址')、call('动作') 或本页函数";
 
-    sealed interface Stmt permits Assign, Step, Close, Back, Nav, Call, LocalCall, OpenUrl {
+    interface Stmt {
     }
 
-    record Assign(String key, Expr.Compiled value) implements Stmt {
+    static final class Assign implements Stmt {
+        private final String key;
+        private final Expr.Compiled value;
+
+        Assign(String key, Expr.Compiled value) {
+            this.key = key;
+            this.value = value;
+        }
+
+        public String key() { return key; }
+
+        public Expr.Compiled value() { return value; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Assign)) return false;
+            Assign that = (Assign) other;
+            return java.util.Objects.equals(this.key, that.key)
+                    && java.util.Objects.equals(this.value, that.value);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(key);
+            hash = 31 * hash + java.util.Objects.hashCode(value);
+            return hash;
+        }
+
+        @Override public String toString() { return "Assign[key=" + key + ", value=" + value + "]"; }
+
     }
 
-    record Step(String key, int delta) implements Stmt {
+    static final class Step implements Stmt {
+        private final String key;
+        private final int delta;
+
+        Step(String key, int delta) {
+            this.key = key;
+            this.delta = delta;
+        }
+
+        public String key() { return key; }
+
+        public int delta() { return delta; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Step)) return false;
+            Step that = (Step) other;
+            return java.util.Objects.equals(this.key, that.key)
+                    && this.delta == that.delta;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(key);
+            hash = 31 * hash + java.util.Objects.hashCode(delta);
+            return hash;
+        }
+
+        @Override public String toString() { return "Step[key=" + key + ", delta=" + delta + "]"; }
+
     }
 
-    record Close() implements Stmt {
+    static final class Close implements Stmt {
+        Close() {
+        }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Close)) return false;
+            return true;
+        }
+
+        @Override public int hashCode() {
+            return 0;
+        }
+
+        @Override public String toString() { return "Close[]"; }
+
     }
 
-    record Back() implements Stmt {
+    static final class Back implements Stmt {
+        Back() {
+        }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Back)) return false;
+            return true;
+        }
+
+        @Override public int hashCode() {
+            return 0;
+        }
+
+        @Override public String toString() { return "Back[]"; }
+
     }
 
-    record Nav(Expr.Compiled page, Expr.Compiled parameters) implements Stmt {
+    static final class Nav implements Stmt {
+        private final Expr.Compiled page;
+        private final Expr.Compiled parameters;
+
+        Nav(Expr.Compiled page, Expr.Compiled parameters) {
+            this.page = page;
+            this.parameters = parameters;
+        }
+
+        public Expr.Compiled page() { return page; }
+
+        public Expr.Compiled parameters() { return parameters; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Nav)) return false;
+            Nav that = (Nav) other;
+            return java.util.Objects.equals(this.page, that.page)
+                    && java.util.Objects.equals(this.parameters, that.parameters);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(page);
+            hash = 31 * hash + java.util.Objects.hashCode(parameters);
+            return hash;
+        }
+
+        @Override public String toString() { return "Nav[page=" + page + ", parameters=" + parameters + "]"; }
+
     }
 
-    record OpenUrl(Expr.Compiled url) implements Stmt {}
+    static final class OpenUrl implements Stmt {
+        private final Expr.Compiled url;
+
+        OpenUrl(Expr.Compiled url) {
+            this.url = url;
+        }
+
+        public Expr.Compiled url() { return url; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof OpenUrl)) return false;
+            OpenUrl that = (OpenUrl) other;
+            return java.util.Objects.equals(this.url, that.url);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(url);
+            return hash;
+        }
+
+        @Override public String toString() { return "OpenUrl[url=" + url + "]"; }
+}
 
     /** 宿主转发的一条 RPC（§15.1）。参数与回调还写不了（P1 的 <script>），这里只点一下发空参数。 */
-    record Call(String actionId) implements Stmt {
+    static final class Call implements Stmt {
+        private final String actionId;
+
+        Call(String actionId) {
+            this.actionId = actionId;
+        }
+
+        public String actionId() { return actionId; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Call)) return false;
+            Call that = (Call) other;
+            return java.util.Objects.equals(this.actionId, that.actionId);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(actionId);
+            return hash;
+        }
+
+        @Override public String toString() { return "Call[actionId=" + actionId + "]"; }
+
     }
 
-    record LocalCall(String name, List<Expr.Compiled> arguments) implements Stmt {
+    static final class LocalCall implements Stmt {
+        private final String name;
+        private final List<Expr.Compiled> arguments;
+
+        LocalCall(String name, List<Expr.Compiled> arguments) {
+            this.name = name;
+            this.arguments = arguments;
+        }
+
+        public String name() { return name; }
+
+        public List<Expr.Compiled> arguments() { return arguments; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof LocalCall)) return false;
+            LocalCall that = (LocalCall) other;
+            return java.util.Objects.equals(this.name, that.name)
+                    && java.util.Objects.equals(this.arguments, that.arguments);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(arguments);
+            return hash;
+        }
+
+        @Override public String toString() { return "LocalCall[name=" + name + ", arguments=" + arguments + "]"; }
+
     }
 
     /**
@@ -66,8 +261,72 @@ public final class Statements {
      * close、back、nav 同时出现时由页面决定先后，这里只如实报出写了哪些。
      * {@code calls} 是要宿主发出去的动作 id，按书写顺序。
      */
-    public record Outcome(boolean applied, boolean close, boolean back, String nav,
-                          List<String> calls, List<String> warnings, PageParameters navParameters, String externalUrl) {
+    public static final class Outcome {
+        private final boolean applied;
+        private final boolean close;
+        private final boolean back;
+        private final String nav;
+        private final List<String> calls;
+        private final List<String> warnings;
+        private final PageParameters navParameters;
+        private final String externalUrl;
+
+        public Outcome(boolean applied, boolean close, boolean back, String nav, List<String> calls, List<String> warnings, PageParameters navParameters, String externalUrl) {
+            this.applied = applied;
+            this.close = close;
+            this.back = back;
+            this.nav = nav;
+            this.calls = calls;
+            this.warnings = warnings;
+            this.navParameters = navParameters;
+            this.externalUrl = externalUrl;
+        }
+
+        public boolean applied() { return applied; }
+
+        public boolean close() { return close; }
+
+        public boolean back() { return back; }
+
+        public String nav() { return nav; }
+
+        public List<String> calls() { return calls; }
+
+        public List<String> warnings() { return warnings; }
+
+        public PageParameters navParameters() { return navParameters; }
+
+        public String externalUrl() { return externalUrl; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Outcome)) return false;
+            Outcome that = (Outcome) other;
+            return this.applied == that.applied
+                    && this.close == that.close
+                    && this.back == that.back
+                    && java.util.Objects.equals(this.nav, that.nav)
+                    && java.util.Objects.equals(this.calls, that.calls)
+                    && java.util.Objects.equals(this.warnings, that.warnings)
+                    && java.util.Objects.equals(this.navParameters, that.navParameters)
+                    && java.util.Objects.equals(this.externalUrl, that.externalUrl);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(applied);
+            hash = 31 * hash + java.util.Objects.hashCode(close);
+            hash = 31 * hash + java.util.Objects.hashCode(back);
+            hash = 31 * hash + java.util.Objects.hashCode(nav);
+            hash = 31 * hash + java.util.Objects.hashCode(calls);
+            hash = 31 * hash + java.util.Objects.hashCode(warnings);
+            hash = 31 * hash + java.util.Objects.hashCode(navParameters);
+            hash = 31 * hash + java.util.Objects.hashCode(externalUrl);
+            return hash;
+        }
+
+        @Override public String toString() { return "Outcome[applied=" + applied + ", close=" + close + ", back=" + back + ", nav=" + nav + ", calls=" + calls + ", warnings=" + warnings + ", navParameters=" + navParameters + ", externalUrl=" + externalUrl + "]"; }
+
         public Outcome(boolean applied, boolean close, boolean back, String nav,
                        List<String> calls, List<String> warnings, PageParameters navParameters) {
             this(applied, close, back, nav, calls, warnings, navParameters, null);
@@ -78,8 +337,48 @@ public final class Statements {
     }
 
     /** 实例化时绑好 v-for 变量的一条 @click，点击时执行。 */
-    public record Bound(Statements statements, List<String> names, List<Object> values,
-                        java.util.Map<String, Object> host) {
+    public static final class Bound {
+        private final Statements statements;
+        private final List<String> names;
+        private final List<Object> values;
+        private final java.util.Map<String, Object> host;
+
+        public Bound(Statements statements, List<String> names, List<Object> values, java.util.Map<String, Object> host) {
+            this.statements = statements;
+            this.names = names;
+            this.values = values;
+            this.host = host;
+        }
+
+        public Statements statements() { return statements; }
+
+        public List<String> names() { return names; }
+
+        public List<Object> values() { return values; }
+
+        public java.util.Map<String, Object> host() { return host; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Bound)) return false;
+            Bound that = (Bound) other;
+            return java.util.Objects.equals(this.statements, that.statements)
+                    && java.util.Objects.equals(this.names, that.names)
+                    && java.util.Objects.equals(this.values, that.values)
+                    && java.util.Objects.equals(this.host, that.host);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(statements);
+            hash = 31 * hash + java.util.Objects.hashCode(names);
+            hash = 31 * hash + java.util.Objects.hashCode(values);
+            hash = 31 * hash + java.util.Objects.hashCode(host);
+            return hash;
+        }
+
+        @Override public String toString() { return "Bound[statements=" + statements + ", names=" + names + ", values=" + values + ", host=" + host + "]"; }
+
         public Outcome run(UiState state, String file) {
             try (LocalStore.Transaction storage = new LocalStore.Transaction(null)) {
                 return run(state, file, storage);
@@ -154,7 +453,7 @@ public final class Statements {
                 throw ExprParser.syntax(p.peek(), "两条语句之间要用 ; 隔开");
             }
         }
-        return new Statements(List.copyOf(out), line, script, input);
+        return new Statements(ImmutableList.copyOf(out), line, script, input);
     }
 
     private static Stmt statement(ExprParser p, Scope scope, String src, ClientScript script) {
@@ -175,12 +474,13 @@ public final class Statements {
                 return new OpenUrl(compiled(url, t, src));
             }
             switch (name) {
-                case "close", "back" -> {
+                case "close":
+                case "back": {
                     p.next();
                     p.expect(")");
                     return name.equals("close") ? new Close() : new Back();
                 }
-                case "nav" -> {
+                case "nav": {
                     p.next();
                     Typed page = p.parse(scope);
                     Expr.Compiled parameters = null;
@@ -199,7 +499,7 @@ public final class Statements {
                     p.expect(")");
                     return new Nav(compiled(page, t, src), parameters);
                 }
-                case "call" -> {
+                case "call": {
                     p.next();
                     Tok arg = p.next();
                     if (arg.kind() != 's') throw ExprParser.syntax(arg, "call(...) 要一个动作名字符串，比如 call('claim_daily')");
@@ -215,7 +515,7 @@ public final class Statements {
                     p.expect(")");
                     return new Call(action);
                 }
-                default -> {
+                default: {
                     if (script == null || !script.declares(name)) throw SfcError.at(Code.E_EXPR_NO_CALLS, t.line(), t.col());
                     p.next();
                     List<Expr.Compiled> arguments = new ArrayList<>();
@@ -238,7 +538,7 @@ public final class Statements {
                     p.expect(")");
                     if (arguments.size() != script.arity(name)) throw ExprParser.syntax(t,
                             "客户端函数 '" + name + "' 需要 " + script.arity(name) + " 个参数，得到 " + arguments.size() + " 个");
-                    return new LocalCall(name, List.copyOf(arguments));
+                    return new LocalCall(name, ImmutableList.copyOf(arguments));
                 }
             }
         }
@@ -267,13 +567,23 @@ public final class Statements {
             if (t.kind() == 'e') break;
             if (t.kind() == 'p') {
                 switch (t.text()) {
-                    case "(", "[", "{" -> depth++;
-                    case ")", "]", "}" -> depth--;
-                    case ";" -> {
+                    case "(":
+                    case "[":
+                    case "{":
+                        depth++;
+                        break;
+                    case ")":
+                    case "]":
+                    case "}":
+                        depth--;
+                        break;
+                    case ";": {
                         if (depth <= 0) return end(last) - first.offset();
                     }
-                    default -> {
+                        break;
+                    default: {
                     }
+                        break;
                 }
             }
             last = t;
@@ -291,19 +601,19 @@ public final class Statements {
         if (lines == 0) return this;
         List<Stmt> moved = new ArrayList<>();
         for (Stmt s : list) {
-            if (s instanceof Assign a) {
-                moved.add(new Assign(a.key(), shift(a.value(), lines)));
-            } else if (s instanceof Nav n) {
-                moved.add(new Nav(shift(n.page(), lines), n.parameters() == null ? null : shift(n.parameters(), lines)));
-            } else if (s instanceof LocalCall call) {
-                moved.add(new LocalCall(call.name(), call.arguments().stream().map(a -> shift(a, lines)).toList()));
-            } else if (s instanceof OpenUrl link) {
-                moved.add(new OpenUrl(shift(link.url(), lines)));
+            if (s instanceof Assign) {
+                moved.add(new Assign(((Assign) s).key(), shift(((Assign) s).value(), lines)));
+            } else if (s instanceof Nav) {
+                moved.add(new Nav(shift(((Nav) s).page(), lines), ((Nav) s).parameters() == null ? null : shift(((Nav) s).parameters(), lines)));
+            } else if (s instanceof LocalCall) {
+                moved.add(new LocalCall(((LocalCall) s).name(), ((LocalCall) s).arguments().stream().map(a -> shift(a, lines)).collect(Java8Collections.toList())));
+            } else if (s instanceof OpenUrl) {
+                moved.add(new OpenUrl(shift(((OpenUrl) s).url(), lines)));
             } else {
                 moved.add(s);
             }
         }
-        return new Statements(List.copyOf(moved), line + lines, script, input);
+        return new Statements(ImmutableList.copyOf(moved), line + lines, script, input);
     }
 
     static Expr.Compiled shift(Expr.Compiled c, int lines) {
@@ -347,38 +657,39 @@ public final class Statements {
         Set<String> changed = new LinkedHashSet<>();
         for (Stmt s : list) {
             c.line = line;
-            if (s instanceof Assign a) {
-                Object v = a.value().run(c);
+            if (s instanceof Assign) {
+                Object v = ((Assign) s).value().run(c);
                 // §9.7 的值规则不只管初值，形状也对着初值比：编译期按初值推断的类型靠它成立
-                String why = state.writeProblem(a.key(), v);
+                String why = state.writeProblem(((Assign) s).key(), v);
                 if (why != null) return failed(c, why);
-                scratch.put(a.key(), v);
-                changed.add(a.key());
-            } else if (s instanceof Step st) {
-                if (!(scratch.get(st.key()) instanceof Integer n)) {
-                    return failed(c, st.key() + (st.delta() > 0 ? "++" : "--") + " 只能用在 int 上，它是 " + Values.kind(scratch.get(st.key())));
+                scratch.put(((Assign) s).key(), v);
+                changed.add(((Assign) s).key());
+            } else if (s instanceof Step) {
+                Object n = scratch.get(((Step) s).key());
+                if (!(n instanceof Integer)) {
+                    return failed(c, ((Step) s).key() + (((Step) s).delta() > 0 ? "++" : "--") + " 只能用在 int 上，它是 " + Values.kind(scratch.get(((Step) s).key())));
                 }
-                scratch.put(st.key(), n + st.delta());
-                changed.add(st.key());
-            } else if (s instanceof Nav nv) {
-                Object v = nv.page().run(c);
-                if (!(v instanceof String page)) return failed(c, "nav(...) 要页面名字符串，得到的是 " + Values.kind(v));
+                scratch.put(((Step) s).key(), ((Integer) n) + ((Step) s).delta());
+                changed.add(((Step) s).key());
+            } else if (s instanceof Nav) {
+                Object v = ((Nav) s).page().run(c);
+                if (!(v instanceof String)) return failed(c, "nav(...) 要页面名字符串，得到的是 " + Values.kind(v));
                 try {
-                    navParameters = nv.parameters() == null ? PageParameters.EMPTY : PageParameters.from(nv.parameters().run(c));
+                    navParameters = ((Nav) s).parameters() == null ? PageParameters.EMPTY : PageParameters.from(((Nav) s).parameters().run(c));
                 } catch (IllegalArgumentException e) {
                     return failed(c, e.getMessage());
                 }
-                nav = page;
-            } else if (s instanceof Call call) {
-                calls.add(call.actionId());
-            } else if (s instanceof OpenUrl link) {
-                try { externalUrl = WebLinks.checked(link.url().run(c)); }
+                nav = ((String) v);
+            } else if (s instanceof Call) {
+                calls.add(((Call) s).actionId());
+            } else if (s instanceof OpenUrl) {
+                try { externalUrl = WebLinks.checked(((OpenUrl) s).url().run(c)); }
                 catch (IllegalArgumentException e) { return failed(c, e.getMessage()); }
-            } else if (s instanceof LocalCall call) {
+            } else if (s instanceof LocalCall) {
                 try {
                     List<Object> arguments = new ArrayList<>();
-                    for (Expr.Compiled argument : call.arguments()) arguments.add(argument.run(c));
-                    Map<String, Object> result = script.invoke(call.name(), arguments, scratch, state, storage, requests, timers);
+                    for (Expr.Compiled argument : ((LocalCall) s).arguments()) arguments.add(argument.run(c));
+                    Map<String, Object> result = script.invoke(((LocalCall) s).name(), arguments, scratch, state, storage, requests, timers);
                     scratch.putAll(result);
                     changed.addAll(result.keySet());
                 } catch (ClientScript.Failure failure) {
@@ -393,11 +704,11 @@ public final class Statements {
         String why = state.writeProblems(scratch);
         if (why != null) return failed(c, why);
         for (String k : changed) state.set(k, scratch.get(k));
-        return new Outcome(true, close, back, nav, List.copyOf(calls), c.warnings(), navParameters, externalUrl);
+        return new Outcome(true, close, back, nav, ImmutableList.copyOf(calls), c.warnings(), navParameters, externalUrl);
     }
 
     private Outcome failed(EvalContext c, String reason) {
         c.warn(reason + "，这组 " + (input ? "@input" : "@click") + " 一条都不执行");
-        return new Outcome(false, false, false, null, List.of(), c.warnings());
+        return new Outcome(false, false, false, null, ImmutableList.of(), c.warnings());
     }
 }

@@ -23,7 +23,48 @@ import net.minecraft.network.FriendlyByteBuf;
  * @param data     内容，≤ {@link ScriptProtocol#DATA_MAX}
  * @param revision 单调递增，客户端据此判乱序与丢失
  */
-public record ScriptPush(String appId, String topic, byte[] data, long revision) {
+public final class ScriptPush {
+    private final String appId;
+    private final String topic;
+    private final byte[] data;
+    private final long revision;
+
+    public ScriptPush(String appId, String topic, byte[] data, long revision) {
+        this.appId = appId;
+        this.topic = topic;
+        this.data = data;
+        this.revision = revision;
+    }
+
+    public String appId() { return appId; }
+
+    public String topic() { return topic; }
+
+    public byte[] data() { return data; }
+
+    public long revision() { return revision; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ScriptPush)) return false;
+        ScriptPush that = (ScriptPush) other;
+        return java.util.Objects.equals(this.appId, that.appId)
+                && java.util.Objects.equals(this.topic, that.topic)
+                && java.util.Objects.equals(this.data, that.data)
+                && this.revision == that.revision;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(appId);
+        hash = 31 * hash + java.util.Objects.hashCode(topic);
+        hash = 31 * hash + java.util.Objects.hashCode(data);
+        hash = 31 * hash + java.util.Objects.hashCode(revision);
+        return hash;
+    }
+
+    @Override public String toString() { return "ScriptPush[appId=" + appId + ", topic=" + topic + ", data=" + data + ", revision=" + revision + "]"; }
+
 
     /**
      * 这条是不是宿主自己发的。<b>两个条件缺一不可</b>，理由见类注释。

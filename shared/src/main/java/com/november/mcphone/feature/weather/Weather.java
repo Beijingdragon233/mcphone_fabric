@@ -136,10 +136,14 @@ public final class Weather {
         if (!raining) return Kind.CLEAR;
         if (thundering) return Kind.THUNDER;
 
-        return switch (local == null ? Precip.NONE : local) {
-            case SNOW -> Kind.SNOW;
-            case RAIN -> Kind.RAIN;
-            case NONE -> Kind.DRY;
-        };
+        switch (local == null ? Precip.NONE : local) {
+            case SNOW:
+                return Kind.SNOW;
+            case RAIN:
+                return Kind.RAIN;
+            case NONE:
+                return Kind.DRY;
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 }

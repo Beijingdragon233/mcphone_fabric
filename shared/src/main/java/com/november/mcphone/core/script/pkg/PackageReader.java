@@ -164,8 +164,78 @@ public final class PackageReader {
     //  ZIP 结构
     // ============================================================
 
-    private record Central(String name, int method, int flags, long crc, long compressedSize,
-                           long uncompressedSize, long localOffset, int host, int externalAttributes) {
+    private static final class Central {
+        private final String name;
+        private final int method;
+        private final int flags;
+        private final long crc;
+        private final long compressedSize;
+        private final long uncompressedSize;
+        private final long localOffset;
+        private final int host;
+        private final int externalAttributes;
+
+        private Central(String name, int method, int flags, long crc, long compressedSize, long uncompressedSize, long localOffset, int host, int externalAttributes) {
+            this.name = name;
+            this.method = method;
+            this.flags = flags;
+            this.crc = crc;
+            this.compressedSize = compressedSize;
+            this.uncompressedSize = uncompressedSize;
+            this.localOffset = localOffset;
+            this.host = host;
+            this.externalAttributes = externalAttributes;
+        }
+
+        public String name() { return name; }
+
+        public int method() { return method; }
+
+        public int flags() { return flags; }
+
+        public long crc() { return crc; }
+
+        public long compressedSize() { return compressedSize; }
+
+        public long uncompressedSize() { return uncompressedSize; }
+
+        public long localOffset() { return localOffset; }
+
+        public int host() { return host; }
+
+        public int externalAttributes() { return externalAttributes; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Central)) return false;
+            Central that = (Central) other;
+            return java.util.Objects.equals(this.name, that.name)
+                    && this.method == that.method
+                    && this.flags == that.flags
+                    && this.crc == that.crc
+                    && this.compressedSize == that.compressedSize
+                    && this.uncompressedSize == that.uncompressedSize
+                    && this.localOffset == that.localOffset
+                    && this.host == that.host
+                    && this.externalAttributes == that.externalAttributes;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(method);
+            hash = 31 * hash + java.util.Objects.hashCode(flags);
+            hash = 31 * hash + java.util.Objects.hashCode(crc);
+            hash = 31 * hash + java.util.Objects.hashCode(compressedSize);
+            hash = 31 * hash + java.util.Objects.hashCode(uncompressedSize);
+            hash = 31 * hash + java.util.Objects.hashCode(localOffset);
+            hash = 31 * hash + java.util.Objects.hashCode(host);
+            hash = 31 * hash + java.util.Objects.hashCode(externalAttributes);
+            return hash;
+        }
+
+        @Override public String toString() { return "Central[name=" + name + ", method=" + method + ", flags=" + flags + ", crc=" + crc + ", compressedSize=" + compressedSize + ", uncompressedSize=" + uncompressedSize + ", localOffset=" + localOffset + ", host=" + host + ", externalAttributes=" + externalAttributes + "]"; }
+
         int unixMode() {
             return (externalAttributes >>> 16) & 0xFFFF;
         }
@@ -251,7 +321,36 @@ public final class PackageReader {
      * 字节吃进自己的内容。返回 {@code META/sig.json} 的内容，没有则 null。
      */
     /** {@code META/} 下那两个文件的内容，没有就是 null。 */
-    record MetaFiles(byte[] signature, byte[] rotate) {
+    static final class MetaFiles {
+        private final byte[] signature;
+        private final byte[] rotate;
+
+        MetaFiles(byte[] signature, byte[] rotate) {
+            this.signature = signature;
+            this.rotate = rotate;
+        }
+
+        public byte[] signature() { return signature; }
+
+        public byte[] rotate() { return rotate; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof MetaFiles)) return false;
+            MetaFiles that = (MetaFiles) other;
+            return java.util.Objects.equals(this.signature, that.signature)
+                    && java.util.Objects.equals(this.rotate, that.rotate);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(signature);
+            hash = 31 * hash + java.util.Objects.hashCode(rotate);
+            return hash;
+        }
+
+        @Override public String toString() { return "MetaFiles[signature=" + signature + ", rotate=" + rotate + "]"; }
+
     }
 
     private static MetaFiles walk(byte[] zip, List<Central> records, long cdOffset,
@@ -300,7 +399,36 @@ public final class PackageReader {
         return new MetaFiles(signature, rotate);
     }
 
-    private record Extracted(byte[] data, long compressed) {
+    private static final class Extracted {
+        private final byte[] data;
+        private final long compressed;
+
+        private Extracted(byte[] data, long compressed) {
+            this.data = data;
+            this.compressed = compressed;
+        }
+
+        public byte[] data() { return data; }
+
+        public long compressed() { return compressed; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Extracted)) return false;
+            Extracted that = (Extracted) other;
+            return java.util.Objects.equals(this.data, that.data)
+                    && this.compressed == that.compressed;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(data);
+            hash = 31 * hash + java.util.Objects.hashCode(compressed);
+            return hash;
+        }
+
+        @Override public String toString() { return "Extracted[data=" + data + ", compressed=" + compressed + "]"; }
+
     }
 
     /**

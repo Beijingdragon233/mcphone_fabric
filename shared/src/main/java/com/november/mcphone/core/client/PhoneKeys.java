@@ -1,5 +1,7 @@
 package com.november.mcphone.core.client;
 
+import com.google.common.collect.ImmutableList;
+
 import net.minecraft.client.KeyMapping;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -163,7 +165,7 @@ public final class PhoneKeys {
      * <b>顺序不影响玩家看到的排列</b>：原版的按键设置界面自己按「分类 + 译名」排序，
      * 注册顺序从来没进过那条路。往这个列表里加、或者调整顺序，都不会动到界面。
      */
-    public static final List<Key> ALL = List.of(
+    public static final List<Key> ALL = ImmutableList.of(
             CAMERA_SHUTTER,
             CAMERA_EXIT,
             OPEN_PHONE,

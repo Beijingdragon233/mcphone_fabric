@@ -10,7 +10,30 @@ import net.minecraft.world.entity.player.Player;
  * amount 用 long 而非 BigInteger：这是【价格】，由定价的人手写，不是余额；
  * 余额的表示方式留给钱包实现自己决定，本类从不碰它。
  */
-public record EmcCost(long amount) implements ICost {
+public final class EmcCost implements ICost {
+    private final long amount;
+
+    public EmcCost(long amount) {
+        this.amount = amount;
+    }
+
+    public long amount() { return amount; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof EmcCost)) return false;
+        EmcCost that = (EmcCost) other;
+        return this.amount == that.amount;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(amount);
+        return hash;
+    }
+
+    @Override public String toString() { return "EmcCost[amount=" + amount + "]"; }
+
 
     @Override
     public boolean canAfford(Player player) {

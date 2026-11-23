@@ -1,5 +1,9 @@
 package com.november.mcphone.core.script.server.economy;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.api.economy.Currency;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -23,15 +27,63 @@ import java.util.Map;
  * 分开之后这一份能在 {@code docs/} 的断言测试里跑 —— 那边是裸 JavaExec，起不了服务器。
  * {@link EconomyConfig} 只负责"读文件 + 定位行号"，校验规则只有这里一份。
  */
-public record CurrencySpec(String id, String name, String symbol, int decimals,
-                           String provider, boolean isDefault, long max) {
+public final class CurrencySpec {
+    private final String id;
+    private final String name;
+    private final String symbol;
+    private final int decimals;
+    private final String provider;
+    private final boolean isDefault;
+    private final long max;
+
+    public String id() { return id; }
+
+    public String name() { return name; }
+
+    public String symbol() { return symbol; }
+
+    public int decimals() { return decimals; }
+
+    public String provider() { return provider; }
+
+    public boolean isDefault() { return isDefault; }
+
+    public long max() { return max; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof CurrencySpec)) return false;
+        CurrencySpec that = (CurrencySpec) other;
+        return java.util.Objects.equals(this.id, that.id)
+                && java.util.Objects.equals(this.name, that.name)
+                && java.util.Objects.equals(this.symbol, that.symbol)
+                && this.decimals == that.decimals
+                && java.util.Objects.equals(this.provider, that.provider)
+                && this.isDefault == that.isDefault
+                && this.max == that.max;
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(id);
+        hash = 31 * hash + java.util.Objects.hashCode(name);
+        hash = 31 * hash + java.util.Objects.hashCode(symbol);
+        hash = 31 * hash + java.util.Objects.hashCode(decimals);
+        hash = 31 * hash + java.util.Objects.hashCode(provider);
+        hash = 31 * hash + java.util.Objects.hashCode(isDefault);
+        hash = 31 * hash + java.util.Objects.hashCode(max);
+        return hash;
+    }
+
+    @Override public String toString() { return "CurrencySpec[id=" + id + ", name=" + name + ", symbol=" + symbol + ", decimals=" + decimals + ", provider=" + provider + ", isDefault=" + isDefault + ", max=" + max + "]"; }
+
 
     /** §22.7 认得的 provider 名。<b>不认识就拒，不许静默退回 builtin</b> —— 那会让服主以为配对了。 */
     public static final java.util.Set<String> KNOWN_PROVIDERS =
-            java.util.Set.of("builtin", "scoreboard", "adapter", "emc_legacy");
+            ImmutableSet.of("builtin", "scoreboard", "adapter", "emc_legacy");
 
-    public CurrencySpec {
-        if (id == null || id.isBlank()) throw new IllegalArgumentException("id 不能为空");
+    public CurrencySpec(String id, String name, String symbol, int decimals, String provider, boolean isDefault, long max) {
+        if (id == null || Java8.isBlank(id)) throw new IllegalArgumentException("id 不能为空");
         if (ResourceLocation.tryParse(id) == null) {
             throw new IllegalArgumentException("id 不是合法的 ResourceLocation：" + id);
         }
@@ -43,13 +95,20 @@ public record CurrencySpec(String id, String name, String symbol, int decimals,
         if (decimals < 0 || decimals > Currency.MAX_DECIMALS) {
             throw new IllegalArgumentException("decimals 要在 0.." + Currency.MAX_DECIMALS + "，收到 " + decimals);
         }
-        if (provider == null || provider.isBlank()) throw new IllegalArgumentException("provider 不能为空");
+        if (provider == null || Java8.isBlank(provider)) throw new IllegalArgumentException("provider 不能为空");
         provider = provider.toLowerCase(Locale.ROOT);
         if (!KNOWN_PROVIDERS.contains(provider)) {
             throw new IllegalArgumentException("不认识的 provider：" + provider
                     + "，认得的是 " + KNOWN_PROVIDERS);
         }
         if (max < 0) throw new IllegalArgumentException("max 不能为负，收到 " + max);
+        this.id = id;
+        this.name = name;
+        this.symbol = symbol;
+        this.decimals = decimals;
+        this.provider = provider;
+        this.isDefault = isDefault;
+        this.max = max;
     }
 
     /**
@@ -100,9 +159,9 @@ public record CurrencySpec(String id, String name, String symbol, int decimals,
     private static long num(Map<String, Object> t, String k, long dflt) {
         Object v = t.get(k);
         if (v == null) return dflt;
-        if (v instanceof Number n) {
-            long asLong = n.longValue();
-            if ((n instanceof Double || n instanceof Float) && asLong != n.doubleValue()) {
+        if (v instanceof Number) {
+            long asLong = ((Number) v).longValue();
+            if ((((Number) v) instanceof Double || ((Number) v) instanceof Float) && asLong != ((Number) v).doubleValue()) {
                 throw new IllegalArgumentException(k + " 要写整数（不要带小数），收到 " + v);
             }
             return asLong;
@@ -115,7 +174,7 @@ public record CurrencySpec(String id, String name, String symbol, int decimals,
     private static boolean bool(Map<String, Object> t, String k, boolean dflt) {
         Object v = t.get(k);
         if (v == null) return dflt;
-        if (v instanceof Boolean b) return b;
+        if (v instanceof Boolean) return ((Boolean) v);
         // "yes" / "1" / "TRUE " 一律不猜：Boolean.parseBoolean 会把它们静默吞成 false，
         // 服主以为配了默认货币、运行期却拿不到（对抗 D′1）。
         throw new IllegalArgumentException(k + " 要写 true/false（不要加引号），收到 " + v);

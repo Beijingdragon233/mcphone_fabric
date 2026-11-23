@@ -92,8 +92,10 @@ public final class AppHotkeyHandler {
         // 表现出来都是"侧键按了没反应"，而且完全不报错。
         //
         // 这条路没有那些层：MouseHandler.onPress 一进门就发这个事件，比屏幕分发早
-        //     if (ClientHooks.onMouseButtonPre(...)) return;   ← 这里
+        //     if (ForgeHooksClient.onMouseButtonPre(...)) return;   ← 这里
         //     ... 之后才轮到 screen.mouseClicked(...)
+        // （1.21.1 那边这个钩子叫 ClientHooks.onMouseButtonPre，位置一样；
+        //   Forge 47.4.23 上也实测过：hook 在偏移 221，屏幕分发在 375 之后）
         // 收下之后把事件取消掉，原版就不会再把这一下发给屏幕，两条路不会都响。
         if (mc.screen instanceof PhoneScreen phone && phone.captureHotkeyMouse(event.getButton())) {
             event.setCanceled(true);
@@ -111,7 +113,7 @@ public final class AppHotkeyHandler {
         event.setCanceled(true);
     }
 
-    /** 真的把 App 开起来了才 true */
+    /** 真的开机并进 App 了才 true */
     private static boolean launch(Minecraft mc, AppHotkeys.Binding pressed) {
         ResourceLocation appId = AppHotkeys.appFor(pressed);
         if (appId == null) return false;
@@ -124,6 +126,7 @@ public final class AppHotkeyHandler {
         IPhoneApp app = PhoneScreenRegistry.getApp(appId);
         if (app == null) return false;    // 目录里没有＝前置模组这局没装，不可用
 
+        // 身上没有手机就开不了机，那就更谈不上进 App
         // 界面不在手机里的那几个（终端、末影箱、传送石、任务书、浏览器、相机）不开机，
         // 见 launchOutside
         if (!opensInsidePhone(app)) return launchOutside(mc, app);
@@ -147,14 +150,13 @@ public final class AppHotkeyHandler {
      * 而快捷键的全部意义就是省掉中间那一步。
      *
      * 手机仍然必须在身上：手机是那台设备，锁在箱子里的话按一下键不该开出终端来。这一句
-     * 同时顶替了 {@link PhoneScreenOpener#open(net.minecraft.world.entity.player.Player)}
-     * 顺手做的那次查找——那条路这里不走了。
+     * 同时顶替了 {@link PhoneScreenOpener#open} 顺手做的那次查找——那条路这里不走了。
      *
-     * onPress() 抛了照样算"这一下我们收了"：与手机里点图标同一个规矩（见
-     * {@link PhoneScreen#launchApp}），记一条日志，但不让这一下漏回原版去挥手、开背包。
+     * onPress() 抛了照样算"这一下我们收了"：与手机里点图标同一个规矩，记一条日志，但不让
+     * 这一下漏回原版去挥手、开背包。
      */
     private static boolean launchOutside(Minecraft mc, IPhoneApp app) {
-        if (mc.player == null || PhoneLocation.find(mc.player).isEmpty()) return false;
+        if (mc.player == null || !PhoneLocation.find(mc.player).isPresent()) return false;
 
         try {
             app.onPress();

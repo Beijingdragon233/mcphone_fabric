@@ -35,8 +35,60 @@ public final class ChatImageUploads {
     private ChatImageUploads() {}
 
     /** 拼齐了的一张图。width/height 是一帧的大小，动图的 png 是所有帧拼成的雪碧图 */
-    public record Assembled(UUID target, int width, int height, int frames, int frameMs,
-                            byte[] png) {}
+    public static final class Assembled {
+        private final UUID target;
+        private final int width;
+        private final int height;
+        private final int frames;
+        private final int frameMs;
+        private final byte[] png;
+
+        public Assembled(UUID target, int width, int height, int frames, int frameMs, byte[] png) {
+            this.target = target;
+            this.width = width;
+            this.height = height;
+            this.frames = frames;
+            this.frameMs = frameMs;
+            this.png = png;
+        }
+
+        public UUID target() { return target; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        public int frames() { return frames; }
+
+        public int frameMs() { return frameMs; }
+
+        public byte[] png() { return png; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Assembled)) return false;
+            Assembled that = (Assembled) other;
+            return java.util.Objects.equals(this.target, that.target)
+                    && this.width == that.width
+                    && this.height == that.height
+                    && this.frames == that.frames
+                    && this.frameMs == that.frameMs
+                    && java.util.Objects.equals(this.png, that.png);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(target);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            hash = 31 * hash + java.util.Objects.hashCode(frames);
+            hash = 31 * hash + java.util.Objects.hashCode(frameMs);
+            hash = 31 * hash + java.util.Objects.hashCode(png);
+            return hash;
+        }
+
+        @Override public String toString() { return "Assembled[target=" + target + ", width=" + width + ", height=" + height + ", frames=" + frames + ", frameMs=" + frameMs + ", png=" + png + "]"; }
+}
 
     private static final Map<UUID, Session> SESSIONS = new ConcurrentHashMap<>();
 

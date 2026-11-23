@@ -6,7 +6,36 @@ import java.util.UUID;
  * 一对玩家之间那条会话的键，运行时形态；存档里仍是 "a|b" 字符串。
  * 运行时按 UUID.compareTo 归一化，存档按字符串序，两者未必一致，所以 toStorageKey 必须转调 FriendGraph.pairKey，不能自己拼。
  */
-public record ConversationKey(UUID lo, UUID hi) {
+public final class ConversationKey {
+    private final UUID lo;
+    private final UUID hi;
+
+    public ConversationKey(UUID lo, UUID hi) {
+        this.lo = lo;
+        this.hi = hi;
+    }
+
+    public UUID lo() { return lo; }
+
+    public UUID hi() { return hi; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ConversationKey)) return false;
+        ConversationKey that = (ConversationKey) other;
+        return java.util.Objects.equals(this.lo, that.lo)
+                && java.util.Objects.equals(this.hi, that.hi);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(lo);
+        hash = 31 * hash + java.util.Objects.hashCode(hi);
+        return hash;
+    }
+
+    @Override public String toString() { return "ConversationKey[lo=" + lo + ", hi=" + hi + "]"; }
+
 
     /** 归一化：A→B 与 B→A 必须落到同一个键 */
     public static ConversationKey of(UUID a, UUID b) {

@@ -1,5 +1,9 @@
 package com.november.mcphone.core.script.server;
 
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,7 +71,48 @@ public final class CapabilityCatalog {
      * @param open 首版有没有执行路径（{@code ctx} 上会出现它）
      * @param note 为什么这个档 / 为什么首版不开放
      */
-    public record Entry(String id, CapabilityTier tier, boolean open, String note) {
+    public static final class Entry {
+        private final String id;
+        private final CapabilityTier tier;
+        private final boolean open;
+        private final String note;
+
+        public Entry(String id, CapabilityTier tier, boolean open, String note) {
+            this.id = id;
+            this.tier = tier;
+            this.open = open;
+            this.note = note;
+        }
+
+        public String id() { return id; }
+
+        public CapabilityTier tier() { return tier; }
+
+        public boolean open() { return open; }
+
+        public String note() { return note; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Entry)) return false;
+            Entry that = (Entry) other;
+            return java.util.Objects.equals(this.id, that.id)
+                    && java.util.Objects.equals(this.tier, that.tier)
+                    && this.open == that.open
+                    && java.util.Objects.equals(this.note, that.note);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(id);
+            hash = 31 * hash + java.util.Objects.hashCode(tier);
+            hash = 31 * hash + java.util.Objects.hashCode(open);
+            hash = 31 * hash + java.util.Objects.hashCode(note);
+            return hash;
+        }
+
+        @Override public String toString() { return "Entry[id=" + id + ", tier=" + tier + ", open=" + open + ", note=" + note + "]"; }
+
     }
 
     /** {@code command.template:<模板 id>} 是参数化的一族：目录里用这个前缀表示。 */
@@ -123,7 +168,7 @@ public final class CapabilityCatalog {
         add(m, "item.take.other", CapabilityTier.RESTRICTED, false, "隔空搬空别人箱子（Q2）");
         add(m, "ability.fly", CapabilityTier.RESTRICTED, false, "有归属冲突，首版不开放（§18.4）");
         add(m, "storage.cross_player.read", CapabilityTier.RESTRICTED, false, "别人的数据（Q3）");
-        return Map.copyOf(m);
+        return ImmutableMap.copyOf(m);
     }
 
     private static void add(Map<String, Entry> m, String id, CapabilityTier tier, boolean open, String note) {
@@ -151,14 +196,14 @@ public final class CapabilityCatalog {
 
     /** 全部条目，顺序 = §18.8 的书写顺序。 */
     public static List<Entry> all() {
-        return List.copyOf(new ArrayList<>(ENTRIES.values()));
+        return ImmutableList.copyOf(new ArrayList<>(ENTRIES.values()));
     }
 
     /** 首版开放的 23 个。能不能关看 {@link #enforced(String)} —— 里面一部分还没有调用点。 */
     public static List<Entry> open() {
         List<Entry> out = new ArrayList<>();
         for (Entry e : ENTRIES.values()) if (e.open()) out.add(e);
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /** 全部 id（含不开放的）。 */
@@ -173,7 +218,7 @@ public final class CapabilityCatalog {
      * （{@code ScriptEngineTest.gatedMountRegistry()} 建一次 ctx 不调成员、逐条对；
      * {@code CapabilityCatalogTest.gatingOnlyInHelpers()} 钉住"只许两个登记/拦截点"）。
      */
-    private static final Set<String> ENFORCED = Set.of(
+    private static final Set<String> ENFORCED = ImmutableSet.of(
             "read.self.gamemode",
             "storage.self",
             "storage.global.read",

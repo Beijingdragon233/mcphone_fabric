@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.client.render;
 
+import com.google.common.collect.ImmutableSet;
+
 import com.november.mcphone.api.client.ui.PhoneCanvas;
 import com.november.mcphone.core.script.client.tex.AppTextures;
 import com.november.mcphone.core.script.layout.LayoutNode;
@@ -45,7 +47,7 @@ public final class Frame {
         this.hovered = canvas.hoveredContent()
                 ? HitTest.hoverChain(root, canvas.x(), canvas.y(), canvas.width(), canvas.height(),
                         canvas.mouseX(), canvas.mouseY(), tm)
-                : Set.of();
+                : ImmutableSet.of();
     }
 
     /** 这个节点是鼠标下那个可交互节点，或者是它的祖先。 */

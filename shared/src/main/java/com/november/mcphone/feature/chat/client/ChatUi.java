@@ -145,20 +145,47 @@ public final class ChatUi {
 
     /** 优先使用用户提供的透明贴图；没有对应素材或资源包删除贴图时才画几何兜底。 */
     static void icon(GuiGraphics g, Icon icon, int x, int y, int color) {
-        PhoneSkin.Element texture = switch (icon) {
-            case CHAT -> PhoneSkin.Element.CHAT_TAB_MESSAGE;
-            case CONTACTS -> PhoneSkin.Element.CHAT_TAB_CONTACTS;
-            case ADD_CONTACT -> PhoneSkin.Element.CHAT_ADD_CONTACT;
-            case DISCOVER -> PhoneSkin.Element.CHAT_TAB_DISCOVER;
-            case PROFILE -> PhoneSkin.Element.CHAT_TAB_PROFILE;
-            case SEARCH -> PhoneSkin.Element.CHAT_SEARCH;
-            case PLUS -> PhoneSkin.Element.CHAT_ATTACH;
-            case BACK -> PhoneSkin.Element.CHAT_BACK;
-            case MORE -> PhoneSkin.Element.CHAT_MORE;
-            case SMILE -> PhoneSkin.Element.CHAT_SMILE;
-            case VOICE -> PhoneSkin.Element.CHAT_VOICE;
-            case ADD, CHECK -> null;
-        };
+        PhoneSkin.Element texture;
+        switch (icon) {
+            case CHAT:
+                texture = PhoneSkin.Element.CHAT_TAB_MESSAGE;
+                break;
+            case CONTACTS:
+                texture = PhoneSkin.Element.CHAT_TAB_CONTACTS;
+                break;
+            case ADD_CONTACT:
+                texture = PhoneSkin.Element.CHAT_ADD_CONTACT;
+                break;
+            case DISCOVER:
+                texture = PhoneSkin.Element.CHAT_TAB_DISCOVER;
+                break;
+            case PROFILE:
+                texture = PhoneSkin.Element.CHAT_TAB_PROFILE;
+                break;
+            case SEARCH:
+                texture = PhoneSkin.Element.CHAT_SEARCH;
+                break;
+            case PLUS:
+                texture = PhoneSkin.Element.CHAT_ATTACH;
+                break;
+            case BACK:
+                texture = PhoneSkin.Element.CHAT_BACK;
+                break;
+            case MORE:
+                texture = PhoneSkin.Element.CHAT_MORE;
+                break;
+            case SMILE:
+                texture = PhoneSkin.Element.CHAT_SMILE;
+                break;
+            case VOICE:
+                texture = PhoneSkin.Element.CHAT_VOICE;
+                break;
+            case ADD:
+            case CHECK:
+                texture = null;
+                break;
+            default: throw new IncompatibleClassChangeError();
+        }
         if (texture != null) {
             // 白色源图乘当前颜色，保留粉色强调色和禁用项灰色；画完必须还原，避免给后续文字染色。
             g.setColor(((color >>> 16) & 255) / 255f, ((color >>> 8) & 255) / 255f,
@@ -172,7 +199,8 @@ public final class ChatUi {
             if (drawn) return;
         }
         switch (icon) {
-            case ADD, CHECK -> {
+            case ADD:
+            case CHECK: {
                 // 原生几何标志不依赖字体中的 ✓ 字形，也不复用附件的圆圈加号。
                 g.pose().pushPose();
                 try {
@@ -181,7 +209,8 @@ public final class ChatUi {
                     mark(g::fill, icon, color);
                 } finally { g.pose().popPose(); }
             }
-            case BACK -> {
+                break;
+            case BACK: {
                 // 在 24 像素坐标中画细箭头再缩放，避免旧版 9 像素台阶过粗、重心贴左。
                 g.pose().pushPose();
                 g.pose().translate(x, y, 0);
@@ -192,38 +221,55 @@ public final class ChatUi {
                 }
                 g.pose().popPose();
             }
-            case MORE -> {
+                break;
+            case MORE: {
                 for (int i = 0; i < 3; i++) g.fill(x + i * 3, y + 4, x + i * 3 + 2, y + 6, color);
             }
-            case PLUS, SMILE, VOICE, DISCOVER, SEARCH -> {
+                break;
+            case PLUS:
+            case SMILE:
+            case VOICE:
+            case DISCOVER:
+            case SEARCH: {
                 ring(g, x, y, color);
                 switch (icon) {
-                    case PLUS -> {
+                    case PLUS: {
                         g.fill(x + 2, y + 4, x + 7, y + 5, color);
                         g.fill(x + 4, y + 2, x + 5, y + 7, color);
                     }
-                    case SMILE -> {
+                        break;
+                    case SMILE: {
                         g.fill(x + 2, y + 3, x + 3, y + 4, color);
                         g.fill(x + 6, y + 3, x + 7, y + 4, color);
                         g.fill(x + 3, y + 6, x + 6, y + 7, color);
                     }
-                    case VOICE -> {
+                        break;
+                    case VOICE: {
                         g.fill(x + 3, y + 3, x + 4, y + 6, color);
                         g.fill(x + 5, y + 2, x + 6, y + 7, color);
                     }
-                    case DISCOVER -> {
+                        break;
+                    case DISCOVER: {
                         g.fill(x + 5, y + 2, x + 6, y + 4, color);
                         g.fill(x + 3, y + 4, x + 5, y + 6, color);
                     }
-                    case SEARCH -> g.fill(x + 7, y + 7, x + 9, y + 9, color);
-                    default -> { }
+                        break;
+                    case SEARCH:
+                        g.fill(x + 7, y + 7, x + 9, y + 9, color);
+                        break;
+                    default: { }
+                        break;
                 }
             }
-            case CHAT -> {
+                break;
+            case CHAT: {
                 g.renderOutline(x, y + 1, 9, 6, color);
                 g.fill(x + 2, y + 7, x + 3, y + 9, color);
             }
-            case CONTACTS, PROFILE, ADD_CONTACT -> {
+                break;
+            case CONTACTS:
+            case PROFILE:
+            case ADD_CONTACT: {
                 g.renderOutline(x + 3, y, 3, 4, color);
                 g.renderOutline(x + 1, y + 5, 7, 4, color);
                 if (icon == Icon.CONTACTS) g.fill(x + 7, y + 2, x + 9, y + 3, color);
@@ -232,6 +278,7 @@ public final class ChatUi {
                     g.fill(x + 7, y + 4, x + 8, y + 7, color);
                 }
             }
+                break;
         }
     }
 

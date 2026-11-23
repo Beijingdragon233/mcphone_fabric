@@ -47,7 +47,36 @@ public final class Greeting {
     }
 
     /** arg 是语言键里 %s 的值：只有 LONG_SESSION / MILESTONE 传小时数，其余传 -1 */
-    public record Choice(Kind kind, long arg) {
+    public static final class Choice {
+        private final Kind kind;
+        private final long arg;
+
+        public Choice(Kind kind, long arg) {
+            this.kind = kind;
+            this.arg = arg;
+        }
+
+        public Kind kind() { return kind; }
+
+        public long arg() { return arg; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Choice)) return false;
+            Choice that = (Choice) other;
+            return java.util.Objects.equals(this.kind, that.kind)
+                    && this.arg == that.arg;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(kind);
+            hash = 31 * hash + java.util.Objects.hashCode(arg);
+            return hash;
+        }
+
+        @Override public String toString() { return "Choice[kind=" + kind + ", arg=" + arg + "]"; }
+
 
         public boolean hasArg() {
             return arg >= 0;

@@ -51,7 +51,42 @@ public final class ImageCodec {
      * 纹理的真实尺寸才能算出源区域。缩过的图宽高比各不相同（截图有 16:9 也有窗口化的
      * 怪比例），不能写死。
      */
-    public record Texture(ResourceLocation location, int width, int height) {}
+    public static final class Texture {
+        private final ResourceLocation location;
+        private final int width;
+        private final int height;
+
+        public Texture(ResourceLocation location, int width, int height) {
+            this.location = location;
+            this.width = width;
+            this.height = height;
+        }
+
+        public ResourceLocation location() { return location; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Texture)) return false;
+            Texture that = (Texture) other;
+            return java.util.Objects.equals(this.location, that.location)
+                    && this.width == that.width
+                    && this.height == that.height;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(location);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            return hash;
+        }
+
+        @Override public String toString() { return "Texture[location=" + location + ", width=" + width + ", height=" + height + "]"; }
+}
 
     /**
      * 一张压好、可以直接发出去的 PNG。
@@ -62,7 +97,54 @@ public final class ImageCodec {
      *
      * frames = 1、frameMs = 0 就是一张普通静态图。
      */
-    public record Encoded(byte[] png, int width, int height, int frames, int frameMs) {}
+    public static final class Encoded {
+        private final byte[] png;
+        private final int width;
+        private final int height;
+        private final int frames;
+        private final int frameMs;
+
+        public Encoded(byte[] png, int width, int height, int frames, int frameMs) {
+            this.png = png;
+            this.width = width;
+            this.height = height;
+            this.frames = frames;
+            this.frameMs = frameMs;
+        }
+
+        public byte[] png() { return png; }
+
+        public int width() { return width; }
+
+        public int height() { return height; }
+
+        public int frames() { return frames; }
+
+        public int frameMs() { return frameMs; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Encoded)) return false;
+            Encoded that = (Encoded) other;
+            return java.util.Objects.equals(this.png, that.png)
+                    && this.width == that.width
+                    && this.height == that.height
+                    && this.frames == that.frames
+                    && this.frameMs == that.frameMs;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(png);
+            hash = 31 * hash + java.util.Objects.hashCode(width);
+            hash = 31 * hash + java.util.Objects.hashCode(height);
+            hash = 31 * hash + java.util.Objects.hashCode(frames);
+            hash = 31 * hash + java.util.Objects.hashCode(frameMs);
+            return hash;
+        }
+
+        @Override public String toString() { return "Encoded[png=" + png + ", width=" + width + ", height=" + height + ", frames=" + frames + ", frameMs=" + frameMs + "]"; }
+}
 
     /** 贴图 ResourceLocation 的自增序号，保证路径唯一且字符合法 */
     private static int textureSeq = 0;

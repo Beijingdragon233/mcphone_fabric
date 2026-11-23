@@ -13,8 +13,9 @@ public final class NotesApp extends PhoneApp {
 
     @Override
     public void onPress() {
-        if (Minecraft.getInstance().screen instanceof PhoneScreen ps) {
-            ps.navigateTo(PhoneScreen.Mode.NOTES);
+        Object psMatch;
+        if ((psMatch = Minecraft.getInstance().screen) instanceof PhoneScreen) {
+            ((PhoneScreen) psMatch).navigateTo(PhoneScreen.Mode.NOTES);
         }
     }
 }

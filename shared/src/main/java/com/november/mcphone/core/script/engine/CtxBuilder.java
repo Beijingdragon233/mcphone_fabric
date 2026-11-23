@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.sdk.cycle.CycleKind;
 import com.november.mcphone.api.sdk.cycle.CycleLabels;
 import com.november.mcphone.core.script.net.ScriptErrorCode;
@@ -54,19 +56,111 @@ public final class CtxBuilder {
     }
 
     /** 周期配置。真正的来源是 {@code mcphone-server.toml} 的 {@code [cycle]}（S14）。 */
-    public record Cycle(ZoneId zone, LocalTime dailyAt) {
+    public static final class Cycle {
+        private final ZoneId zone;
+        private final LocalTime dailyAt;
+
+        public Cycle(ZoneId zone, LocalTime dailyAt) {
+            this.zone = zone;
+            this.dailyAt = dailyAt;
+        }
+
+        public ZoneId zone() { return zone; }
+
+        public LocalTime dailyAt() { return dailyAt; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Cycle)) return false;
+            Cycle that = (Cycle) other;
+            return java.util.Objects.equals(this.zone, that.zone)
+                    && java.util.Objects.equals(this.dailyAt, that.dailyAt);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(zone);
+            hash = 31 * hash + java.util.Objects.hashCode(dailyAt);
+            return hash;
+        }
+
+        @Override public String toString() { return "Cycle[zone=" + zone + ", dailyAt=" + dailyAt + "]"; }
+
     }
 
     /** 能接上的后端。为 null 的那一项<b>整个不挂</b>。 */
-    public record Backends(SharedState shared, ItemView item, Cycle cycle,
-                           KvBackend store, SealedBackend sealed, CurrencyRegistry currencies,
-                           /** 要不要挂"产意图"的能力节点（{@code ctx.give} / {@code ctx.loot} / {@code ctx.attr} / {@code ctx.effect}）。
-                            *  落地端由宿主注入；为 false 时整项不挂（E12：不挂空壳）。 */
-                           boolean actionIntents,
-                           /** 数据包谓词判定（S18 §18.3）。为 null 时整个 {@code ctx.predicate} 不挂。 */
-                           PredicateView predicate,
-                           /** 计分板读写（S18 §18.6）。为 null 时整个 {@code ctx.score} 不挂。 */
-                           ScoreView score) {
+    public static final class Backends {
+        private final SharedState shared;
+        private final ItemView item;
+        private final Cycle cycle;
+        private final KvBackend store;
+        private final SealedBackend sealed;
+        private final CurrencyRegistry currencies;
+        private final boolean actionIntents;
+        private final PredicateView predicate;
+        private final ScoreView score;
+
+        public Backends(SharedState shared, ItemView item, Cycle cycle, KvBackend store, SealedBackend sealed, CurrencyRegistry currencies, boolean actionIntents, PredicateView predicate, ScoreView score) {
+            this.shared = shared;
+            this.item = item;
+            this.cycle = cycle;
+            this.store = store;
+            this.sealed = sealed;
+            this.currencies = currencies;
+            this.actionIntents = actionIntents;
+            this.predicate = predicate;
+            this.score = score;
+        }
+
+        public SharedState shared() { return shared; }
+
+        public ItemView item() { return item; }
+
+        public Cycle cycle() { return cycle; }
+
+        public KvBackend store() { return store; }
+
+        public SealedBackend sealed() { return sealed; }
+
+        public CurrencyRegistry currencies() { return currencies; }
+
+        public boolean actionIntents() { return actionIntents; }
+
+        public PredicateView predicate() { return predicate; }
+
+        public ScoreView score() { return score; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Backends)) return false;
+            Backends that = (Backends) other;
+            return java.util.Objects.equals(this.shared, that.shared)
+                    && java.util.Objects.equals(this.item, that.item)
+                    && java.util.Objects.equals(this.cycle, that.cycle)
+                    && java.util.Objects.equals(this.store, that.store)
+                    && java.util.Objects.equals(this.sealed, that.sealed)
+                    && java.util.Objects.equals(this.currencies, that.currencies)
+                    && this.actionIntents == that.actionIntents
+                    && java.util.Objects.equals(this.predicate, that.predicate)
+                    && java.util.Objects.equals(this.score, that.score);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(shared);
+            hash = 31 * hash + java.util.Objects.hashCode(item);
+            hash = 31 * hash + java.util.Objects.hashCode(cycle);
+            hash = 31 * hash + java.util.Objects.hashCode(store);
+            hash = 31 * hash + java.util.Objects.hashCode(sealed);
+            hash = 31 * hash + java.util.Objects.hashCode(currencies);
+            hash = 31 * hash + java.util.Objects.hashCode(actionIntents);
+            hash = 31 * hash + java.util.Objects.hashCode(predicate);
+            hash = 31 * hash + java.util.Objects.hashCode(score);
+            return hash;
+        }
+
+        @Override public String toString() { return "Backends[shared=" + shared + ", item=" + item + ", cycle=" + cycle + ", store=" + store + ", sealed=" + sealed + ", currencies=" + currencies + ", actionIntents=" + actionIntents + ", predicate=" + predicate + ", score=" + score + "]"; }
+
 
         /** 不挂谓词/计分板的写法（S18 之前的路径与大多数断言）。 */
         public Backends(SharedState shared, ItemView item, Cycle cycle,
@@ -140,7 +234,7 @@ public final class CtxBuilder {
     public static final class Result {
         public ScriptErrorCode code;
         public String messageKey = "";
-        public List<String> messageArgs = List.of();
+        public List<String> messageArgs = ImmutableList.of();
         public String dataJson = "";
         public final java.util.List<String> logs = new java.util.ArrayList<>();
         /** worker 想对世界做的事（S18）。落地一律回主线程，落地前重查授权与能力。 */
@@ -180,10 +274,10 @@ public final class CtxBuilder {
                                     String capabilityId, Result result, CapabilityGate gate,
                                     java.util.function.Supplier<Object> value) {
         result.gatedMembers.add(capabilityId);
-        target.defineProperty(cx, name, (Scriptable thisObj) -> {
+        target.defineProperty(name, () -> {
             gate.require(capabilityId);
             return value.get();
-        }, ScriptableObject.READONLY | ScriptableObject.PERMANENT);
+        }, null, ScriptableObject.READONLY | ScriptableObject.PERMANENT);
     }
 
     /** 建一个 {@code ctx}。{@code result} 由调用方持有，求值结束后读它。 */
@@ -350,7 +444,7 @@ public final class CtxBuilder {
             HostFn.put(cur, scope, "default", 0, (c, s, a) -> reg.defaultCurrency());
             HostFn.put(cur, scope, "list", 0, (c, s, a) -> {
                 java.util.List<Object> out = new java.util.ArrayList<>();
-                for (var m : reg.list()) {
+                for (com.november.mcphone.api.economy.Currency m : reg.list()) {
                     ScriptableObject o = HostFn.obj(c, s);
                     ScriptableObject.putProperty(o, "id", m.id().toString());
                     ScriptableObject.putProperty(o, "symbol", m.symbol());
@@ -747,7 +841,7 @@ public final class CtxBuilder {
     private static Long amountOrNull(Object[] args, int i, String where) {
         Object v = args.length > i ? args[i] : null;
         if (v == null || v instanceof com.november.mcphone.internal.rhino.javascript.Undefined) return null;
-        if (v instanceof java.math.BigInteger b && b.bitLength() > 63) return null;
+        if (v instanceof java.math.BigInteger && ((java.math.BigInteger) v).bitLength() > 63) return null;
         return Amounts.toLong(v, where);
     }
 
@@ -777,9 +871,9 @@ public final class CtxBuilder {
     /** 走沙箱里那个已经带了尺寸闸的 JSON.stringify。 */
     private static String json(Context cx, Scriptable scope, Object value) {
         Object out = com.november.mcphone.internal.rhino.javascript.NativeJSON.stringify(cx, scope, value, null, "");
-        if (out instanceof CharSequence cs) {
-            SizeGate.check(cs, "ctx 的 data");
-            return cs.toString();
+        if (out instanceof CharSequence) {
+            SizeGate.check(((CharSequence) out), "ctx 的 data");
+            return ((CharSequence) out).toString();
         }
         return "";
     }

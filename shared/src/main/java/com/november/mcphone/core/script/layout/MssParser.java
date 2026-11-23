@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.layout;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.core.script.layout.MssError.Code;
 import com.november.mcphone.core.script.layout.MssError.Pos;
 import com.november.mcphone.core.script.layout.Style.Align;
@@ -78,7 +80,36 @@ public final class MssParser {
     }
 
     /** 一个属性能取什么值：{@code allowed} 进错误文案；{@code parse} 把值词串变成一次写入，不合法返回 null。 */
-    private record PropSpec(String allowed, Function<List<String>, Consumer<Style.Builder>> parse) {
+    private static final class PropSpec {
+        private final String allowed;
+        private final Function<List<String>, Consumer<Style.Builder>> parse;
+
+        private PropSpec(String allowed, Function<List<String>, Consumer<Style.Builder>> parse) {
+            this.allowed = allowed;
+            this.parse = parse;
+        }
+
+        public String allowed() { return allowed; }
+
+        public Function<List<String>, Consumer<Style.Builder>> parse() { return parse; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof PropSpec)) return false;
+            PropSpec that = (PropSpec) other;
+            return java.util.Objects.equals(this.allowed, that.allowed)
+                    && java.util.Objects.equals(this.parse, that.parse);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(allowed);
+            hash = 31 * hash + java.util.Objects.hashCode(parse);
+            return hash;
+        }
+
+        @Override public String toString() { return "PropSpec[allowed=" + allowed + ", parse=" + parse + "]"; }
+
 
         /** 关键字取枚举常量名的小写。 */
         static <E extends Enum<E>> PropSpec keyword(E[] values, BiConsumer<Style.Builder, E> set) {
@@ -134,12 +165,21 @@ public final class MssParser {
                     v[i] = intIn(w.get(i), min, max);
                     if (v[i] == BAD) return null;
                 }
-                int[] trbl = switch (v.length) {
-                    case 1 -> new int[]{v[0], v[0], v[0], v[0]};
-                    case 2 -> new int[]{v[0], v[1], v[0], v[1]};
-                    case 3 -> new int[]{v[0], v[1], v[2], v[1]};
-                    default -> v;
-                };
+                int[] trbl;
+                switch (v.length) {
+                    case 1:
+                        trbl = new int[]{v[0], v[0], v[0], v[0]};
+                        break;
+                    case 2:
+                        trbl = new int[]{v[0], v[1], v[0], v[1]};
+                        break;
+                    case 3:
+                        trbl = new int[]{v[0], v[1], v[2], v[1]};
+                        break;
+                    default:
+                        trbl = v;
+                        break;
+                }
                 return b -> set.accept(b, trbl);
             });
         }
@@ -187,7 +227,7 @@ public final class MssParser {
 
     /** 属性名，按 §6.5 表的顺序。 */
     static List<String> properties() {
-        return List.copyOf(SPECS.keySet());
+        return ImmutableList.copyOf(SPECS.keySet());
     }
 
     /** 这个属性的「允许」文案，不认识的属性返回 null。 */

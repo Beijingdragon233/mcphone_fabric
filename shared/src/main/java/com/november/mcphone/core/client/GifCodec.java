@@ -1,5 +1,9 @@
 package com.november.mcphone.core.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 
 import javax.imageio.ImageIO;
@@ -56,7 +60,36 @@ public final class GifCodec {
     private GifCodec() {}
 
     /** 拆好的一张动图：每一帧都是画好的整幅画面，尺寸一致 */
-    public record Animation(List<BufferedImage> frames, int frameMs) {}
+    public static final class Animation {
+        private final List<BufferedImage> frames;
+        private final int frameMs;
+
+        public Animation(List<BufferedImage> frames, int frameMs) {
+            this.frames = frames;
+            this.frameMs = frameMs;
+        }
+
+        public List<BufferedImage> frames() { return frames; }
+
+        public int frameMs() { return frameMs; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Animation)) return false;
+            Animation that = (Animation) other;
+            return java.util.Objects.equals(this.frames, that.frames)
+                    && this.frameMs == that.frameMs;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(frames);
+            hash = 31 * hash + java.util.Objects.hashCode(frameMs);
+            return hash;
+        }
+
+        @Override public String toString() { return "Animation[frames=" + frames + ", frameMs=" + frameMs + "]"; }
+}
 
     /** 延迟低于这个数的一律按 {@link #DEFAULT_DELAY_MS} 算，理由见类注释 */
     private static final int MIN_DELAY_MS = 20;
@@ -104,7 +137,7 @@ public final class GifCodec {
     /** 只认文件头，不认扩展名：扩展名是拖进来的人说了算的 */
     private static boolean looksLikeGif(Path path) {
         try (InputStream in = Files.newInputStream(path)) {
-            byte[] magic = in.readNBytes(6);
+            byte[] magic = Java8.readNBytes(in, 6);
             return magic.length == 6
                     && magic[0] == 'G' && magic[1] == 'I' && magic[2] == 'F'
                     && magic[3] == '8' && (magic[4] == '7' || magic[4] == '9') && magic[5] == 'a';
@@ -208,7 +241,7 @@ public final class GifCodec {
         }
 
         if (out.size() < 2) return null;   // 抽完只剩一帧，那就是静态图
-        return new Animation(List.copyOf(out), commonDelay(kept) * keepEvery);
+        return new Animation(ImmutableList.copyOf(out), commonDelay(kept) * keepEvery);
     }
 
     /**
@@ -238,7 +271,48 @@ public final class GifCodec {
         return w > 0 && h > 0 ? new Dimension(w, h) : null;
     }
 
-    private record Descriptor(int x, int y, int delayMs, String disposal) {}
+    private static final class Descriptor {
+        private final int x;
+        private final int y;
+        private final int delayMs;
+        private final String disposal;
+
+        private Descriptor(int x, int y, int delayMs, String disposal) {
+            this.x = x;
+            this.y = y;
+            this.delayMs = delayMs;
+            this.disposal = disposal;
+        }
+
+        public int x() { return x; }
+
+        public int y() { return y; }
+
+        public int delayMs() { return delayMs; }
+
+        public String disposal() { return disposal; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Descriptor)) return false;
+            Descriptor that = (Descriptor) other;
+            return this.x == that.x
+                    && this.y == that.y
+                    && this.delayMs == that.delayMs
+                    && java.util.Objects.equals(this.disposal, that.disposal);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(x);
+            hash = 31 * hash + java.util.Objects.hashCode(y);
+            hash = 31 * hash + java.util.Objects.hashCode(delayMs);
+            hash = 31 * hash + java.util.Objects.hashCode(disposal);
+            return hash;
+        }
+
+        @Override public String toString() { return "Descriptor[x=" + x + ", y=" + y + ", delayMs=" + delayMs + ", disposal=" + disposal + "]"; }
+}
 
     /**
      * 从一帧的元数据里取偏移、延迟、disposal。

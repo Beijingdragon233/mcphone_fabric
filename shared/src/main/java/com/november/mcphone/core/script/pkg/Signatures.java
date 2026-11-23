@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.pkg;
 
+import com.google.common.collect.ImmutableSet;
+
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -10,14 +12,15 @@ import java.security.MessageDigest;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
-import java.security.interfaces.EdECPublicKey;
+import java.security.Provider;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Locale;
 import java.util.Set;
 
 /**
- * Ed25519 签名与验签（施工方案 §12.2、§12.3）。<b>纯 JDK，不分版本，不引第三方。</b>
+ * Ed25519 签名与验签（施工方案 §12.2、§12.3）。优先使用 JDK；Java 8 目标提供独立的兼容 Provider，
+ * 不修改 JVM 的全局 Provider 列表。
  *
  * <h2>签名能做的与不能做的（§12.1）</h2>
  *
@@ -65,7 +68,7 @@ public final class Signatures {
      * （JDK 17 与 21 实测各 500/500）。少了这一层，§12.4 的
      * 「INVALID 是唯一硬拒绝」对这类包永远不成立。
      */
-    private static final Set<BigInteger> SMALL_ORDER_Y = Set.of(
+    private static final Set<BigInteger> SMALL_ORDER_Y = ImmutableSet.of(
             new BigInteger("0", 16),
             new BigInteger("1", 16),
             new BigInteger("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffec", 16),
@@ -79,8 +82,41 @@ public final class Signatures {
      * 比字节会漏掉一半。非规范编码（y >= p）由 JDK 自己在 initVerify 时拒。
      */
     public static boolean smallOrder(PublicKey key) {
-        if (!(key instanceof EdECPublicKey ed)) return false;
-        return SMALL_ORDER_Y.contains(ed.getPoint().getY());
+        if (key == null || !"X.509".equalsIgnoreCase(key.getFormat())) return false;
+        byte[] encoded = key.getEncoded();
+        if (encoded == null || encoded.length != 44) return false;
+        byte[] prefix = {0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00};
+        for (int i = 0; i < prefix.length; i++) {
+            if (encoded[i] != prefix[i]) return false;
+        }
+        byte[] y = new byte[32];
+        for (int i = 0; i < y.length; i++) y[i] = encoded[encoded.length - 1 - i];
+        y[0] &= 0x7f;
+        return SMALL_ORDER_Y.contains(new BigInteger(1, y));
+    }
+
+    static Signature signature() throws GeneralSecurityException {
+        return PROVIDER == null ? Signature.getInstance("Ed25519") : Signature.getInstance("Ed25519", PROVIDER);
+    }
+
+    static KeyFactory keyFactory() throws GeneralSecurityException {
+        return PROVIDER == null ? KeyFactory.getInstance("Ed25519") : KeyFactory.getInstance("Ed25519", PROVIDER);
+    }
+
+    private static final Provider PROVIDER = findLegacyProvider();
+
+    private static Provider findLegacyProvider() {
+        try {
+            Signature.getInstance("Ed25519");
+            return null;
+        } catch (java.security.NoSuchAlgorithmException missing) {
+            try {
+                return Class.forName("com.november.mcphone.internal.crypto.jce.provider.BouncyCastleProvider", true,
+                        Signatures.class.getClassLoader()).asSubclass(Provider.class).getDeclaredConstructor().newInstance();
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Ed25519 unavailable", e);
+            }
+        }
     }
 
     // ---------------------------------------------------------------- 密钥
@@ -88,9 +124,10 @@ public final class Signatures {
     /** 新生成一对。 */
     public static KeyPair generate() {
         try {
-            return KeyPairGenerator.getInstance("Ed25519").generateKeyPair();
+            return (PROVIDER == null ? KeyPairGenerator.getInstance("Ed25519")
+                    : KeyPairGenerator.getInstance("Ed25519", PROVIDER)).generateKeyPair();
         } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("这个 JRE 没有 Ed25519（要 JDK 15+）", e);
+            throw new IllegalStateException("这个运行环境没有 Ed25519", e);
         }
     }
 
@@ -98,7 +135,7 @@ public final class Signatures {
     public static PublicKey publicKey(byte[] x509) {
         PublicKey key;
         try {
-            key = KeyFactory.getInstance("Ed25519").generatePublic(new X509EncodedKeySpec(x509));
+            key = keyFactory().generatePublic(new X509EncodedKeySpec(x509));
         } catch (GeneralSecurityException e) {
             throw PackageError.of(PackageError.Code.E_SIG_BAD_KEY, "公钥读不出来：" + e.getMessage());
         }
@@ -111,7 +148,7 @@ public final class Signatures {
     /** PKCS8 编码的私钥字节 → 私钥。 */
     public static PrivateKey privateKey(byte[] pkcs8) {
         try {
-            return KeyFactory.getInstance("Ed25519").generatePrivate(new PKCS8EncodedKeySpec(pkcs8));
+            return keyFactory().generatePrivate(new PKCS8EncodedKeySpec(pkcs8));
         } catch (GeneralSecurityException e) {
             throw PackageError.of(PackageError.Code.E_SIG_BAD_KEY, "私钥读不出来：" + e.getMessage());
         }
@@ -144,7 +181,7 @@ public final class Signatures {
     /** 签一个包摘要。{@code digest} 是 {@code PackageDigest.of} 的返回值。 */
     public static byte[] sign(PrivateKey priv, String digest) {
         try {
-            Signature s = Signature.getInstance("Ed25519");
+            Signature s = signature();
             s.initSign(priv);
             s.update(DOMAIN);
             s.update(digest.getBytes(StandardCharsets.UTF_8));
@@ -159,7 +196,7 @@ public final class Signatures {
         // publicKey() 已经拦过一道；这里是给直接拿着 PublicKey 进来的调用方兜底
         if (smallOrder(pub)) return false;
         try {
-            Signature s = Signature.getInstance("Ed25519");
+            Signature s = signature();
             s.initVerify(pub);
             s.update(DOMAIN);
             s.update(digest.getBytes(StandardCharsets.UTF_8));

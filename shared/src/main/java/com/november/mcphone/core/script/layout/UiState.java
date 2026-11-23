@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.layout;
 
+import com.google.common.collect.ImmutableMap;
+
+import java.util.Map.Entry;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -67,7 +70,7 @@ public final class UiState {
     }
 
     public static UiState empty() {
-        return of(Map.of());
+        return of(ImmutableMap.of());
     }
 
     /** 同一份声明、当前值的副本，revision 从 0 起。点击先在副本上试，全部成功才写回原件。 */
@@ -94,15 +97,18 @@ public final class UiState {
     }
 
     public int getInt(String key) {
-        return values.get(key) instanceof Integer i ? i : 0;
+        Object iMatch;
+        return (iMatch = values.get(key)) instanceof Integer ? ((Integer) iMatch) : 0;
     }
 
     public boolean getBool(String key) {
-        return values.get(key) instanceof Boolean b && b;
+        Object bMatch;
+        return (bMatch = values.get(key)) instanceof Boolean && ((Boolean) bMatch);
     }
 
     public String getString(String key) {
-        return values.get(key) instanceof String s ? s : "";
+        Object sMatch;
+        return (sMatch = values.get(key)) instanceof String ? ((String) sMatch) : "";
     }
 
     /** 作者写入（@click）的判据：key 声明过、形状与初值一致、值过 §9.7 的全部规则（个数与长度也查）。合规返回 null。 */
@@ -119,7 +125,7 @@ public final class UiState {
     public String writeProblems(Map<String, Object> next) {
         if (textBudget == 0) return null; // Legacy statements permit trusted host values outside author limits.
         if (!next.keySet().equals(declared.keySet())) return "不能添加或删除 state 字段";
-        for (var entry : next.entrySet()) {
+        for (Entry<String,Object> entry : next.entrySet()) {
             String why = writeProblem(entry.getKey(), entry.getValue());
             if (why != null) return why;
         }
@@ -151,18 +157,22 @@ public final class UiState {
     /** showIf / enabledIf 是否成立（§4.4）。truthy 为 true 时值为真才成立，为 false 时值为假才成立。 */
     public boolean test(Node.ShowIf condition) {
         Object v = values.get(condition.key());
-        return switch (condition.kind()) {
-            case EQ -> Objects.equals(v, condition.value());
-            case NE -> !Objects.equals(v, condition.value());
-            case TRUTHY -> truthy(v) == Boolean.TRUE.equals(condition.value());
-        };
+        switch (condition.kind()) {
+            case EQ:
+                return Objects.equals(v, condition.value());
+            case NE:
+                return !Objects.equals(v, condition.value());
+            case TRUTHY:
+                return truthy(v) == Boolean.TRUE.equals(condition.value());
+            default: throw new IncompatibleClassChangeError();
+        }
     }
 
     /** int 非 0、bool true、非空字符串、任何数组与对象（空的也算，§9.5.4）算真。 */
     static boolean truthy(Object v) {
-        if (v instanceof Integer i) return i != 0;
-        if (v instanceof Boolean b) return b;
+        if (v instanceof Integer) return ((Integer) v) != 0;
+        if (v instanceof Boolean) return ((Boolean) v);
         if (v instanceof List<?> || v instanceof Map<?, ?>) return true;
-        return v instanceof String s && !s.isEmpty();
+        return v instanceof String && !((String) v).isEmpty();
     }
 }

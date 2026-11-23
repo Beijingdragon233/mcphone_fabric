@@ -14,7 +14,7 @@ final class GroupTransport {
     private static long lastNotices;
     private static final java.util.Map<UUID, Long> textRequests = new java.util.LinkedHashMap<>();
     static void send(GroupCommand command) {
-        var current = Minecraft.getInstance().getConnection(); if (current == null) return;
+        net.minecraft.client.multiplayer.ClientPacketListener current = Minecraft.getInstance().getConnection(); if (current == null) return;
         bind(current);
         if (command instanceof GroupCommand.SendText) {
             textRequests.entrySet().removeIf(e -> System.currentTimeMillis() - e.getValue() > GroupClientPolicy.OPERATION_TIMEOUT_MS);
@@ -34,20 +34,20 @@ final class GroupTransport {
     }
     static void result(GroupReply.Result reply) {
         if (textRequests.remove(reply.request()) == null || reply.status() == com.november.mcphone.feature.chat.group.GroupStatus.OK) return;
-        var player = Minecraft.getInstance().player;
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) com.november.mcphone.platform.PlayerAccess.message(player, net.minecraft.network.chat.Component.translatable(reply.status().key()), true);
     }
     static void directory() {
-        var current = Minecraft.getInstance().getConnection(); if (current == null) return;
+        net.minecraft.client.multiplayer.ClientPacketListener current = Minecraft.getInstance().getConnection(); if (current == null) return;
         long now = System.currentTimeMillis();
         bind(current);
         if (now - lastDirectory < GroupClientPolicy.REFRESH_INTERVAL_MS) return;
         lastDirectory = now; send(new GroupCommand.ListRooms(UUID.randomUUID()));
     }
     static void notices() {
-        var current = Minecraft.getInstance().getConnection(); if (current == null) return;
+        net.minecraft.client.multiplayer.ClientPacketListener current = Minecraft.getInstance().getConnection(); if (current == null) return;
         bind(current); long now = System.currentTimeMillis(); if (now - lastNotices < GroupClientPolicy.REFRESH_INTERVAL_MS) return;
-        lastNotices = now; var request = UUID.randomUUID(); GroupClientCache.requestNotices(request);
+        lastNotices = now; UUID request = UUID.randomUUID(); GroupClientCache.requestNotices(request);
         send(new GroupCommand.Notices(request));
     }
 }

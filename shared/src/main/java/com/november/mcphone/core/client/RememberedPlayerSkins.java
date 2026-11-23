@@ -23,7 +23,7 @@ public final class RememberedPlayerSkins<T> {
 
     public RememberedPlayerSkins(int capacity) {
         if (capacity <= 0) throw new IllegalArgumentException("缓存容量必须大于零");
-        entries = new LinkedHashMap<>(capacity, .75f, true) {
+        entries = new LinkedHashMap<UUID, SkinEntry<T>>(capacity, .75f, true) {
             @Override protected boolean removeEldestEntry(Map.Entry<UUID, SkinEntry<T>> eldest) {
                 return size() > capacity;
             }

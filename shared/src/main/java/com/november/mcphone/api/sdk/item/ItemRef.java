@@ -43,7 +43,36 @@ package com.november.mcphone.api.sdk.item;
  * @param count  1..99。同上，出站投影，入站不采信
  * @param opaque 宿主侧那件物品的句柄，{@link Handles#LENGTH} 位小写十六进制。没有就是空串
  */
-public record ItemRef(String id, int count, String opaque) {
+public final class ItemRef {
+    private final String id;
+    private final int count;
+    private final String opaque;
+
+    public String id() { return id; }
+
+    public int count() { return count; }
+
+    public String opaque() { return opaque; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ItemRef)) return false;
+        ItemRef that = (ItemRef) other;
+        return java.util.Objects.equals(this.id, that.id)
+                && this.count == that.count
+                && java.util.Objects.equals(this.opaque, that.opaque);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(id);
+        hash = 31 * hash + java.util.Objects.hashCode(count);
+        hash = 31 * hash + java.util.Objects.hashCode(opaque);
+        return hash;
+    }
+
+    @Override public String toString() { return "ItemRef[id=" + id + ", count=" + count + ", opaque=" + opaque + "]"; }
+
 
     /** {@link #count} 的下界与上界（§23.3）。 */
     public static final int MIN_COUNT = 1;
@@ -57,7 +86,7 @@ public record ItemRef(String id, int count, String opaque) {
      */
     public static final int MAX_BATCH = 27;
 
-    public ItemRef {
+    public ItemRef(String id, int count, String opaque) {
         if (id == null || id.isEmpty()) throw new IllegalArgumentException("ItemRef.id 不能为空");
         if (count < MIN_COUNT || count > MAX_COUNT) {
             throw new IllegalArgumentException("ItemRef.count 要在 " + MIN_COUNT + ".." + MAX_COUNT + "，收到 " + count);
@@ -66,6 +95,9 @@ public record ItemRef(String id, int count, String opaque) {
         if (!opaque.isEmpty() && !Handles.isHandle(opaque)) {
             throw new IllegalArgumentException("ItemRef.opaque 要是 " + Handles.LENGTH + " 位小写十六进制的句柄，收到 '" + opaque + "'");
         }
+        this.id = id;
+        this.count = count;
+        this.opaque = opaque;
     }
 
     /** 没有宿主侧实体的一栈，只有 id 与数量。 */

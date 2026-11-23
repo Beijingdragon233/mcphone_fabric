@@ -1,5 +1,8 @@
 package com.november.mcphone.core.script.client.render;
 
+import com.november.mcphone.util.Java8Collections;
+
+import java.util.List;
 import com.november.mcphone.api.client.ui.PhoneCanvas;
 import com.november.mcphone.core.script.layout.LayoutEngine;
 import com.november.mcphone.core.script.layout.LayoutNode;
@@ -326,7 +329,7 @@ public final class TextInputs {
     public boolean keyPressed(int key, int scan, int modifiers) {
         if (!focused()) return false;
         if (key == 258) {
-            var candidates = fields.values().stream().filter(e -> e.enabled).toList();
+            List<TextInputs.Entry> candidates = fields.values().stream().filter(e -> e.enabled).collect(Java8Collections.toList());
             int index = candidates.indexOf(focused);
             Entry next = candidates.get(Math.floorMod(index + ((modifiers & 1) != 0 ? -1 : 1), candidates.size()));
             blur(); focused = next; next.focus(true);

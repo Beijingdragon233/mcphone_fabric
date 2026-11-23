@@ -1,5 +1,7 @@
 package com.november.mcphone.feature.reader.client.source;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.MCphone;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.feature.reader.BookRef;
@@ -61,7 +63,7 @@ public final class PatchouliSource implements BookSource {
     private static final String SOURCE_ID = "patchouli";
 
     /** 扫出来的书，扫描前是空表。类型必须是中性的，理由见类注释 */
-    private List<BookRef> books = List.of();
+    private List<BookRef> books = ImmutableList.of();
 
     /**
      * 上一次记进日志的本数，-1 表示还没记过。
@@ -136,7 +138,7 @@ public final class PatchouliSource implements BookSource {
         out.sort(Comparator.comparing((BookRef b) -> b.owner() == null ? "" : b.owner())
                 .thenComparing(b -> b.title().getString()));
 
-        return List.copyOf(out);
+        return ImmutableList.copyOf(out);
     }
 
     /**
@@ -184,8 +186,8 @@ public final class PatchouliSource implements BookSource {
 
         // 物品图标必须过这道检查。检查的是 BookIcon 里真正要画的那一个物品，
         // 而不是 getBookItem()：书里配了 index_icon 时两者可以是不同的物品
-        if (icon instanceof BookIcon.StackIcon stackIcon
-                && !GuiUtil.canDrawItemIcon(stackIcon.stack())) {
+        if (icon instanceof BookIcon.StackIcon
+                && !GuiUtil.canDrawItemIcon(((BookIcon.StackIcon) icon).stack())) {
             return false;
         }
 

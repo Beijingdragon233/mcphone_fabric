@@ -54,7 +54,9 @@ public class NotificationTest {
 
     static void shapeFollowsSection33() {
         TreeSet<String> names = new TreeSet<>();
-        for (var c : Notification.class.getRecordComponents()) names.add(c.getName());
+        for (java.lang.reflect.Field field : Notification.class.getDeclaredFields()) {
+            if (!java.lang.reflect.Modifier.isStatic(field.getModifiers())) names.add(field.getName());
+        }
         eq(names, new TreeSet<>(List.of("id", "appId", "topic", "titleKey", "titleArgs",
                         "bodyKey", "bodyArgs", "createdAt", "priority", "dedupeKey", "expiresAt")),
                 "形状按 §33.2 的扩展版，不是 §23.3 那个七字段的原型");

@@ -24,21 +24,72 @@ import java.util.Map;
  * <p>{@link #frontendDigest()} 在装载时算一次存下（ADV-S2b-7）：详情页的每帧渲染与每次点击都要读它，
  * 而算一次摘要是 SHA-256 过一遍整个包（合法上限 1 MiB）。单文件形态没有包，为 null。
  */
-public record ScriptApp(
-        ResourceLocation id,
-        Manifest manifest,
-        /** zip 形态才有；单文件形态是 null。image 与图标都要看它。 */
-        AppPackage pkg,
-        /** 入口那一页，{@code nav()} 回到它用空串。 */
-        SfcCompiler.Page entry,
-        /** {@code nav('detail')} → {@code pages/detail.vue}。不含入口页。 */
-        Map<String, SfcCompiler.Page> pages,
-        /** 图标的原始 PNG 字节，没有就是 null。 */
-        byte[] icon,
-        /** 从哪个文件读来的，只用于日志与重装。 */
-        String file,
-        /** 前端摘要（服务端谓词的那一份，见 {@link FrontendDigest}）；单文件形态为 null。 */
-        String frontendDigest) {
+public final class ScriptApp {
+    private final ResourceLocation id;
+    private final Manifest manifest;
+    private final AppPackage pkg;
+    private final SfcCompiler.Page entry;
+    private final Map<String, SfcCompiler.Page> pages;
+    private final byte[] icon;
+    private final String file;
+    private final String frontendDigest;
+
+    public ScriptApp(ResourceLocation id, Manifest manifest, AppPackage pkg, SfcCompiler.Page entry, Map<String, SfcCompiler.Page> pages, byte[] icon, String file, String frontendDigest) {
+        this.id = id;
+        this.manifest = manifest;
+        this.pkg = pkg;
+        this.entry = entry;
+        this.pages = pages;
+        this.icon = icon;
+        this.file = file;
+        this.frontendDigest = frontendDigest;
+    }
+
+    public ResourceLocation id() { return id; }
+
+    public Manifest manifest() { return manifest; }
+
+    public AppPackage pkg() { return pkg; }
+
+    public SfcCompiler.Page entry() { return entry; }
+
+    public Map<String, SfcCompiler.Page> pages() { return pages; }
+
+    public byte[] icon() { return icon; }
+
+    public String file() { return file; }
+
+    public String frontendDigest() { return frontendDigest; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ScriptApp)) return false;
+        ScriptApp that = (ScriptApp) other;
+        return java.util.Objects.equals(this.id, that.id)
+                && java.util.Objects.equals(this.manifest, that.manifest)
+                && java.util.Objects.equals(this.pkg, that.pkg)
+                && java.util.Objects.equals(this.entry, that.entry)
+                && java.util.Objects.equals(this.pages, that.pages)
+                && java.util.Objects.equals(this.icon, that.icon)
+                && java.util.Objects.equals(this.file, that.file)
+                && java.util.Objects.equals(this.frontendDigest, that.frontendDigest);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(id);
+        hash = 31 * hash + java.util.Objects.hashCode(manifest);
+        hash = 31 * hash + java.util.Objects.hashCode(pkg);
+        hash = 31 * hash + java.util.Objects.hashCode(entry);
+        hash = 31 * hash + java.util.Objects.hashCode(pages);
+        hash = 31 * hash + java.util.Objects.hashCode(icon);
+        hash = 31 * hash + java.util.Objects.hashCode(file);
+        hash = 31 * hash + java.util.Objects.hashCode(frontendDigest);
+        return hash;
+    }
+
+    @Override public String toString() { return "ScriptApp[id=" + id + ", manifest=" + manifest + ", pkg=" + pkg + ", entry=" + entry + ", pages=" + pages + ", icon=" + icon + ", file=" + file + ", frontendDigest=" + frontendDigest + "]"; }
+
 
     /** 装载时把摘要算好，别让渲染路径自己去算。 */
     public static ScriptApp of(ResourceLocation id, Manifest manifest, AppPackage pkg,

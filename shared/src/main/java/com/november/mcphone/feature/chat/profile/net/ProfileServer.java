@@ -20,7 +20,7 @@ public final class ProfileServer {
         String name = "", introduction = "";
         ProfileWire.Status status = ProfileWire.Status.OK;
         try {
-            var server = player.level().getServer();
+            net.minecraft.server.MinecraftServer server = player.level().getServer();
             if (player.hasDisconnected() || server.getPlayerList().getPlayer(player.getUUID()) != player || !FriendGuard.carriesPhone(player))
                 throw new SecurityException("缺少手机或连接失效");
             if (q.update() && !player.getUUID().equals(q.target())) throw new SecurityException("只能修改自己的介绍");
@@ -28,10 +28,10 @@ public final class ProfileServer {
             if (now - LAST.getOrDefault(player, 0L) < 200) { status = ProfileWire.Status.BUSY; }
             else {
                 LAST.put(player, now);
-                var data = ProfileData.get(server);
+                com.november.mcphone.feature.chat.profile.ProfileData data = ProfileData.get(server);
                 if (q.update() && data.book().update(player.getUUID(), q.target(), q.introduction())) data.setDirty();
                 introduction = data.book().get(q.target());
-                var online = server.getPlayerList().getPlayer(q.target());
+                net.minecraft.server.level.ServerPlayer online = server.getPlayerList().getPlayer(q.target());
                 String known = online == null ? FriendData.get(server).getName(q.target()) : online.getName().getString();
                 name = known == null ? q.target().toString().substring(0, 8) : TextSanitizer.sanitize(known, ProfileWire.NAME_LENGTH);
             }

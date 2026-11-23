@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.server.store;
 
+import com.google.common.collect.ImmutableMap;
+
 import javax.crypto.AEADBadTagException;
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
@@ -96,7 +98,7 @@ public final class VaultClient {
 
     /** 交给 local 档存起来。键是 {@link #slot} 的形状（{@code appId\0key}）。 */
     public Map<String, Long> versionsForLocal() {
-        return Map.copyOf(known);
+        return ImmutableMap.copyOf(known);
     }
 
     /** 用口令开箱。口令用完当场抹掉。 */

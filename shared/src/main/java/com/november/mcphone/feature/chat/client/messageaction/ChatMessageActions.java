@@ -13,7 +13,48 @@ import java.util.function.Consumer;
 public final class ChatMessageActions {
     @FunctionalInterface public interface PanelPainter extends ChatContextMenuView.PanelPainter {}
     @FunctionalInterface public interface DeleteSender { void send(UUID peer, UUID message, UUID request); }
-    private record Pending(UUID peer, UUID message, UUID request, long deadline) {}
+    private static final class Pending {
+        private final UUID peer;
+        private final UUID message;
+        private final UUID request;
+        private final long deadline;
+
+        private Pending(UUID peer, UUID message, UUID request, long deadline) {
+            this.peer = peer;
+            this.message = message;
+            this.request = request;
+            this.deadline = deadline;
+        }
+
+        public UUID peer() { return peer; }
+
+        public UUID message() { return message; }
+
+        public UUID request() { return request; }
+
+        public long deadline() { return deadline; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Pending)) return false;
+            Pending that = (Pending) other;
+            return java.util.Objects.equals(this.peer, that.peer)
+                    && java.util.Objects.equals(this.message, that.message)
+                    && java.util.Objects.equals(this.request, that.request)
+                    && this.deadline == that.deadline;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(peer);
+            hash = 31 * hash + java.util.Objects.hashCode(message);
+            hash = 31 * hash + java.util.Objects.hashCode(request);
+            hash = 31 * hash + java.util.Objects.hashCode(deadline);
+            return hash;
+        }
+
+        @Override public String toString() { return "Pending[peer=" + peer + ", message=" + message + ", request=" + request + ", deadline=" + deadline + "]"; }
+}
     private final ChatContextMenu menu = new ChatContextMenu();
     private final PanelPainter painter;
     private final Consumer<String> copy;
@@ -60,14 +101,20 @@ public final class ChatMessageActions {
     public void result(UUID request, ChatDeletionResult result) {
         if (pending == null || !pending.request().equals(request)) return;
         pending = null;
-        if (result != ChatDeletionResult.OK) notice.accept("mcphone.chat.message_action." + switch (result) {
-            case NOT_FOUND -> "not_found"; case BUSY -> "busy"; case STORAGE_ERROR -> "storage_error"; default -> "forbidden";
-        });
+        if (result == ChatDeletionResult.OK) return;
+        String key;
+        switch (result) {
+            case NOT_FOUND: key = "not_found"; break;
+            case BUSY: key = "busy"; break;
+            case STORAGE_ERROR: key = "storage_error"; break;
+            default: key = "forbidden";
+        }
+        notice.accept("mcphone.chat.message_action." + key);
     }
     public boolean mouseClicked(double x, double y, int button, long now) {
         if (!menu.isOpen()) return false;
         if (button == 1) { menu.dismiss(); return false; }
-        var target = menu.target();
+        ChatMessageTarget target = menu.target();
         ChatMessageAction action = button == 0 ? menu.actionAt(x, y) : null;
         menu.dismiss();
         execute(target, action, now);

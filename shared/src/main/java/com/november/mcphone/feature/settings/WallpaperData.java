@@ -11,7 +11,30 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
  * 注册在 {@link com.november.mcphone.core.ModAttachments#WALLPAPER}：
  * 本类只负责"是什么、怎么序列化"，注册表归属统一放在注册类里。
  */
-public record WallpaperData(String wallpaperFileName) {
+public final class WallpaperData {
+    private final String wallpaperFileName;
+
+    public WallpaperData(String wallpaperFileName) {
+        this.wallpaperFileName = wallpaperFileName;
+    }
+
+    public String wallpaperFileName() { return wallpaperFileName; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof WallpaperData)) return false;
+        WallpaperData that = (WallpaperData) other;
+        return java.util.Objects.equals(this.wallpaperFileName, that.wallpaperFileName);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(wallpaperFileName);
+        return hash;
+    }
+
+    @Override public String toString() { return "WallpaperData[wallpaperFileName=" + wallpaperFileName + "]"; }
+
 
     public static final WallpaperData DEFAULT = new WallpaperData("");
     public static final int MAX_FILE_NAME = 255;

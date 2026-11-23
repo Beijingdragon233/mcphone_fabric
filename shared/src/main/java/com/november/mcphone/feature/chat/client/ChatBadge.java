@@ -37,7 +37,7 @@ public final class ChatBadge {
         for (ConversationSummary c : ChatClientCache.getConversations()) {
             total += c.unread();
         }
-        for (var c : com.november.mcphone.feature.chat.group.net.GroupClientCache.groups()) total += c.unread();
+        for (com.november.mcphone.feature.chat.group.GroupSummary c : com.november.mcphone.feature.chat.group.net.GroupClientCache.groups()) total += c.unread();
         return total;
     }
 

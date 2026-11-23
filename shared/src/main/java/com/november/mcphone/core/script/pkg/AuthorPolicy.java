@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.pkg;
 
+import com.google.common.collect.ImmutableSet;
+
 import java.util.LinkedHashSet;
 import java.util.Set;
 
@@ -55,10 +57,10 @@ public final class AuthorPolicy {
     }
 
     public Set<String> blockedSet() {
-        return Set.copyOf(blocked);
+        return ImmutableSet.copyOf(blocked);
     }
 
     public Set<String> allowedSet() {
-        return Set.copyOf(allowed);
+        return ImmutableSet.copyOf(allowed);
     }
 }

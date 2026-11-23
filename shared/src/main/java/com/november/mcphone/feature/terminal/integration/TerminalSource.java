@@ -30,10 +30,25 @@ import java.util.function.Function;
  * {@code map} 两头都占：加第三种实现就必须实现它，而它多出来的那个参数会让所有调用点
  * 一起编不过 —— 和 switch 一样躲不掉，且是 Java 8 就成立的写法。
  */
-public sealed interface TerminalSource {
+public interface TerminalSource {
 
     /** 手机卡槽里那一格。它只有一格，所以不需要任何字段 */
-    record PhoneSlot() implements TerminalSource {
+    final class PhoneSlot implements TerminalSource {
+        public PhoneSlot() {
+        }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof PhoneSlot)) return false;
+            return true;
+        }
+
+        @Override public int hashCode() {
+            return 0;
+        }
+
+        @Override public String toString() { return "PhoneSlot[]"; }
+
 
         @Override
         public <R> R map(Function<PhoneSlot, R> onPhoneSlot,
@@ -48,7 +63,30 @@ public sealed interface TerminalSource {
      * 编号就是 {@code Inventory.getItem} 的编号，覆盖快捷栏、主背包、副手与盔甲位；
      * AE2 与 RS 的"背包某一格"用的也是同一套编号。
      */
-    record InventorySlot(int index) implements TerminalSource {
+    final class InventorySlot implements TerminalSource {
+        private final int index;
+
+        public InventorySlot(int index) {
+            this.index = index;
+        }
+
+        public int index() { return index; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof InventorySlot)) return false;
+            InventorySlot that = (InventorySlot) other;
+            return this.index == that.index;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(index);
+            return hash;
+        }
+
+        @Override public String toString() { return "InventorySlot[index=" + index + "]"; }
+
 
         @Override
         public <R> R map(Function<PhoneSlot, R> onPhoneSlot,

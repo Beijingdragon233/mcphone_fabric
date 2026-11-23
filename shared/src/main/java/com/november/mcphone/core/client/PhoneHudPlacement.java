@@ -291,5 +291,40 @@ public final class PhoneHudPlacement {
     }
 
     /** {@link #derive} 的结果 */
-    public record Placement(Anchor anchor, int offsetX, int offsetY) {}
+    public static final class Placement {
+        private final Anchor anchor;
+        private final int offsetX;
+        private final int offsetY;
+
+        public Placement(Anchor anchor, int offsetX, int offsetY) {
+            this.anchor = anchor;
+            this.offsetX = offsetX;
+            this.offsetY = offsetY;
+        }
+
+        public Anchor anchor() { return anchor; }
+
+        public int offsetX() { return offsetX; }
+
+        public int offsetY() { return offsetY; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Placement)) return false;
+            Placement that = (Placement) other;
+            return java.util.Objects.equals(this.anchor, that.anchor)
+                    && this.offsetX == that.offsetX
+                    && this.offsetY == that.offsetY;
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(anchor);
+            hash = 31 * hash + java.util.Objects.hashCode(offsetX);
+            hash = 31 * hash + java.util.Objects.hashCode(offsetY);
+            return hash;
+        }
+
+        @Override public String toString() { return "Placement[anchor=" + anchor + ", offsetX=" + offsetX + ", offsetY=" + offsetY + "]"; }
+}
 }

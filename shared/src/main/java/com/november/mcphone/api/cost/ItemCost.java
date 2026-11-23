@@ -11,8 +11,42 @@ import java.util.function.Predicate;
  * 从背包里扣物品的代价。用谓词而不是直接认物品种类：有些区别在数据组件上，
  * 比如空白的书与笔和写过字的是同一种物品。多数情况用 {@link ICost#of} 就够。
  */
-public record ItemCost(Predicate<ItemStack> filter, int count,
-                       Component description) implements ICost {
+public final class ItemCost implements ICost {
+    private final Predicate<ItemStack> filter;
+    private final int count;
+    private final Component description;
+
+    public ItemCost(Predicate<ItemStack> filter, int count, Component description) {
+        this.filter = filter;
+        this.count = count;
+        this.description = description;
+    }
+
+    public Predicate<ItemStack> filter() { return filter; }
+
+    public int count() { return count; }
+
+    public Component description() { return description; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof ItemCost)) return false;
+        ItemCost that = (ItemCost) other;
+        return java.util.Objects.equals(this.filter, that.filter)
+                && this.count == that.count
+                && java.util.Objects.equals(this.description, that.description);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(filter);
+        hash = 31 * hash + java.util.Objects.hashCode(count);
+        hash = 31 * hash + java.util.Objects.hashCode(description);
+        return hash;
+    }
+
+    @Override public String toString() { return "ItemCost[filter=" + filter + ", count=" + count + ", description=" + description + "]"; }
+
 
     @Override
     public boolean canAfford(Player player) {

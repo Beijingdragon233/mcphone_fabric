@@ -1,5 +1,7 @@
 package com.november.mcphone.core.script.engine;
 
+import com.google.common.collect.ImmutableMap;
+
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -57,7 +59,7 @@ public final class ScriptModules {
                 throw HostError.invalid("模块表里有非规范名：" + name);
             }
         }
-        this.sources = Map.copyOf(sources);
+        this.sources = ImmutableMap.copyOf(sources);
     }
 
     /** 解析器：把一个模块的源码求值成 exports。由调用方提供（要用到 scope 与 Context）。 */
@@ -128,7 +130,7 @@ public final class ScriptModules {
 
     /** 全部源码的副本。给装配期静态预检（{@link ScriptStaticCheck}）与断言用；改不动内部表。 */
     public Map<String, String> allSources() {
-        return Map.copyOf(sources);
+        return ImmutableMap.copyOf(sources);
     }
 
     /** 当前 require 栈多深。只给测试用。 */

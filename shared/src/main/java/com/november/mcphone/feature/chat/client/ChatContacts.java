@@ -1,5 +1,10 @@
 package com.november.mcphone.feature.chat.client;
 
+import com.november.mcphone.util.Java8;
+
+import com.google.common.collect.ImmutableList;
+import com.november.mcphone.util.Java8Collections;
+
 import com.november.mcphone.core.client.FontPalette;
 import com.november.mcphone.core.net.MCphoneNetwork;
 import com.november.mcphone.feature.chat.net.ChatClientCache;
@@ -23,7 +28,7 @@ public final class ChatContacts {
     private final ChatGroupNotices notices = new ChatGroupNotices();
     private List<ConversationSummary> source;
     private List<GroupSummary> groupSource;
-    private List<ChatContactDirectory.Section> sections = List.of();
+    private List<ChatContactDirectory.Section> sections = ImmutableList.of();
     private String query = "";
     private boolean groups, notifications;
     private long lastRequest;
@@ -37,16 +42,16 @@ public final class ChatContacts {
         if (directory == null) directory = new ChatContactDirectory();
     }
     public void close() {
-        search.close(); pane.close(); navigation.clear(); source = null; query = ""; sections = List.of();
+        search.close(); pane.close(); navigation.clear(); source = null; query = ""; sections = ImmutableList.of();
         add = newFriends = groupNotices = friendsTab = groupsTab = null;
         pendingAction = null; pendingPeer = pendingGroup = pendingProfile = null; groupSource = null;
         notifications = false;
         notices.close();
     }
-    public Action consumeAction() { var out = pendingAction; pendingAction = null; return out; }
-    public UUID consumeProfileRequest() { var out=pendingProfile;pendingProfile=null;return out; }
-    public UUID consumeOpenRequest() { var out = pendingPeer; pendingPeer = null; return out; }
-    public UUID consumeGroupOpenRequest() { var out = pendingGroup; pendingGroup = null; return out; }
+    public Action consumeAction() { ChatContacts.Action out = pendingAction; pendingAction = null; return out; }
+    public UUID consumeProfileRequest() { UUID out=pendingProfile;pendingProfile=null;return out; }
+    public UUID consumeOpenRequest() { UUID out = pendingPeer; pendingPeer = null; return out; }
+    public UUID consumeGroupOpenRequest() { UUID out = pendingGroup; pendingGroup = null; return out; }
     public boolean back() {
         if (!notifications) return false;
         notifications = false; add = null; notices.close(); return true;
@@ -94,20 +99,20 @@ public final class ChatContacts {
         category(g, font, friendsTab, "mcphone.chat.contacts.friends", !groups);
         category(g, font, groupsTab, "mcphone.chat.contacts.groups", groups);
         y += 14;
-        var next = ChatClientCache.getConversations();
-        var nextGroups = GroupClientCache.groups();
+        List<com.november.mcphone.feature.chat.net.ConversationSummary> next = ChatClientCache.getConversations();
+        List<com.november.mcphone.feature.chat.group.GroupSummary> nextGroups = GroupClientCache.groups();
         String nextQuery = search.query();
         if (source != next || groupSource != nextGroups || !query.equals(nextQuery)) {
             if (!query.equals(nextQuery)) pane.reset();
             source = next; groupSource = nextGroups; query = nextQuery;
             sections = directory.sections(groups ? nextGroups.stream()
-                    .map(c -> new ChatContactDirectory.Contact(c.id(), c.name(), false)).toList()
-                    : next.stream().map(c -> new ChatContactDirectory.Contact(c.id(), c.name(), c.online())).toList(), query);
+                    .map(c -> new ChatContactDirectory.Contact(c.id(), c.name(), false)).collect(Java8Collections.toList())
+                    : next.stream().map(c -> new ChatContactDirectory.Contact(c.id(), c.name(), c.online())).collect(Java8Collections.toList()), query);
         }
         pane.render(g, font, sections,
                 new ChatLayout.Rect(x, y, w, Math.max(0, tabsY - y - 2)), mx, my,
-                groups ? (query.isBlank() ? "mcphone.chat.contacts.groups_empty" : "mcphone.chat.contacts.search_empty")
-                        : (query.strip().isEmpty() ? "mcphone.chat.contacts.friends_empty" : "mcphone.chat.contacts.search_empty"),
+                groups ? (Java8.isBlank(query) ? "mcphone.chat.contacts.groups_empty" : "mcphone.chat.contacts.search_empty")
+                        : (Java8.strip(query).isEmpty() ? "mcphone.chat.contacts.friends_empty" : "mcphone.chat.contacts.search_empty"),
                 groups ? ChatContacts::groupRow : ChatContactPane::renderContact);
         navigation.render(g, font, x, tabsY, w, ChatNavigationBar.Page.CONTACTS);
     }
@@ -131,10 +136,10 @@ public final class ChatContacts {
     }
     private void setGroups(boolean value) { if (groups != value) { groups = value; source = null; pane.reset(); } }
     private static void groupRow(GuiGraphics g, Font font, ChatContactDirectory.Contact c, int x, int y, int w, int h, boolean hover) {
-        var room = GroupClientCache.summary(c.id()); if (room == null) return;
+        com.november.mcphone.feature.chat.group.GroupSummary room = GroupClientCache.summary(c.id()); if (room == null) return;
         ChatUi.glass(g, ChatGlass.Surface.CARD, x, y, w, h - 1, hover);
-        var row = ChatContactRow.layout(x, y, w, h, false);
-        var avatar = row.avatar();
+        ChatContactRow.Layout row = ChatContactRow.layout(x, y, w, h, false);
+        ChatLayout.Rect avatar = row.avatar();
         ChatGroupAvatar.draw(g, room, avatar.x(), avatar.y(), avatar.width());
         ChatUi.label(g, font, ChatUi.truncate(font, c.name(), row.textWidth(), ChatLayout.TEXT_SCALE),
                 row.textX(), row.nameCenterY(), ChatLayout.TEXT_SCALE, FontPalette.title());

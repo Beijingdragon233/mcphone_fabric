@@ -6,7 +6,54 @@ package com.november.mcphone.feature.music;
  * @param id         音源自己的编号：本地文件是文件名，网络歌是歌曲 ID
  * @param durationMs 时长（毫秒），-1 表示不知道；本地文件一律 -1（扫目录时不许开文件，时长由流带着走，见 KnownDuration）
  */
-public record Track(String sourceId, String id, String title, long durationMs, Kind kind) {
+public final class Track {
+    private final String sourceId;
+    private final String id;
+    private final String title;
+    private final long durationMs;
+    private final Kind kind;
+
+    public Track(String sourceId, String id, String title, long durationMs, Kind kind) {
+        this.sourceId = sourceId;
+        this.id = id;
+        this.title = title;
+        this.durationMs = durationMs;
+        this.kind = kind;
+    }
+
+    public String sourceId() { return sourceId; }
+
+    public String id() { return id; }
+
+    public String title() { return title; }
+
+    public long durationMs() { return durationMs; }
+
+    public Kind kind() { return kind; }
+
+    @Override public boolean equals(Object other) {
+        if (this == other) return true;
+        if (!(other instanceof Track)) return false;
+        Track that = (Track) other;
+        return java.util.Objects.equals(this.sourceId, that.sourceId)
+                && java.util.Objects.equals(this.id, that.id)
+                && java.util.Objects.equals(this.title, that.title)
+                && this.durationMs == that.durationMs
+                && java.util.Objects.equals(this.kind, that.kind);
+    }
+
+    @Override public int hashCode() {
+        int hash = 0;
+        hash = 31 * hash + java.util.Objects.hashCode(sourceId);
+        hash = 31 * hash + java.util.Objects.hashCode(id);
+        hash = 31 * hash + java.util.Objects.hashCode(title);
+        hash = 31 * hash + java.util.Objects.hashCode(durationMs);
+        hash = 31 * hash + java.util.Objects.hashCode(kind);
+        return hash;
+    }
+
+    @Override public String toString() { return "Track[sourceId=" + sourceId + ", id=" + id + ", title=" + title + ", durationMs=" + durationMs + ", kind=" + kind + "]"; }
+
 
     /** 放法，决定谁听得见 */
     public enum Kind {

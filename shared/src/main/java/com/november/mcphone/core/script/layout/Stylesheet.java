@@ -12,7 +12,48 @@ import java.util.function.Consumer;
 public final class Stylesheet {
 
     /** 一条规则：选择器和它的声明。每条声明是对 Builder 的一次写入，按原文顺序。 */
-    record Rule(boolean id, String name, Pos at, List<Consumer<Style.Builder>> decls) {
+    static final class Rule {
+        private final boolean id;
+        private final String name;
+        private final Pos at;
+        private final List<Consumer<Style.Builder>> decls;
+
+        Rule(boolean id, String name, Pos at, List<Consumer<Style.Builder>> decls) {
+            this.id = id;
+            this.name = name;
+            this.at = at;
+            this.decls = decls;
+        }
+
+        public boolean id() { return id; }
+
+        public String name() { return name; }
+
+        public Pos at() { return at; }
+
+        public List<Consumer<Style.Builder>> decls() { return decls; }
+
+        @Override public boolean equals(Object other) {
+            if (this == other) return true;
+            if (!(other instanceof Rule)) return false;
+            Rule that = (Rule) other;
+            return this.id == that.id
+                    && java.util.Objects.equals(this.name, that.name)
+                    && java.util.Objects.equals(this.at, that.at)
+                    && java.util.Objects.equals(this.decls, that.decls);
+        }
+
+        @Override public int hashCode() {
+            int hash = 0;
+            hash = 31 * hash + java.util.Objects.hashCode(id);
+            hash = 31 * hash + java.util.Objects.hashCode(name);
+            hash = 31 * hash + java.util.Objects.hashCode(at);
+            hash = 31 * hash + java.util.Objects.hashCode(decls);
+            return hash;
+        }
+
+        @Override public String toString() { return "Rule[id=" + id + ", name=" + name + ", at=" + at + ", decls=" + decls + "]"; }
+
         void applyTo(Style.Builder b) {
             for (Consumer<Style.Builder> d : decls) d.accept(b);
         }
@@ -68,7 +109,7 @@ public final class Stylesheet {
     /** 第 4 层：节点内容字段对样式的强制影响（§5.2），盖过样式表里写的任何值。 */
     private static void implied(Node node, Style.Builder b) {
         switch (node.type()) {
-            case BADGE -> {
+            case BADGE: {
                 // 留下 grow、边框或底色中的任何一样，count 为 0 的角标都会占位或画出一块色
                 if (node.num("count", 0) == 0) {
                     collapse(b);
@@ -78,13 +119,16 @@ public final class Stylesheet {
                     b.hoverBackground(null);
                 }
             }
-            case SPACER -> {
+                break;
+            case SPACER: {
                 if (node.num("size", 0) == 0) {
                     collapse(b);
                     b.grow = 1;
                 }
             }
-            default -> { }
+                break;
+            default: { }
+                break;
         }
     }
 

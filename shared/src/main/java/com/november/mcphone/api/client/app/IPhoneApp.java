@@ -1,5 +1,7 @@
 package com.november.mcphone.api.client.app;
 
+import com.google.common.collect.ImmutableList;
+
 import com.november.mcphone.api.client.ui.IPhonePage;
 import com.november.mcphone.core.client.GuiUtil;
 import com.november.mcphone.platform.ModPresence;
@@ -102,7 +104,7 @@ public interface IPhoneApp {
      *
      * displayName 要写死，别在运行时查——要显示它的时候那个模组多半没装。
      */
-    default List<RequiredMod> requiredMods() { return List.of(); }
+    default List<RequiredMod> requiredMods() { return ImmutableList.of(); }
 
     /**
      * 这个 App 沾了哪个模组的光。
@@ -137,7 +139,7 @@ public interface IPhoneApp {
      * displayName 与前置那边同一条规矩：写死，别在运行时查——要显示它的时候
      * 那个模组多半没装。
      */
-    default List<RequiredMod> companionMods() { return List.of(); }
+    default List<RequiredMod> companionMods() { return ImmutableList.of(); }
 
     /**
      * 这个 App 在当前环境下存不存在。返回 false 则主屏与商店里都不出现。

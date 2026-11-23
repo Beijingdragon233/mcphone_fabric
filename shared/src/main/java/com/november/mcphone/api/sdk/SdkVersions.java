@@ -1,5 +1,7 @@
 package com.november.mcphone.api.sdk;
 
+import com.google.common.collect.ImmutableMap;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -60,7 +62,7 @@ public final class SdkVersions {
         m.put("escrow", 1);
         m.put("stats", 1);
         m.put("resources", 1);
-        V = Map.copyOf(m);
+        V = ImmutableMap.copyOf(m);
     }
 
     /** 本机这个 SDK 是第几版，没有返回 {@link #ABSENT}。 */
