@@ -74,10 +74,16 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: |
-            8
             17
             21
             25
+
+      - name: Setup Java 8 for legacy runtime verification
+        if: matrix.target == '1.16.5-forge'
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '8'
 
       # 【停在 v5，不要升 v6】。v6 把缓存那部分抽成了 gradle-actions-caching，
       # 那是个不再开源的商业组件，启用缓存就等于接受 Gradle 自己那份
