@@ -192,7 +192,8 @@ public class MCphoneClient {
         // 必须在 App 目录构建之前：BrowserApp 登记时会问后端在不在
         com.november.mcphone.feature.browser.client.BrowserBackends.installDefault();
 
-        WallpaperStore.scan();
+        // 壁纸加载会创建 DynamicTexture，必须在主渲染线程执行
+        event.enqueueWork(WallpaperStore::scan);
 
         // 触发 PhoneScreenRegistry 延迟加载（内建 + SPI）
         PhoneScreenRegistry.getAppCount();

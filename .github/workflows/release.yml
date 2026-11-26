@@ -56,6 +56,14 @@ on:
           - both
           - curseforge
           - modrinth
+      target_scope:
+        description: '发布目标范围：unofficial_only 只发上游官方不提供的版本（26.1.2-fabric / 26.2 / 26.3）；all 发全部 buildable 目标'
+        required: true
+        type: choice
+        default: unofficial_only
+        options:
+          - unofficial_only
+          - all
 
 # 默认的 GITHUB_TOKEN 是只读的，不显式提权就推不了 commit、也建不了 Release。
 permissions:
@@ -198,15 +206,25 @@ jobs:
         id: buildall
         env:
           NEW: ${{ steps.ver.outputs.new }}
+          TARGET_SCOPE: ${{ inputs.target_scope }}
         run: |
           set -euo pipefail
           mkdir -p dist
 
-          TARGETS=$(jq -r 'to_entries[] | select((.value | type) == "object" and .value.buildable == true) | .key' versions/targets.json)
+          OFFICIAL_TARGETS='["1.20.1-forge","1.20.1-fabric","1.21.1-neoforge","1.21.1-fabric","1.21.11-neoforge","1.21.11-fabric","26.1.2-neoforge"]'
+          TARGETS=$(jq -r --arg scope "$TARGET_SCOPE" --argjson official "$OFFICIAL_TARGETS" '
+            to_entries[]
+            | select((.value | type) == "object" and .value.buildable == true)
+            | select($scope == "all" or ((.key as $k | $official | index($k)) == null))
+            | .key
+          ' versions/targets.json)
           if [ -z "$TARGETS" ]; then
-            echo "::error::versions/targets.json 里一个 buildable 的目标都没有，没东西可发。"
+            echo "::error::versions/targets.json 里没有符合发布范围 ($TARGET_SCOPE) 的 buildable 目标，没东西可发。"
             exit 1
           fi
+          echo "发布目标范围：$TARGET_SCOPE"
+          echo "本次构建并发布的目标："
+          printf '  - %s\n' $TARGETS
 
           for T in $TARGETS; do
             PROJ=$(jq -r --arg t "$T" '.[$t].project' versions/targets.json)
@@ -261,9 +279,13 @@ jobs:
           # 发到 Modrinth / CurseForge 的那两步是 YAML 的 with:，跑不了 shell，
           # 而每个目标的 loaders 与 game-versions 都不一样。所以把矩阵在这儿算好，
           # 交给下面那个 publish job 按目标各发各的。
-          MATRIX=$(jq -c '[to_entries[] | select((.value | type) == "object" and .value.buildable == true)
-                           | {target: .key, loader: (.value.loader | ascii_downcase),
-                              minecraft: .value.minecraft, java: .value.java}]' versions/targets.json)
+          MATRIX=$(jq -c --arg scope "$TARGET_SCOPE" --argjson official "$OFFICIAL_TARGETS" '[
+            to_entries[]
+            | select((.value | type) == "object" and .value.buildable == true)
+            | select($scope == "all" or ((.key as $k | $official | index($k)) == null))
+            | {target: .key, loader: (.value.loader | ascii_downcase),
+               minecraft: .value.minecraft, java: .value.java}
+          ]' versions/targets.json)
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
           echo "矩阵：$MATRIX"
 

@@ -138,6 +138,11 @@ public final class WallpaperStore {
      * 释放不能省——贴图是显存，只加不减的话，反复增删壁纸会一路涨上去。
      */
     public static void refresh() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc != null && !mc.isSameThread()) {
+            mc.execute(WallpaperStore::refresh);
+            return;
+        }
         Path dir = ClientPaths.resolve(PhonePaths.WALLPAPERS);
         if (!Files.isDirectory(dir)) {
             try {

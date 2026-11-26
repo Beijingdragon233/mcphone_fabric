@@ -242,7 +242,8 @@ public final class MCphoneClient {
         // 的静态字段，不像 MenuScreens 那样有别人也在写的注册表
         com.november.mcphone.feature.browser.client.BrowserBackends.installDefault();
 
-        WallpaperStore.scan();
+        // 壁纸加载会创建 DynamicTexture，必须在主渲染线程执行
+        event.enqueueWork(WallpaperStore::scan);
 
         // 触发 PhoneScreenRegistry 延迟加载（SPI）
         PhoneScreenRegistry.getAppCount();
